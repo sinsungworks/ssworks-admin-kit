@@ -62,13 +62,5 @@
     "vue-tsc": "^3.1.1",
     "vuetify": "^4.0.5",
     "zod": "^4.3.5"
-  },
-  "peerDependenciesMeta": {
-    "pinia": {
-      "optional": true
-    },
-    "axios": {
-      "optional": true
-    }
   }
 }

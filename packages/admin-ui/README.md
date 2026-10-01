@@ -3,8 +3,7 @@
 관리자 페이지 공통 **Vue 3 + Vuetify 4** 컴포넌트와 composable.
 
 ```bash
-pnpm add @ssworks/admin-ui @ssworks/admin-shared vue vuetify vue-router
-pnpm add pinia axios # 선택 — createAppStore · createApiClient 를 쓸 때만
+pnpm add @ssworks/admin-ui @ssworks/admin-shared vue vuetify vue-router pinia axios
 ```
 
 ```ts
@@ -65,8 +64,10 @@ export const usePermission = createUsePermission<Permission>(
 | `vue`        | 예   |                                        |
 | `vuetify`    | 예   |                                        |
 | `vue-router` | 예   | 셸·가드·메뉴가 라우트 `meta` 를 읽는다 |
-| `pinia`      | 선택 | `createAppStore` 만                    |
-| `axios`      | 선택 | `createApiClient` 만                   |
+| `pinia`      | 예   | `createAppStore`                       |
+| `axios`      | 예   | `createApiClient`                      |
+
+🔴 `pinia`·`axios` 도 **필수**다. 엔트리가 하나(`dist/index.js`)라 두 패키지를 최상단에서 import 한다 — `safeRedirect` 하나만 써도 번들러가 `axios` 를 해석하지 못하면 빌드가 깨진다. 서브패스 export 로 가르지 않는 대가다.
 
 패키지는 `RouteMeta` 를 **증강하지 않는다**(`declare module 'vue-router'` 없음). `AdminRouteMeta<Permission>` 타입과 `defineAdminRoute()` 만 준다. `RouteMeta` 증강은 프로젝트의 `env.d.ts` 몫이다.
 

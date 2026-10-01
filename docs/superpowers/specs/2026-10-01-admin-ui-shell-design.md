@@ -223,3 +223,9 @@ export class SessionNotEstablishedError extends Error {}
 - `useQuerySyncedFilter`(crm) — `utils/queryCodec.ts` 가 추출본에 없어 PR #3 에서 원본 확인 후.
 - `useFieldErrors`(gise) — `validationDetailsSchema` 계약으로 PR #3.
 - `IpBlockedDialog` — PR #1 에서 빠졌다. 이 PR 에서 `useAdminUi().ipBlocked` 를 읽는 형태로 넣는다.
+
+## 8. 구현 중 정정 (2026-10-01)
+
+최종 리뷰(14e4b9f..e54c5ec)에서 나온 결정. 위 본문과 어긋나면 이 절이 이긴다.
+
+- **R12 — `pinia`·`axios` 는 필수 peer 다.** §5 의 "optional" 과 "한 엔트리 + tree-shaking" 은 서로 맞지 않는다. 빌드된 `dist/index.js` 가 두 패키지를 최상단에서 import 하므로, `axios` 가 없는 소비자는 `safeRedirect` 하나만 써도 `vite build` 가 "failed to resolve import axios" 로 깨진다. 한 엔트리 결정을 지키고 `peerDependenciesMeta.optional` 을 뺐다. 네 참조 프로젝트는 이미 둘 다 설치돼 있다.
