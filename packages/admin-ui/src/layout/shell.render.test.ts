@@ -223,6 +223,19 @@ describe('AdminShell — 기본 자식으로 슬롯 전달', () => {
     expect(document.body.textContent).not.toContain('로그아웃')
   })
 
+  it('#app-bar-user-menu 는 AppBar #user-menu 의 슬롯 props({ user, logout })를 그대로 받는다', async () => {
+    await mountShell(
+      AdminShell,
+      {},
+      {
+        'app-bar-user-menu': ({ user, logout }: { user: unknown; logout: unknown }) =>
+          h('i', `MY-MENU user=${String(user)} logout=${typeof logout}`),
+      },
+    )
+    await openUserMenu()
+    expect(document.body.textContent).toContain('MY-MENU user=null logout=function')
+  })
+
   it('전달 슬롯을 안 주면 기본 내용이 그대로다', async () => {
     await mountShell(AdminShell)
     await openUserMenu()

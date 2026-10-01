@@ -18,8 +18,10 @@
   //   ② 로그아웃 → 이동을 `useAdminLogout()` 으로 — `afterLogout ?? router.replace(loginPath)`.
   //   ③ 로그아웃 진행 중 버튼을 `:loading` + `:disabled` 한 벌로 잠근다.
   //
-  // 🔴 이 대화상자는 AdminShell 에 내장하지 않는다. `App.vue` 최상위(또는 `#overlays`)에 둔다 —
-  //    `default` 레이아웃에만 두면 **로그인 화면에서 IP 차단이 안 뜬다**.
+  // 🔴 이 대화상자는 AdminShell 에 내장하지 않는다. `App.vue` 최상위에 둔다 — AdminShell `#overlays`
+  //    처럼 `default` 레이아웃 안에 두면 **로그인 화면에서 IP 차단이 안 뜬다**.
+  // 🔴 차단 플래그(`ipBlocked`)는 소비자가 로그인·로그아웃 때 비운다(`AdminUiOptions.ipBlocked`) —
+  //    안 비우면 아래 "로그아웃" 뒤 로그인 화면에서도 이 대화상자가 그대로 떠 있다.
   // 🔴 `:loading` 은 클릭을 안 막는다 — `:disabled` 와 한 벌이다.
 
   const ui = useAdminUi()

@@ -1,13 +1,14 @@
 <script lang="ts">
   import type { PermissionCheck } from '@ssworks/admin-shared'
   import type { MenuNode } from '../menu/menu.js'
-  import type { AppBarMenuItem } from './AppBar.vue'
+  import type { AppBarMenuItem, AppBarUserMenuSlotProps } from './AppBar.vue'
 
   /** 셸이 열림·레일을 직접 쥐므로 `modelValue`·`rail` 은 받지 않는다. `items` 를 안 주면 `[]`. */
   export interface AdminShellMenuProps {
     items?: readonly MenuNode[]
     check?: PermissionCheck
-    filter?: (node: MenuNode) => boolean
+    /** 🔴 메서드 꼴이다(bivariant) — 프로젝트의 `(node: MenuNode<Permission>) => boolean` 을 받는다. */
+    filter?(node: MenuNode): boolean
     groupMode?: 'subheader' | 'collapsible'
   }
 
@@ -40,7 +41,8 @@
   //      (@vueuse 를 들이지 않는다). storage 접근은 try/catch — 사생활 보호 모드에서 던진다.
   //   ③ `VMain` 이 메뉴·앱바까지 감싸던 것을 형제로 풀었다. `#banner` 는 `VMain` 안 본문 앞,
   //      `#overlays` 는 `VMain` 뒤. `container`(기본 false)가 true 면 본문을 `VContainer` 로 감싼다.
-  //   ④ `IpBlockedDialog` 를 내장하지 않는다 — `#overlays` 또는 App.vue 에 둔다.
+  //   ④ `IpBlockedDialog` 를 내장하지 않는다 — 🔴 `App.vue` 최상위에 둔다. `#overlays` 는 이 셸
+  //      (default 레이아웃) 안이라 로그인 화면에서 IP 차단이 안 뜬다.
   //
   // 🔴 레일은 데스크톱(md 초과)에서만 적용한다 — 모바일에서는 drawer 열림/닫힘이 토글된다.
 
@@ -77,8 +79,8 @@
     'app-bar-actions'?(): unknown
     /** 기본 AppBar 의 `#user-info` 로 간다. */
     'app-bar-user-info'?(): unknown
-    /** 기본 AppBar 의 `#user-menu` 로 간다. */
-    'app-bar-user-menu'?(): unknown
+    /** 기본 AppBar 의 `#user-menu` 로 간다. `{ user, logout }` 을 그대로 받는다. */
+    'app-bar-user-menu'?(props: AppBarUserMenuSlotProps): unknown
   }>()
 
   const display = useDisplay()
@@ -144,14 +146,14 @@
   </slot>
   <slot name="app-bar" :toggle-nav="onClickNav">
     <AppBar v-bind="props.appBarProps" @click:nav="onClickNav">
-      <template v-if="slots['app-bar-brand']" #brand="slotProps">
-        <slot name="app-bar-brand" v-bind="slotProps" />
+      <template v-if="slots['app-bar-brand']" #brand>
+        <slot name="app-bar-brand" />
       </template>
-      <template v-if="slots['app-bar-actions']" #actions="slotProps">
-        <slot name="app-bar-actions" v-bind="slotProps" />
+      <template v-if="slots['app-bar-actions']" #actions>
+        <slot name="app-bar-actions" />
       </template>
-      <template v-if="slots['app-bar-user-info']" #user-info="slotProps">
-        <slot name="app-bar-user-info" v-bind="slotProps" />
+      <template v-if="slots['app-bar-user-info']" #user-info>
+        <slot name="app-bar-user-info" />
       </template>
       <template v-if="slots['app-bar-user-menu']" #user-menu="slotProps">
         <slot name="app-bar-user-menu" v-bind="slotProps" />

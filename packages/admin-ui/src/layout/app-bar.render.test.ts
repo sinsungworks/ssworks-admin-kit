@@ -5,7 +5,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { VLayout } from 'vuetify/components'
 import { createAdminUi, type AdminUiOptions, type AdminUserInfo } from '../context/admin-ui.js'
-import { installVisualViewport, vuetify } from '../test/setup.js'
+import { buttonByText, installVisualViewport, vuetify } from '../test/setup.js'
 import AppBar from './AppBar.vue'
 
 // 정본: 신규(스펙 §3-3). hangang AppBar 에는 렌더 테스트가 없었다.
@@ -111,6 +111,15 @@ describe('AppBar — 제목', () => {
     await mountBar({ props: { siteName: 'prop' }, ui: { siteName: 'plugin' } })
     expect(titleText()).toBe('prop · 대시보드')
   })
+
+  it('🔴 제목이 비면 사이트명만 — `사이트 · ` 처럼 구분자를 남기지 않는다', async () => {
+    await mountBar({ path: '/login', props: { siteName: '내 사이트' } })
+    expect(titleText()).toBe('내 사이트')
+    wrapper?.unmount()
+    document.body.innerHTML = ''
+    await mountBar({ path: '/login', ui: { siteName: '플러그인 사이트' } })
+    expect(titleText()).toBe('플러그인 사이트')
+  })
 })
 
 describe('AppBar — 슬롯 · 이벤트', () => {
@@ -191,6 +200,28 @@ describe('AppBar — 사용자 메뉴', () => {
     await openMenu()
     expect(document.body.textContent).toContain('WHOLE')
     expect(document.body.textContent).not.toContain('로그아웃')
+  })
+
+  it('🔴 #user-menu 슬롯은 { user, logout } 을 받는다 — 교체해도 로그아웃 → 이동을 잇는다', async () => {
+    const calls: string[] = []
+    const { router } = await mountBar({
+      path: '/account',
+      ui: { logout: async () => void calls.push('logout') },
+      slots: {
+        'user-menu': ({
+          user,
+          logout,
+        }: {
+          user: AdminUserInfo | null
+          logout: () => Promise<void>
+        }) => h('button', { onClick: logout }, `내 로그아웃 ${user?.userName ?? ''}`),
+      },
+    })
+    await openMenu()
+    buttonByText('내 로그아웃 김관리')!.click()
+    await flushPromises()
+    expect(calls).toEqual(['logout'])
+    expect(router.currentRoute.value.path).toBe('/login')
   })
 })
 

@@ -27,10 +27,24 @@ export interface AdminUiOptions<TUser extends AdminUserInfo = AdminUserInfo> {
   siteName?: string
   /** 현재 사용자. 스토어 게터를 넘긴다 — 패키지는 스토어 파일을 모른다. */
   user: () => TUser | null
+  /**
+   * 세션을 끝낸다. `AppBar`·`IpBlockedDialog` 가 부르고, 끝나면 `afterLogout ?? router.replace(loginPath)`.
+   *
+   * 🔴 **거부하지 않아야 한다.** 거부하면 뒤 이동이 건너뛰어져 사용자가 그 화면에 남고, 거부는
+   *    `@click` 밖으로 새어 처리되지 않은 오류가 된다. 서버 호출이 실패해도 로컬 세션은 비우고
+   *    resolve 한다 — `createAppStore().logout` 이 그렇게 한다(실패는 `console.warn`).
+   */
   logout: () => Promise<void>
   /** 로그아웃 뒤 이동. 생략하면 `router.replace(loginPath)`. */
   afterLogout?: () => void | Promise<void>
   loginPath?: string
+  /**
+   * IP 차단 상태 게터. `IpBlockedDialog` 가 읽는다. 패키지는 이 상태를 세우지도 비우지도 않는다 —
+   * 보통 `createApiClient({ onError })` 가 IP 차단 에러 코드를 보고 세운다.
+   *
+   * 🔴 **소비자가 로그인·로그아웃 때 비워야 한다.** 안 비우면 대화상자의 "로그아웃" 을 눌러 로그인
+   *    화면으로 가도 대화상자가 그대로 떠 있다. 여전히 차단이면 다음 요청이 다시 세운다.
+   */
   ipBlocked?: () => { blocked: boolean; ip?: string }
   table?: { itemsPerPageOptions?: readonly number[]; maxPageSize?: number }
 }
@@ -39,6 +53,7 @@ export interface AdminUiContext<TUser extends AdminUserInfo = AdminUserInfo> {
   readonly siteName: string
   /** 🔴 호출 시점마다 평가된다 — 값을 캐시하지 않는다. 로그인·로그아웃이 반응형으로 따라와야 한다. */
   user: () => TUser | null
+  /** 🔴 거부하지 않는다 — `AdminUiOptions.logout` 참조. */
   logout: () => Promise<void>
   afterLogout?: () => void | Promise<void>
   readonly loginPath: string

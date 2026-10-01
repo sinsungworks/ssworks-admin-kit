@@ -5,6 +5,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, type Component } from 'vue'
 import { VLayout } from 'vuetify/components'
 import { createAdminUi } from '../context/admin-ui.js'
+import type { AdminShellMenuProps } from '../layout/AdminShell.vue'
 import { installVisualViewport, vuetify } from '../test/setup.js'
 import MainMenu from './MainMenu.vue'
 import type { MenuNode } from './menu.js'
@@ -92,6 +93,20 @@ describe('MainMenu — 항목과 권한 필터', () => {
       { items, filter: (n: MenuNode) => n.id !== 'pages' },
       { granted: ['*'] },
     )
+    expect(text(w)).toContain('파일')
+    expect(text(w)).not.toContain('페이지')
+  })
+
+  it('🔴 filter 는 좁힌 MenuNode<Permission> 술어도 받는다 (타입 — vue-tsc 가 잰다)', async () => {
+    // 프로젝트는 `MenuNode<Permission>` 으로 술어를 쓴다. prop 이 `(node: MenuNode) => boolean`
+    // 프로퍼티 꼴이면 매개변수가 반공변이라 TS2322 로 막힌다 — 메서드 꼴(bivariant)이어야 한다.
+    type Perm = 'content.pages:read' | 'content.files:read'
+    const narrow = (n: MenuNode<Perm>): boolean =>
+      !(n.permissions ?? []).includes('content.pages:read')
+    const menuProps: InstanceType<typeof MainMenu>['$props'] = { items, filter: narrow }
+    const shellProps: AdminShellMenuProps = { items, filter: narrow }
+    expect(shellProps.filter).toBe(narrow)
+    const w = await mountMenu({ ...menuProps }, { granted: ['*'] })
     expect(text(w)).toContain('파일')
     expect(text(w)).not.toContain('페이지')
   })

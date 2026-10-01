@@ -13,6 +13,7 @@
   //      `useAdminUi().user()?.permissions` 로 판정한다 — 호출 시점마다 평가해 로그인·로그아웃을 따른다.
   //   ② `v-model:show` 를 기본 `v-model`(modelValue) 로 — 이 저장소 규약.
   //   ③ `filter` — axion `partnerOnly`·gise `isPending` 같은 프로젝트 고유 축을 권한과 AND 로.
+  //      `MenuNode<Permission>` 술어를 받도록 메서드 꼴로 적는다.
   //   ④ `groupMode`, `#prepend`(`{ rail }`)·`#append` 슬롯.
   //   ⑤ 구분선은 최상위 자동 삽입을 버리고 노드의 `divider` 필드로 옮겼다(MainMenuItem 주석).
 
@@ -23,8 +24,12 @@
       items: readonly MenuNode[]
       /** 생략하면 `useAdminUi().user()` 의 permissions 로 판정한다. */
       check?: PermissionCheck
-      /** 권한과 AND 로 걸리는 추가 축. 잎에만 적용되고, 자식이 다 걸러진 그룹은 사라진다. */
-      filter?: (node: MenuNode) => boolean
+      /**
+       * 권한과 AND 로 걸리는 추가 축. 잎에만 적용되고, 자식이 다 걸러진 그룹은 사라진다.
+       * 🔴 메서드 꼴이다(bivariant). 프로퍼티 꼴 `(node: MenuNode) => boolean` 이면 프로젝트의
+       *    `(node: MenuNode<Permission>) => boolean` 이 TS2322 로 막힌다.
+       */
+      filter?(node: MenuNode): boolean
       groupMode?: 'subheader' | 'collapsible'
       rail?: boolean
     }>(),
