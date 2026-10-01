@@ -29,6 +29,7 @@ export default defineConfig({
         /^vuetify(\/.*)?$/,
         /^@ssworks\/admin-shared(\/.*)?$/,
         'zod',
+        'axios',
         /^vue-router(\/.*)?$/,
       ],
       output: {
