@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { AdminUserInfo } from '../context/admin-ui.js'
 import { createAppStore, SessionNotEstablishedError } from './app-store.js'
@@ -30,6 +30,23 @@ function setup(overrides: Partial<Parameters<typeof createAppStore<AdminUserInfo
   })
   return { fetchMe, login, logout, store: useStore() }
 }
+
+describe('createAppStore 타입', () => {
+  it('userInfo 는 TMe | null, initialize 는 () => Promise<void> 다', () => {
+    setActivePinia(createPinia())
+    interface Me extends AdminUserInfo {
+      userNo: bigint
+    }
+    const useStore = createAppStore<Me>('type-check', {
+      fetchMe: async () => ({ ...ME, userNo: 1n }),
+      login: async () => undefined,
+      logout: async () => undefined,
+    })
+    const store = useStore()
+    expectTypeOf(store.userInfo).toEqualTypeOf<Me | null>()
+    expectTypeOf(store.initialize).toEqualTypeOf<() => Promise<void>>()
+  })
+})
 
 describe('createAppStore', () => {
   beforeEach(() => {
@@ -110,6 +127,41 @@ describe('createAppStore', () => {
       expect(fetchMe).toHaveBeenCalledTimes(1)
     })
 
+    it('🔴 isForbidden 이 던져도 initialize 는 거부하지 않고 permissionDenied 는 거짓이다', async () => {
+      const { fetchMe, store } = setup({
+        isForbidden: () => {
+          throw new Error('predicate bug')
+        },
+      })
+      fetchMe.mockRejectedValue(new Error('403'))
+
+      await expect(store.initialize()).resolves.toBeUndefined()
+
+      expect(store.permissionDenied).toBe(false)
+      expect(store.authorized).toBe(false)
+      expect(store.initialized).toBe(true)
+    })
+
+    it('🔴 진행 중에 clearSession 이 불리면 늦게 온 성공 응답이 세션을 되살리지 못한다', async () => {
+      const { fetchMe, store } = setup()
+      let resolveMe!: (me: AdminUserInfo) => void
+      fetchMe.mockImplementation(
+        () =>
+          new Promise<AdminUserInfo>((resolve) => {
+            resolveMe = resolve
+          }),
+      )
+
+      const pending = store.initialize()
+      store.clearSession()
+      resolveMe(ME)
+      await pending
+
+      expect(store.authorized).toBe(false)
+      expect(store.userInfo).toBeNull()
+      expect(store.initialized).toBe(true)
+    })
+
     it('sanitize 를 저장 전에 적용한다', async () => {
       const { fetchMe, store } = setup({
         sanitize: (me) => ({ ...me, permissions: me.permissions.filter((p) => p !== 'bogus') }),
@@ -158,24 +210,31 @@ describe('createAppStore', () => {
     })
 
     it('진행 중인 initialize 가 있으면 끝난 뒤 새로 부른다(옛 응답을 믿지 않는다)', async () => {
-      const { fetchMe, store } = setup()
-      let rejectFirst!: (e: unknown) => void
+      const { fetchMe, login, store } = setup()
+      // 🔴 options.login 을 지연시켜, login() 이 inFlight 분기에 닿는 시점에 첫 load 가 아직 진행 중임을 보장한다.
+      let finishLogin!: () => void
+      login.mockImplementation(() => new Promise<void>((resolve) => (finishLogin = resolve)))
+      let resolveFirst!: (me: AdminUserInfo) => void
       fetchMe.mockImplementationOnce(
         () =>
-          new Promise<AdminUserInfo>((_, reject) => {
-            rejectFirst = reject
+          new Promise<AdminUserInfo>((resolve) => {
+            resolveFirst = resolve
           }),
       )
-      fetchMe.mockResolvedValueOnce(ME)
+      fetchMe.mockResolvedValueOnce({ ...ME, userName: '두 번째' })
 
       const pending = store.initialize()
       const loggingIn = store.login(CREDENTIALS)
-      rejectFirst(new Error('401'))
+      finishLogin()
+      // login 이 inFlight 를 기다리는 동안 첫 응답(옛 응답)이 늦게 도착한다.
+      await Promise.resolve()
+      expect(fetchMe).toHaveBeenCalledTimes(1)
+      resolveFirst(ME)
       await pending
       await loggingIn
 
       expect(fetchMe).toHaveBeenCalledTimes(2)
-      expect(store.authorized).toBe(true)
+      expect(store.userInfo?.userName).toBe('두 번째')
     })
   })
 

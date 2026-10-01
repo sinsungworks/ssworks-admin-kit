@@ -80,17 +80,35 @@ export function createAppStore<TMe extends AdminUserInfo>(
 
     let inFlight: Promise<void> | null = null
 
+    /**
+     * 🔴 세대 번호. `clearSession()` 이 올린다. 진행 중이던 `load()` 는 시작할 때의 번호를 쥐고 있다가, 끝났을 때
+     * 번호가 바뀌었으면 결과를 버린다 — 느린 `fetchMe` 가 로그아웃·토큰 갱신 실패로 비운 세션을 되살리면 안 된다.
+     */
+    let generation = 0
+
+    function isForbidden(error: unknown): boolean {
+      try {
+        return options.isForbidden?.(error) ?? false
+      } catch {
+        // 🔴 소비자의 판정 함수가 던져도 `initialize()` 는 거부하지 않는다 — 거부하면 내비게이션이 중단된다.
+        return false
+      }
+    }
+
     async function load(): Promise<void> {
+      const started = generation
       try {
         const me = await options.fetchMe()
+        if (started !== generation) return
         userInfo.value = options.sanitize ? options.sanitize(me) : me
         authorized.value = true
         permissionDenied.value = false
       } catch (error) {
+        if (started !== generation) return
         // 미인증이 정상 경로다. 로그인 화면이 이 상태로 뜬다.
         userInfo.value = null
         authorized.value = false
-        permissionDenied.value = options.isForbidden?.(error) ?? false
+        permissionDenied.value = isForbidden(error)
       } finally {
         initialized.value = true
       }
@@ -130,6 +148,7 @@ export function createAppStore<TMe extends AdminUserInfo>(
 
     /** 서버를 부르지 않고 세션 상태만 비운다. 🔴 `initialized` 는 그대로 둔다 — 가드가 `/me` 를 또 때리지 않게. */
     function clearSession() {
+      generation++
       authorized.value = false
       userInfo.value = null
       permissionDenied.value = false
