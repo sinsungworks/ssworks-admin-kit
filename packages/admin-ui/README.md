@@ -112,24 +112,7 @@ export const usePermission = createUsePermission<Permission>(
 
 ### 최소 배선
 
-```ts
-// api/client.ts — 스토어·라우터는 콜백 안에서만 닿는다
-import { createApiClient } from '@ssworks/admin-ui'
-import { router } from '../router'
-import { toast } from '../plugins/toast'
-import { useAppStore } from '../stores/app'
-
-export const { api } = createApiClient({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
-  refreshPath: '/auth/refresh',
-  noRetryPaths: ['/auth/login'],
-  onAuthFailure: () => {
-    useAppStore().clearSession()
-    void router.push({ path: '/login', query: { redirect: router.currentRoute.value.fullPath } })
-  },
-  onError: (error) => toast.error(error.message),
-})
-```
+import 방향은 `main.ts → router → stores → api → (plugins/toast · state/ip-block)` 한 줄이다. 🔴 `api/client.ts` 는 라우터도 스토어도 import 하지 않는다 — 하면 `api → router → store → api` 순환이 된다. 라우터·스토어가 필요한 콜백(`onAuthFailure`)은 `main.ts` 에서 `client.onAuthFailure()` 로 단다. 아래 배선은 `src/wiring.integration.test.ts` 가 패키지 실물로 돌린다.
 
 ```ts
 // plugins/toast.ts
@@ -139,14 +122,67 @@ export const toast = createToast()
 ```
 
 ```ts
+// state/ip-block.ts — IpBlockedDialog 가 읽는 플래그. 앱 모듈을 import 하지 않는다(순환 0).
+import { reactive } from 'vue'
+
+export const ipBlock = reactive({ blocked: false, ip: '' })
+
+export function resetIpBlock(): void {
+  ipBlock.blocked = false
+  ipBlock.ip = ''
+}
+```
+
+```ts
+// api/client.ts — 🔴 라우터·스토어를 import 하지 않는다
+import { createApiClient } from '@ssworks/admin-ui'
+import { toast } from '../plugins/toast'
+import { ipBlock } from '../state/ip-block'
+
+export const client = createApiClient({
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+  refreshPath: '/auth/refresh',
+  noRetryPaths: ['/auth/login'],
+  onError: (error) => {
+    // IP 차단은 토스트가 아니라 App.vue 의 IpBlockedDialog 가 알린다. 코드는 프로젝트의 에러 카탈로그 것.
+    if (error.code === 'ERR_IP_NOT_ALLOWED') {
+      ipBlock.blocked = true
+      ipBlock.ip = (error.details as { clientIp?: string } | undefined)?.clientIp ?? ''
+      return
+    }
+    // 🔴 401 은 토스트하지 않는다. 갱신까지 실패한 401 은 "로그인 필요" 라는 정상 경로다 — 안 거르면
+    //    로그인 화면에 처음 올 때마다(`/auth/me` 401) 오류 토스트가 뜨고, 비밀번호를 틀리면 로그인
+    //    화면 문구와 토스트로 두 번 알린다. 401 뒤의 이동은 main.ts 의 onAuthFailure 와 가드 몫이다.
+    if (error.status === 401) return
+    toast.error(error.message)
+  },
+})
+
+export const { api } = client
+```
+
+```ts
 // stores/app.ts
 import { ApiError, createAppStore, type AdminUserInfo } from '@ssworks/admin-ui'
 import { api } from '../api/client'
+import { resetIpBlock } from '../state/ip-block'
 
 export const useAppStore = createAppStore<AdminUserInfo>('app', {
   fetchMe: () => api.get<AdminUserInfo>('/auth/me'),
-  login: (credentials) => api.post('/auth/login', credentials),
-  logout: () => api.post('/auth/logout'),
+  // 🔴 IP 차단 플래그는 로그인·로그아웃 때 비운다(hangang 스토어가 그랬다). 안 비우면 대화상자의
+  //    "로그아웃" 을 눌러 로그인 화면으로 가도 대화상자가 그대로 떠 있다. 여전히 차단이면 다음
+  //    요청의 onError 가 다시 세운다.
+  login: async (credentials) => {
+    resetIpBlock()
+    await api.post('/auth/login', credentials)
+  },
+  logout: async () => {
+    try {
+      await api.post('/auth/logout')
+    } finally {
+      resetIpBlock()
+    }
+  },
   isForbidden: (error) => error instanceof ApiError && error.status === 403,
 })
 ```
@@ -186,6 +222,12 @@ export const routes = [
     component: () => import('../pages/LoginPage.vue'),
     meta: { title: '로그인', layout: 'auth', isPublic: true, needNonAuth: true },
   }),
+  // 가드가 권한 없음으로 보내는 곳(기본 `paths.forbidden`). 인증은 됐고 권한만 없는 상태로 오는 화면이다.
+  defineAdminRoute<Permission>({
+    path: '/403',
+    component: () => import('../pages/ForbiddenPage.vue'),
+    meta: { title: '접근 권한 없음', layout: 'auth', selfOnly: true },
+  }),
 ]
 
 export const router = createRouter({
@@ -209,12 +251,15 @@ installChunkRecovery(router)
 // main.ts
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import { START_LOCATION } from 'vue-router'
 import { createAdminUi } from '@ssworks/admin-ui'
 import '@ssworks/admin-ui/style.css'
 import App from './App.vue'
+import { client } from './api/client'
 import { toast } from './plugins/toast'
 import { vuetify } from './plugins/vuetify'
 import { router } from './router'
+import { ipBlock } from './state/ip-block'
 import { useAppStore } from './stores/app'
 
 const app = createApp(App)
@@ -226,14 +271,31 @@ app.use(
   createAdminUi({
     siteName: 'My Admin',
     user: () => useAppStore().userInfo, // 호출 시점마다 평가된다 — 값을 캐시하지 않는다
+    // 🔴 거부하면 안 된다 — 거부하면 로그아웃 뒤 이동이 건너뛰어진다. createAppStore().logout 은
+    //    서버 호출이 실패해도 세션을 비우고 resolve 한다.
     logout: () => useAppStore().logout(),
+    ipBlocked: () => ipBlock,
   }),
 )
+
+// 갱신까지 실패 = 로그아웃 상태. api/client.ts 가 라우터·스토어를 모르도록 여기서 잇는다(gise main.ts).
+client.onAuthFailure(() => {
+  useAppStore().clearSession()
+  const current = router.currentRoute.value
+  // 🔴 첫 내비게이션 중(START_LOCATION)에는 이동하지 않는다 — 미인증 첫 진입은 정상 경로라 가드가
+  //    /login 으로 보낸다. 여기서 또 보내면 진행 중인 내비게이션을 기다리는 체인과 엉켜
+  //    `/login?redirect=/` 가 생기거나 isReady() 가 안 풀려 화면이 백지가 된다(hangang api/client.ts).
+  //    이미 로그인 화면이면 그대로 둔다.
+  if (current === START_LOCATION || current.path === '/login') return
+  void router.replace({ path: '/login', query: { redirect: current.fullPath } })
+})
+
 app.mount('#app')
 ```
 
 ```vue
-<!-- App.vue — 🔴 IpBlockedDialog 는 여기. default 레이아웃에만 두면 로그인 화면에서 안 뜬다 -->
+<!-- App.vue — 🔴 IpBlockedDialog 는 여기(AdminShell #overlays 가 아니다). default 레이아웃 안에만 두면
+     로그인 화면에서 안 뜬다 -->
 <script setup lang="ts">
   import { computed } from 'vue'
   import { useRoute } from 'vue-router'
