@@ -3,15 +3,16 @@
   //
   // `DataTablePanel` 에서 표만 뽑은 것이다. 카드·제목·필터·정렬 라벨은 여기 없다 — `PanelLayout` 의
   // `#top` 에 그 셋을 올려 스크롤에 안 딸려가게 하려면 표가 갈려 있어야 한다.
-  import { useSlots } from 'vue'
+  import { computed, useSlots } from 'vue'
   import { VDataTableServer } from 'vuetify/components'
+  import { useOptionalAdminUi } from '../../context/admin-ui.js'
   import {
     DEFAULT_ITEMS_PER_PAGE_OPTIONS,
     type AdminTableHeader,
     type AdminTableSort,
   } from './data-table.js'
 
-  withDefaults(
+  const props = withDefaults(
     defineProps<{
       headers: readonly AdminTableHeader[]
       /** 🔴 **이 페이지분만.** 전 행이 아니다. */
@@ -24,8 +25,17 @@
     }>(),
     {
       loading: false,
-      itemsPerPageOptions: () => DEFAULT_ITEMS_PER_PAGE_OPTIONS,
+      // 🔴 기본값을 여기 두지 않는다 — prop → 컨텍스트 → 상수 순으로 아래에서 푼다.
+      itemsPerPageOptions: undefined,
     },
+  )
+
+  const adminUi = useOptionalAdminUi()
+  const resolvedItemsPerPageOptions = computed(
+    () =>
+      props.itemsPerPageOptions ??
+      adminUi?.table.itemsPerPageOptions ??
+      DEFAULT_ITEMS_PER_PAGE_OPTIONS,
   )
 
   const page = defineModel<number>('page', { default: 1 })
@@ -43,7 +53,7 @@
     :headers="headers"
     :items="items"
     :items-length="itemsLength"
-    :items-per-page-options="itemsPerPageOptions"
+    :items-per-page-options="resolvedItemsPerPageOptions"
     :loading="loading"
   >
     <template v-for="name in Object.keys(slots)" :key="name" #[name]="slotProps">

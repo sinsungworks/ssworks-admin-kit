@@ -13,6 +13,7 @@
   //    `EmptyState` 를 넣으며 「검색 0건인가 아예 0건인가」를 자기가 판정한다.
   import { computed, useSlots } from 'vue'
   import { VCard, VCardText, VCardTitle, VSpacer } from 'vuetify/components'
+  import { useOptionalAdminUi } from '../../context/admin-ui.js'
   import {
     DEFAULT_ITEMS_PER_PAGE_OPTIONS,
     formatSortLabel,
@@ -36,8 +37,17 @@
     {
       title: '',
       loading: false,
-      itemsPerPageOptions: () => DEFAULT_ITEMS_PER_PAGE_OPTIONS,
+      // 🔴 기본값을 여기 두지 않는다 — prop → 컨텍스트 → 상수 순으로 아래에서 푼다.
+      itemsPerPageOptions: undefined,
     },
+  )
+
+  const adminUi = useOptionalAdminUi()
+  const resolvedItemsPerPageOptions = computed(
+    () =>
+      props.itemsPerPageOptions ??
+      adminUi?.table.itemsPerPageOptions ??
+      DEFAULT_ITEMS_PER_PAGE_OPTIONS,
   )
 
   const page = defineModel<number>('page', { default: 1 })
@@ -80,7 +90,7 @@
       :headers="headers"
       :items="items"
       :items-length="itemsLength"
-      :items-per-page-options="itemsPerPageOptions"
+      :items-per-page-options="resolvedItemsPerPageOptions"
       :loading="loading"
     >
       <template v-for="name in tableSlotNames" :key="name" #[name]="slotProps">
