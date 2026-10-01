@@ -4,21 +4,21 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
 
 ## 지금 상태
 
-| 항목                    | 상태                                                                                                                                                                      |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 저장소                  | `main` 에 첫 커밋. 원격 `origin` = `https://github.com/sinsungworks/ssworks-admin-kit.git`(확인됨). **push 는 아직** — 사람이 한다                                        |
-| `@ssworks/admin-shared` | Phase 1 완료. 54 테스트. `tsc` 빌드                                                                                                                                       |
-| `@ssworks/admin-ui`     | Phase 1 **PR #1** 완료(프리미티브·다이얼로그·표·토스트·Vuetify 프리셋·권한 훅). 87 테스트. vite lib 빌드. 패킹 tarball 을 별도 Vite+vuetify 앱에서 typecheck·build 검증함 |
-| `@ssworks/admin-server` | 골격만. `private: true` 라 발행되지 않음. Phase 2                                                                                                                         |
-| 검증                    | 컨테이너(Linux, Node 22)와 Windows(Node 24) 양쪽에서 `pnpm check`·`format:check` 초록(142 테스트). Windows 첫 실행에서 새 체크아웃 결함 하나를 고쳤다(아래)               |
-| 문서                    | `docs/00-admin-common-review.md`(방안 검토) · `docs/01-phase0.md`(정본·확장점·A/B/X·프로토콜 결정·§8 진행) · `docs/phase0-reports/`(대조 보고 5편)                        |
-| 다음 플랜               | `docs/superpowers/plans/2026-10-01-admin-ui-shell.md` (PR #2) · 스펙 `docs/superpowers/specs/2026-10-01-admin-ui-shell-design.md`                                         |
+| 항목                    | 상태                                                                                                                                                                                                                                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 저장소                  | `main` 에 첫 커밋. 원격 `origin` = `https://github.com/sinsungworks/ssworks-admin-kit.git`(확인됨). **push 는 아직** — 사람이 한다                                                                                                                                                            |
+| `@ssworks/admin-shared` | Phase 1 완료. 54 테스트. `tsc` 빌드                                                                                                                                                                                                                                                           |
+| `@ssworks/admin-ui`     | Phase 1 **PR #1**(프리미티브·다이얼로그·표·토스트·Vuetify 프리셋·권한 훅) · **PR #2**(셸·메뉴·가드·API 클라이언트·스토어·composable) 구현 완료 — PR #2 는 브랜치 `feat/admin-ui-shell`(머지 대기). 314 테스트. vite lib 빌드. 패킹 tarball 을 별도 Vite+vuetify 앱에서 typecheck·build 검증함 |
+| `@ssworks/admin-server` | 골격만. `private: true` 라 발행되지 않음. Phase 2                                                                                                                                                                                                                                             |
+| 검증                    | 컨테이너(Linux, Node 22)와 Windows(Node 24) 양쪽에서 `pnpm check`·`format:check` 초록(PR #1 시점 142 테스트). Windows 첫 실행에서 새 체크아웃 결함 하나를 고쳤다(아래)                                                                                                                        |
+| 문서                    | `docs/00-admin-common-review.md`(방안 검토) · `docs/01-phase0.md`(정본·확장점·A/B/X·프로토콜 결정·§8 진행) · `docs/phase0-reports/`(대조 보고 5편)                                                                                                                                            |
+| 다음 플랜               | PR #3 — `docs/phase0-reports/fe-pages.md` §2 (플랜은 아직 없다). 직전 PR #2: `docs/superpowers/plans/2026-10-01-admin-ui-shell.md` · 스펙 `docs/superpowers/specs/2026-10-01-admin-ui-shell-design.md`                                                                                        |
 
 ## 첫 세션에서 할 일 (순서대로)
 
 1. ~~**설치·검증**~~ — **완료(2026-10-01).** 예상했던 경로 구분자·개행 문제는 없었다. 실제로 깨진 것은 Windows 와 무관한 **새 체크아웃 결함**: admin-ui 가 admin-shared 를 `dist/` 로 import 하는데 `check` 는 build 보다 typecheck·test 가 먼저라, `dist/` 가 없는 새 체크아웃(CI 포함)에서 "Cannot find module '@ssworks/admin-shared'" 로 실패했다. 컨테이너는 이전 빌드의 `dist/` 가 남아 있어 가려졌다. root `prepare` 가 install 직후 admin-shared 를 빌드하게 고쳤다. 같이 `.codegraph/` 를 `.gitignore` 에 올렸다.
 2. ~~**원격·첫 커밋**~~ — **완료(2026-10-01).** `repository.url`(`https://github.com/sinsungworks/ssworks-admin-kit.git`)이 맞다고 확인됐고 `origin` 으로 연결했다. 남은 것은 `git push -u origin main` — `.claude/settings.json` 이 `git push` 를 막으니 사람이 한다.
-3. **PR #2 착수** — `docs/superpowers/plans/2026-10-01-admin-ui-shell.md` 를 superpowers `executing-plans` 또는 `subagent-driven-development` 로 Task 1 부터. 브랜치 `feat/admin-ui-shell`.
+3. ~~**PR #2 착수**~~ — **구현 완료.** 브랜치 `feat/admin-ui-shell` 에 있다(플랜 `docs/superpowers/plans/2026-10-01-admin-ui-shell.md` Task 1~10). 다음은 사람이: 브랜치 리뷰·`main` 머지 → `git push`. 그 뒤 **PR #3**(`docs/phase0-reports/fe-pages.md` §2)로 간다.
 
 ## 발행 전에 사람이 해야 하는 것
 

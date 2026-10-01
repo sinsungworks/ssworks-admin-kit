@@ -56,3 +56,59 @@ export {
 // ── 권한 ──────────────────────────────────────────────────────────────
 export { createUsePermission } from './permission/createUsePermission.js'
 export type { PermissionCheck } from '@ssworks/admin-shared'
+
+// ── 컨텍스트 (셸 → 호스트 앱) ────────────────────────────────────────
+export {
+  createAdminUi,
+  useAdminUi,
+  ADMIN_UI_KEY,
+  type AdminUserInfo,
+  type AdminUiOptions,
+  type AdminUiContext,
+  type AdminUiPlugin,
+} from './context/admin-ui.js'
+
+// ── 메뉴 ──────────────────────────────────────────────────────────────
+export { default as MainMenu } from './menu/MainMenu.vue'
+export { default as MainMenuItem } from './menu/MainMenuItem.vue'
+export {
+  filterMenu,
+  buildMenu,
+  flattenRoutes,
+  assertParentAnyPermissionsCoverChildren,
+  type MenuNode,
+} from './menu/menu.js'
+
+// ── 레이아웃 셸 ───────────────────────────────────────────────────────
+export { default as AppBar, type AppBarMenuItem } from './layout/AppBar.vue'
+export {
+  default as AdminShell,
+  type AdminShellMenuProps,
+  type AdminShellAppBarProps,
+} from './layout/AdminShell.vue'
+export { default as AuthShell } from './layout/AuthShell.vue'
+export { default as IpBlockedDialog } from './components/common/IpBlockedDialog.vue'
+
+// ── 라우터 ────────────────────────────────────────────────────────────
+export { defineAdminRoute, type AdminRouteMeta } from './router/route-meta.js'
+export { createAdminGuard, type AdminGuardDeps } from './router/guard.js'
+export { createTitleGuard } from './router/title-guard.js'
+export { installChunkRecovery } from './router/recovery.js'
+export { safeRedirect } from './router/safe-redirect.js'
+
+// ── API 클라이언트 ────────────────────────────────────────────────────
+export { createApiClient, type ApiClientOptions, type ApiClient } from './api/client.js'
+export { ApiError } from './api/error.js'
+
+// ── 세션 스토어 ───────────────────────────────────────────────────────
+export {
+  createAppStore,
+  SessionNotEstablishedError,
+  type AppStoreOptions,
+  type AppStoreState,
+  type AppStoreActions,
+} from './store/app-store.js'
+
+// ── composable ────────────────────────────────────────────────────────
+export { useDirtyGuard, type DirtyGuardOptions } from './composables/useDirtyGuard.js'
+export { useTableSelection } from './composables/useTableSelection.js'

@@ -3,7 +3,8 @@
 관리자 페이지 공통 **Vue 3 + Vuetify 4** 컴포넌트와 composable.
 
 ```bash
-pnpm add @ssworks/admin-ui @ssworks/admin-shared vue vuetify
+pnpm add @ssworks/admin-ui @ssworks/admin-shared vue vuetify vue-router
+pnpm add pinia axios # 선택 — createAppStore · createApiClient 를 쓸 때만
 ```
 
 ```ts
@@ -56,3 +57,197 @@ export const usePermission = createUsePermission<Permission>(
 ```
 
 반환값(`PermissionCheck`)을 메뉴 필터와 라우트 가드에 그대로 넘긴다 — 판정 규칙이 한 곳이다.
+
+## Peer 의존
+
+| 패키지       | 필수 | 용도                                   |
+| ------------ | ---- | -------------------------------------- |
+| `vue`        | 예   |                                        |
+| `vuetify`    | 예   |                                        |
+| `vue-router` | 예   | 셸·가드·메뉴가 라우트 `meta` 를 읽는다 |
+| `pinia`      | 선택 | `createAppStore` 만                    |
+| `axios`      | 선택 | `createApiClient` 만                   |
+
+패키지는 `RouteMeta` 를 **증강하지 않는다**(`declare module 'vue-router'` 없음). `AdminRouteMeta<Permission>` 타입과 `defineAdminRoute()` 만 준다. `RouteMeta` 증강은 프로젝트의 `env.d.ts` 몫이다.
+
+## 셸 · 내비게이션 · 인프라
+
+| export                                                                                                                    | 설명                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `createAdminUi` · `useAdminUi` · `ADMIN_UI_KEY` · `AdminUserInfo` · `AdminUiOptions` · `AdminUiContext` · `AdminUiPlugin` | 셸이 호스트 앱에서 읽는 것(사용자·로그아웃·사이트명·IP 차단·표 설정)의 전부. `app.use()` 가 provide. 게터 주입 |
+| `AdminShell` · `AdminShellMenuProps` · `AdminShellAppBarProps`                                                            | 앱바 + 드로어 메뉴 + `RouterView`. 슬롯 `drawer` `app-bar` `banner` `default` `overlays`                       |
+| `AuthShell`                                                                                                               | 앱바·메뉴 없는 인증 전 화면 껍데기. 슬롯 `brand`                                                               |
+| `AppBar` · `AppBarMenuItem`                                                                                               | 사용자 메뉴·로그아웃이 있는 앱바                                                                               |
+| `MainMenu` · `MainMenuItem`                                                                                               | 권한으로 걸러 그리는 사이드 메뉴. `groupMode: 'subheader' \| 'collapsible'`                                    |
+| `IpBlockedDialog`                                                                                                         | IP 차단 안내. 🔴 `App.vue` 최상위에 둔다(로그인 화면에서도 떠야 한다)                                          |
+| `MenuNode` · `filterMenu` · `buildMenu` · `flattenRoutes` · `assertParentAnyPermissionsCoverChildren`                     | 메뉴 파생 — 출처는 라우트 `meta` 하나. 선언 없음 = 공개                                                        |
+| `AdminRouteMeta` · `defineAdminRoute`                                                                                     | 라우트 `meta` 타입과 항등 헬퍼                                                                                 |
+| `createAdminGuard` · `AdminGuardDeps`                                                                                     | 전역 `beforeEach`. deps 주입, 기본 fail-closed                                                                 |
+| `createTitleGuard` · `installChunkRecovery` · `safeRedirect`                                                              | `afterEach` 문서 제목 · 청크 404 복구(1회 새로고침) · 오픈 리다이렉트 방어                                     |
+| `createApiClient` · `ApiClientOptions` · `ApiClient` · `ApiError`                                                         | axios 팩토리. 봉투 벗김 · bigint · 401 갱신(공유 Promise) · `onAuthFailure`/`onError` 콜백                     |
+| `createAppStore` · `SessionNotEstablishedError` · `AppStoreOptions` · `AppStoreState` · `AppStoreActions`                 | 세션 pinia 스토어 팩토리(`initialize` · `login` · `logout` · `clearSession`)                                   |
+| `useDirtyGuard` · `DirtyGuardOptions` · `useTableSelection`                                                               | 이탈 확인 · 대량 표 선택(Set + 반전 선택)                                                                      |
+
+스토어·라우터·API 사이에 import 순환이 없다 — 가드는 deps, API 클라이언트는 콜백, 컴포넌트는 inject 로 받는다(`src/no-cycles.test.ts` 가 막는다).
+
+### 최소 배선
+
+```ts
+// api/client.ts — 스토어·라우터는 콜백 안에서만 닿는다
+import { createApiClient } from '@ssworks/admin-ui'
+import { router } from '../router'
+import { toast } from '../plugins/toast'
+import { useAppStore } from '../stores/app'
+
+export const { api } = createApiClient({
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+  refreshPath: '/auth/refresh',
+  noRetryPaths: ['/auth/login'],
+  onAuthFailure: () => {
+    useAppStore().clearSession()
+    void router.push({ path: '/login', query: { redirect: router.currentRoute.value.fullPath } })
+  },
+  onError: (error) => toast.error(error.message),
+})
+```
+
+```ts
+// plugins/toast.ts
+import { createToast } from '@ssworks/admin-ui'
+
+export const toast = createToast()
+```
+
+```ts
+// stores/app.ts
+import { ApiError, createAppStore, type AdminUserInfo } from '@ssworks/admin-ui'
+import { api } from '../api/client'
+
+export const useAppStore = createAppStore<AdminUserInfo>('app', {
+  fetchMe: () => api.get<AdminUserInfo>('/auth/me'),
+  login: (credentials) => api.post('/auth/login', credentials),
+  logout: () => api.post('/auth/logout'),
+  isForbidden: (error) => error instanceof ApiError && error.status === 403,
+})
+```
+
+```ts
+// composables/usePermission.ts
+import { createUsePermission } from '@ssworks/admin-ui'
+import { useAppStore } from '../stores/app'
+import type { Permission } from '../permissions'
+
+export const usePermission = createUsePermission<Permission>(
+  () => useAppStore().userInfo?.permissions ?? [],
+)
+```
+
+```ts
+// router/index.ts
+import { createRouter, createWebHistory } from 'vue-router'
+import {
+  createAdminGuard,
+  createTitleGuard,
+  defineAdminRoute,
+  installChunkRecovery,
+} from '@ssworks/admin-ui'
+import { usePermission } from '../composables/usePermission'
+import { useAppStore } from '../stores/app'
+import type { Permission } from '../permissions'
+
+export const routes = [
+  defineAdminRoute<Permission>({
+    path: '/users',
+    component: () => import('../pages/UsersPage.vue'),
+    meta: { title: '사용자', permissions: ['org.users:read'], menu: { icon: 'mdi-account' } },
+  }),
+  defineAdminRoute<Permission>({
+    path: '/login',
+    component: () => import('../pages/LoginPage.vue'),
+    meta: { title: '로그인', layout: 'auth', isPublic: true, needNonAuth: true },
+  }),
+]
+
+export const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes,
+})
+
+router.beforeEach(
+  createAdminGuard<Permission>({
+    ensureInitialized: () => useAppStore().initialize(),
+    isAuthorized: () => useAppStore().authorized,
+    isPermissionDenied: () => useAppStore().permissionDenied,
+    check: usePermission(),
+  }),
+)
+router.afterEach(createTitleGuard('My Admin'))
+installChunkRecovery(router)
+```
+
+```ts
+// main.ts
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import { createAdminUi } from '@ssworks/admin-ui'
+import '@ssworks/admin-ui/style.css'
+import App from './App.vue'
+import { toast } from './plugins/toast'
+import { vuetify } from './plugins/vuetify'
+import { router } from './router'
+import { useAppStore } from './stores/app'
+
+const app = createApp(App)
+app.use(createPinia())
+app.use(router)
+app.use(vuetify)
+app.use(toast)
+app.use(
+  createAdminUi({
+    siteName: 'My Admin',
+    user: () => useAppStore().userInfo, // 호출 시점마다 평가된다 — 값을 캐시하지 않는다
+    logout: () => useAppStore().logout(),
+  }),
+)
+app.mount('#app')
+```
+
+```vue
+<!-- App.vue — 🔴 IpBlockedDialog 는 여기. default 레이아웃에만 두면 로그인 화면에서 안 뜬다 -->
+<script setup lang="ts">
+  import { computed } from 'vue'
+  import { useRoute } from 'vue-router'
+  import { VApp } from 'vuetify/components'
+  import { AdminToast, IpBlockedDialog } from '@ssworks/admin-ui'
+  import AuthLayout from './layouts/auth.vue'
+  import DefaultLayout from './layouts/default.vue'
+
+  const route = useRoute()
+  const layout = computed(() => (route.meta.layout === 'auth' ? AuthLayout : DefaultLayout))
+</script>
+
+<template>
+  <VApp>
+    <component :is="layout" />
+    <AdminToast />
+    <IpBlockedDialog />
+  </VApp>
+</template>
+```
+
+```vue
+<!-- layouts/default.vue -->
+<script setup lang="ts">
+  import { AdminShell, buildMenu } from '@ssworks/admin-ui'
+  import { routes } from '../router'
+  import type { Permission } from '../permissions'
+
+  const items = buildMenu<Permission>(routes, { groups: [{ key: 'org', title: '조직' }] })
+</script>
+
+<template>
+  <AdminShell :menu-props="{ items }" :app-bar-props="{ showTeamRole: true }" />
+</template>
+```
+
+`layouts/auth.vue` 는 `<AuthShell />` 하나다.
