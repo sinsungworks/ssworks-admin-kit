@@ -76,7 +76,7 @@ export const usePermission = createUsePermission<Permission>(
 | export                                                                                                                    | 설명                                                                                                           |
 | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `createAdminUi` · `useAdminUi` · `ADMIN_UI_KEY` · `AdminUserInfo` · `AdminUiOptions` · `AdminUiContext` · `AdminUiPlugin` | 셸이 호스트 앱에서 읽는 것(사용자·로그아웃·사이트명·IP 차단·표 설정)의 전부. `app.use()` 가 provide. 게터 주입 |
-| `AdminShell` · `AdminShellMenuProps` · `AdminShellAppBarProps`                                                            | 앱바 + 드로어 메뉴 + `RouterView`. 슬롯 `drawer` `app-bar` `banner` `default` `overlays`                       |
+| `AdminShell` · `AdminShellMenuProps` · `AdminShellAppBarProps`                                                            | 앱바 + 드로어 메뉴 + `RouterView`. 슬롯 `drawer` `app-bar` `banner` `default` `overlays` + 전달 슬롯(아래)     |
 | `AuthShell`                                                                                                               | 앱바·메뉴 없는 인증 전 화면 껍데기. 슬롯 `brand`                                                               |
 | `AppBar` · `AppBarMenuItem`                                                                                               | 사용자 메뉴·로그아웃이 있는 앱바                                                                               |
 | `MainMenu` · `MainMenuItem`                                                                                               | 권한으로 걸러 그리는 사이드 메뉴. `groupMode: 'subheader' \| 'collapsible'`                                    |
@@ -88,6 +88,25 @@ export const usePermission = createUsePermission<Permission>(
 | `createApiClient` · `ApiClientOptions` · `ApiClient` · `ApiError`                                                         | axios 팩토리. 봉투 벗김 · bigint · 401 갱신(공유 Promise) · `onAuthFailure`/`onError` 콜백                     |
 | `createAppStore` · `SessionNotEstablishedError` · `AppStoreOptions` · `AppStoreState` · `AppStoreActions`                 | 세션 pinia 스토어 팩토리(`initialize` · `login` · `logout` · `clearSession`)                                   |
 | `useDirtyGuard` · `DirtyGuardOptions` · `useTableSelection`                                                               | 이탈 확인 · 대량 표 선택(Set + 반전 선택)                                                                      |
+
+#### `AdminShell` 슬롯
+
+| 슬롯                                                                            | 받는 props                         | 하는 일                                                                               |
+| ------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------- |
+| `drawer`                                                                        | `{ show, rail, setShow }`          | 기본 `MainMenu` 를 통째로 바꾼다                                                      |
+| `app-bar`                                                                       | `{ toggleNav }`                    | 기본 `AppBar` 를 통째로 바꾼다. `toggleNav` = nav 아이콘(모바일 열림 · 데스크톱 레일) |
+| `menu-prepend` · `menu-append`                                                  | `{ rail }`                         | 기본 `MainMenu` 의 `prepend` · `append` 로 간다(브랜드 로고 자리)                     |
+| `app-bar-brand` · `app-bar-actions` · `app-bar-user-info` · `app-bar-user-menu` | `AppBar` 의 해당 슬롯 props 그대로 | 기본 `AppBar` 의 `brand` · `actions` · `user-info` · `user-menu` 로 간다              |
+| `banner` · `default` · `overlays`                                               | —                                  | `VMain` 안 본문 앞 · 본문(기본 `RouterView`) · `VMain` 뒤                             |
+
+기본 메뉴·앱바를 살린 채 일부만 바꿀 때는 전달 슬롯을 쓴다 — `#app-bar` 로 통째로 바꾸면 nav 토글을 직접 이어야 한다.
+
+```vue
+<AdminShell :menu-props="{ items }">
+  <template #app-bar-actions><NotificationBell /></template>
+  <template #menu-prepend="{ rail }"><BrandLogo :compact="rail" /></template>
+</AdminShell>
+```
 
 스토어·라우터·API 사이에 import 순환이 없다 — 가드는 deps, API 클라이언트는 콜백, 컴포넌트는 inject 로 받는다(`src/no-cycles.test.ts` 가 막는다).
 

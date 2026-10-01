@@ -31,6 +31,11 @@
   //       (+ axion 배너 자리, gise `VContainer` 감싸기)
   // 바꾼 점:
   //   ① `MENU`·`AppBar` 직접 import 를 `menuProps`·`appBarProps` 와 `#drawer`·`#app-bar` 슬롯으로.
+  //      교체 슬롯은 셸 상태를 props 로 받는다 — `#drawer` `{ show, rail, setShow }`,
+  //      `#app-bar` `{ toggleNav }`. 기본 자식을 살린 채 일부만 바꾸는 전달 슬롯
+  //      `menu-prepend`·`menu-append`(→ MainMenu `prepend`·`append`, axion 브랜드),
+  //      `app-bar-brand`·`app-bar-actions`·`app-bar-user-info`·`app-bar-user-menu`(→ AppBar,
+  //      crm `#actions`)를 둔다.
   //   ② `RAIL_KEY` 하드코딩을 `railStorageKey` prop(기본 `admin_rail_menu`)으로. 저장은 ref + watch
   //      (@vueuse 를 들이지 않는다). storage 접근은 try/catch — 사생활 보호 모드에서 던진다.
   //   ③ `VMain` 이 메뉴·앱바까지 감싸던 것을 형제로 풀었다. `#banner` 는 `VMain` 안 본문 앞,
@@ -54,12 +59,26 @@
     },
   )
 
-  defineSlots<{
-    drawer?(): unknown
-    'app-bar'?(): unknown
+  const slots = defineSlots<{
+    /** 기본 MainMenu 를 통째로 바꾼다. 셸이 쥔 열림·레일 상태와 열림 setter 를 받는다. */
+    drawer?(props: { show: boolean; rail: boolean; setShow: (value: boolean) => void }): unknown
+    /** 기본 AppBar 를 통째로 바꾼다. `toggleNav` 는 기본 nav 아이콘과 같다(모바일 열림 · 데스크톱 레일). */
+    'app-bar'?(props: { toggleNav: () => void }): unknown
     banner?(): unknown
     default?(): unknown
     overlays?(): unknown
+    /** 기본 MainMenu 의 `#prepend` 로 간다(axion 브랜드 자리). */
+    'menu-prepend'?(props: { rail: boolean }): unknown
+    /** 기본 MainMenu 의 `#append` 로 간다. */
+    'menu-append'?(props: { rail: boolean }): unknown
+    /** 기본 AppBar 의 `#brand` 로 간다. */
+    'app-bar-brand'?(): unknown
+    /** 기본 AppBar 의 `#actions` 로 간다(crm 우측 액션). */
+    'app-bar-actions'?(): unknown
+    /** 기본 AppBar 의 `#user-info` 로 간다. */
+    'app-bar-user-info'?(): unknown
+    /** 기본 AppBar 의 `#user-menu` 로 간다. */
+    'app-bar-user-menu'?(): unknown
   }>()
 
   const display = useDisplay()
@@ -92,6 +111,10 @@
     },
   })
 
+  function setShow(value: boolean) {
+    show.value = value
+  }
+
   function onClickNav() {
     if (display.mdAndDown.value) {
       showMenu.value = !showMenu.value
@@ -102,16 +125,38 @@
 </script>
 
 <template>
-  <slot name="drawer">
+  <!-- 🔴 전달 슬롯은 받았을 때만 건넨다(v-if). 빈 슬롯을 늘 건네면 AppBar `#user-info`·`#user-menu` 의
+       기본 내용(사용자 정보 · 로그아웃)이 사라진다. -->
+  <slot name="drawer" :rail="rail" :set-show="setShow" :show="show">
     <MainMenu
       v-model="show"
       v-bind="props.menuProps"
       :items="props.menuProps.items ?? []"
       :rail="rail"
-    />
+    >
+      <template v-if="slots['menu-prepend']" #prepend="slotProps">
+        <slot name="menu-prepend" v-bind="slotProps" />
+      </template>
+      <template v-if="slots['menu-append']" #append="slotProps">
+        <slot name="menu-append" v-bind="slotProps" />
+      </template>
+    </MainMenu>
   </slot>
-  <slot name="app-bar">
-    <AppBar v-bind="props.appBarProps" @click:nav="onClickNav" />
+  <slot name="app-bar" :toggle-nav="onClickNav">
+    <AppBar v-bind="props.appBarProps" @click:nav="onClickNav">
+      <template v-if="slots['app-bar-brand']" #brand="slotProps">
+        <slot name="app-bar-brand" v-bind="slotProps" />
+      </template>
+      <template v-if="slots['app-bar-actions']" #actions="slotProps">
+        <slot name="app-bar-actions" v-bind="slotProps" />
+      </template>
+      <template v-if="slots['app-bar-user-info']" #user-info="slotProps">
+        <slot name="app-bar-user-info" v-bind="slotProps" />
+      </template>
+      <template v-if="slots['app-bar-user-menu']" #user-menu="slotProps">
+        <slot name="app-bar-user-menu" v-bind="slotProps" />
+      </template>
+    </AppBar>
   </slot>
   <VMain>
     <slot name="banner" />
