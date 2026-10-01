@@ -39,6 +39,7 @@
   "peerDependencies": {
     "@ssworks/admin-shared": "workspace:^",
     "axios": "^1.7",
+    "pinia": "^3.0.0",
     "vue": "^3.5.0",
     "vue-router": "^4.5 || ^5",
     "vuetify": "^4.0.0"
@@ -50,6 +51,7 @@
     "@vue/test-utils": "^2.4.11",
     "axios": "^1.13.0",
     "happy-dom": "^20.0.0",
+    "pinia": "^3.0.4",
     "rimraf": "^6.0.1",
     "typescript": "~5.9.2",
     "vite": "^8.2.0",
@@ -62,6 +64,9 @@
     "zod": "^4.3.5"
   },
   "peerDependenciesMeta": {
+    "pinia": {
+      "optional": true
+    },
     "axios": {
       "optional": true
     }

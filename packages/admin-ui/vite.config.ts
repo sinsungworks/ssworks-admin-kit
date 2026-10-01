@@ -30,6 +30,7 @@ export default defineConfig({
         /^@ssworks\/admin-shared(\/.*)?$/,
         'zod',
         'axios',
+        'pinia',
         /^vue-router(\/.*)?$/,
       ],
       output: {
