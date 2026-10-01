@@ -18,6 +18,14 @@ describe('safeRedirect', () => {
     expect(safeRedirect('/a\\b')).toBe('/')
   })
 
+  it('제어 문자를 거부한다 — URL 파서가 탭·개행을 지우면 //evil 이 된다', () => {
+    expect(safeRedirect('/\t/evil.example')).toBe('/')
+    expect(safeRedirect('/\n/evil.example')).toBe('/')
+    expect(safeRedirect('/\r/evil.example')).toBe('/')
+    expect(safeRedirect('/a\u0000b')).toBe('/')
+    expect(safeRedirect('/a\u007fb')).toBe('/')
+  })
+
   it('절대 URL 을 거부한다', () => {
     expect(safeRedirect('http://evil.example')).toBe('/')
     expect(safeRedirect('https://evil.example/x')).toBe('/')
