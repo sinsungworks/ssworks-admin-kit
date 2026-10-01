@@ -252,3 +252,15 @@ app.mount('#app')
 ```
 
 `layouts/auth.vue` 는 `<AuthShell />` 하나다.
+
+#### 파일 기반 라우팅이면 `depth: 'all'`
+
+`vue-router/auto-routes` + `setupLayouts()`(vite-plugin-vue-layouts-next)는 최상위 레코드를 레이아웃 래퍼(`{ path: '/users', component: Layout, children: [{ path: '', meta, component: Page }] }`)로 낸다. 기본 `depth: 1` 은 그 래퍼만 보므로 메뉴가 비어 있다 — **`depth: 'all'`** 을 켠다. 메뉴의 `id`·`to` 는 레코드의 `path` 가 아니라 부모에 이은 전체 경로(`''` → 부모 경로, `invite` → `/users/invite`)다.
+
+```ts
+import { routes } from 'vue-router/auto-routes'
+
+const items = buildMenu<Permission>(routes, { groups, depth: 'all' }) // setupLayouts(routes) 를 넘겨도 같다
+```
+
+`assertParentAnyPermissionsCoverChildren` 은 부모 레코드가 곧 메뉴 부모인 손 라우트 표용이다. `setupLayouts` 래퍼·폴더 노드는 `meta` 가 없어서 자식이 권한을 선언하면 던진다.

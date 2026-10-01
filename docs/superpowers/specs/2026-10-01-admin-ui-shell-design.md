@@ -229,3 +229,4 @@ export class SessionNotEstablishedError extends Error {}
 최종 리뷰(14e4b9f..e54c5ec)에서 나온 결정. 위 본문과 어긋나면 이 절이 이긴다.
 
 - **R12 — `pinia`·`axios` 는 필수 peer 다.** §5 의 "optional" 과 "한 엔트리 + tree-shaking" 은 서로 맞지 않는다. 빌드된 `dist/index.js` 가 두 패키지를 최상단에서 import 하므로, `axios` 가 없는 소비자는 `safeRedirect` 하나만 써도 `vite build` 가 "failed to resolve import axios" 로 깨진다. 한 엔트리 결정을 지키고 `peerDependenciesMeta.optional` 을 뺐다. 네 참조 프로젝트는 이미 둘 다 설치돼 있다.
+- **R13 — `buildMenu` 의 `id`·`to` 는 전체 경로다.** 템플릿은 vue-router 5 auto-routes + `setupLayouts` 를 쓰고, 그 결과는 `{ path: '/users', component: Layout, children: [{ path: '', meta, component: Page }] }` 다. 레코드의 `path` 를 그대로 쓰면 `depth: 'all'` 이 `id: ''`·`to: ''` 를 낸다(깨진 링크, Vue key 중복). 순회하면서 vue-router 와 같은 규칙(`/` 로 시작 → 그대로, `''` → 부모 경로, 그 밖 → `부모/자식`)으로 이어 쓴다. 절대 경로만 쓰는 손 라우트 표는 결과가 같다. `flattenRoutes` 의 계약("path 를 이어 붙이지 않는다")은 그대로 두고, `assertParentAnyPermissionsCoverChildren` 의 오류 문구만 전체 경로로 바꿨다.

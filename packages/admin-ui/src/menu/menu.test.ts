@@ -223,6 +223,128 @@ describe('buildMenu', () => {
   })
 })
 
+describe("buildMenu — 파일 기반 라우팅(depth: 'all')", () => {
+  // vue-router 5 `vue-router/auto-routes` + vite-plugin-vue-layouts-next `setupLayouts()` 가 내는 모양.
+  // 최상위 레코드는 레이아웃 래퍼(`meta.isLayout`)이고 페이지는 `path: ''` 자식이다. `'/'` 만 자식도 '/'.
+  // `users/index.vue` · `users/[id].vue` · `users/invite.vue` 는 컴포넌트 없는 폴더 노드 아래 상대 경로로 온다.
+  const layout = stub
+  const fileBased: RouteRecordRaw[] = [
+    {
+      path: '/',
+      component: layout,
+      meta: { isLayout: true },
+      children: [
+        { path: '/', component: stub, meta: { title: '대시보드', menu: { icon: 'mdi-home' } } },
+      ],
+    },
+    {
+      path: '/users',
+      component: layout,
+      meta: { isLayout: true },
+      children: [
+        {
+          path: '',
+          children: [
+            {
+              path: '',
+              component: stub,
+              meta: { title: '사용자', permissions: ['org.users:read'], menu: { group: 'org' } },
+            },
+            { path: ':id', component: stub, meta: { title: '사용자 상세' } },
+            {
+              path: 'invite',
+              component: stub,
+              meta: { title: '초대', menu: { group: 'org', order: 1 } },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      path: '/settings',
+      component: layout,
+      meta: { isLayout: true },
+      children: [
+        {
+          path: '',
+          component: stub,
+          meta: { title: '설정', menu: {} },
+          children: [{ path: 'site', component: stub, meta: { title: '사이트', menu: {} } }],
+        },
+      ],
+    },
+  ]
+
+  function allLeaves(nodes: readonly MenuNode[]): MenuNode[] {
+    return nodes.flatMap((n) => (n.children ? allLeaves(n.children) : [n]))
+  }
+
+  it("🔴 id·to 는 부모에 이은 전체 경로다 — path '' 자식은 부모 경로, 상대 자식은 parent/child", () => {
+    const tree = buildMenu(fileBased, { groups, depth: 'all' })
+    expect(tree.map((n) => n.id)).toEqual(['/', 'org', '/settings', '/settings/site'])
+    expect(tree[1]?.children?.map((c) => c.id)).toEqual(['/users/invite', '/users'])
+    for (const node of allLeaves(tree)) expect(node.to).toBe(node.id)
+  })
+
+  it('🔴 빈 id 가 없고 id 가 겹치지 않는다(Vue key 중복 방지)', () => {
+    const ids = allLeaves(buildMenu(fileBased, { groups, depth: 'all' })).map((n) => n.id)
+    expect(ids).not.toContain('')
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('제목이 없으면 전체 경로를 제목으로 쓴다', () => {
+    const tree = buildMenu(
+      [
+        {
+          path: '/x',
+          component: layout,
+          children: [{ path: 'y', component: stub, meta: { menu: {} } }],
+        },
+      ],
+      { groups, depth: 'all' },
+    )
+    expect(tree[0]).toMatchObject({ id: '/x/y', title: '/x/y', to: '/x/y' })
+  })
+
+  it("'/' 부모에 상대 자식을 이어도 슬래시가 겹치지 않는다", () => {
+    const tree = buildMenu(
+      [
+        {
+          path: '/',
+          component: layout,
+          children: [{ path: 'about', component: stub, meta: { menu: {} } }],
+        },
+        {
+          path: '/admin/',
+          component: layout,
+          children: [{ path: 'logs', component: stub, meta: { menu: {} } }],
+        },
+      ],
+      { groups, depth: 'all' },
+    )
+    expect(tree.map((n) => n.to)).toEqual(['/about', '/admin/logs'])
+  })
+
+  it('알 수 없는 그룹 키 오류는 전체 경로를 적는다', () => {
+    expect(() =>
+      buildMenu(
+        [
+          {
+            path: '/a',
+            component: layout,
+            children: [{ path: '', component: stub, meta: { menu: { group: 'nope' } } }],
+          },
+        ],
+        { groups, depth: 'all' },
+      ),
+    ).toThrow(/nope.*\/a\)/)
+  })
+
+  it('기본 depth 1 은 래퍼만 보므로 비어 있다 — 파일 기반 라우팅은 depth: "all" 이 필요하다', () => {
+    expect(buildMenu(fileBased, { groups })).toEqual([])
+  })
+})
+
 describe('flattenRoutes', () => {
   it('깊이 우선으로 편다 — 부모가 먼저, 자식이 뒤. path 를 이어 붙이지 않는다', () => {
     const tree: RouteRecordRaw[] = [
@@ -262,6 +384,27 @@ describe('assertParentAnyPermissionsCoverChildren', () => {
       /\/settings.*c:read/,
     )
     expect(() => assertParentAnyPermissionsCoverChildren([parent(undefined)])).toThrow()
+  })
+
+  it('🔴 오류는 전체 경로로 레코드를 가리킨다 — 상대 경로 자식이어도', () => {
+    const routes: RouteRecordRaw[] = [
+      {
+        path: '/admin',
+        component: stub,
+        meta: { anyPermissions: ['a:read', 'b:read'] },
+        children: [
+          {
+            path: 'roles',
+            component: stub,
+            meta: { anyPermissions: ['a:read'] },
+            children: [{ path: ':id', component: stub, meta: { permissions: ['b:read'] } }],
+          },
+        ],
+      },
+    ]
+    expect(() => assertParentAnyPermissionsCoverChildren(routes)).toThrow(
+      /라우트 '\/admin\/roles' .*b:read/,
+    )
   })
 
   it('자식에 권한 선언이 없으면 부모에 요구하지 않는다', () => {

@@ -10,7 +10,9 @@ import type { AdminRouteMeta } from '../router/route-meta.js'
  * ② `Permission` 을 제네릭 `P` 로. ③ entry/group 이분 타입을 `children` 유무로 가르는 단일
  * `MenuNode` 로(스펙 §3-2). ④ `disabled`·`badge`(gise '준비 중')·`divider`(이 노드 뒤)·`order`
  * 추가. ⑤ `depth: 1 | 'all'` — hangang 의 "최상위만 순회" 는 기본값으로 남기고, 파일 기반
- * 라우팅 프로젝트는 `'all'` 로 켠다. ⑥ `assertParentAnyPermissionsCoverChildren` 추가.
+ * 라우팅 프로젝트는 `'all'` 로 켠다. `id`·`to` 는 레코드의 `path` 가 아니라 부모에 이은 **전체
+ * 경로**다(hangang 은 절대 경로만 써서 필요 없었다). ⑥ `assertParentAnyPermissionsCoverChildren`
+ * 추가 — 오류도 전체 경로로 가리킨다.
  *
  * 🔴 출처는 라우트 `meta` 하나다. 메뉴가 자기 권한 키를 따로 들면 둘이 갈릴 때 메뉴는 보이는데
  *    들어가면 403 이 된다. 메뉴는 안내일 뿐이고 방어선은 가드다.
@@ -82,6 +84,27 @@ export function flattenRoutes(routes: readonly RouteRecordRaw[]): RouteRecordRaw
   return out
 }
 
+/**
+ * vue-router 가 레코드를 등록할 때와 같은 규칙으로 전체 경로를 만든다 — `/` 로 시작하면 그대로,
+ * `''` 이면 부모 경로, 아니면 부모 경로에 슬래시 하나로 잇는다(부모가 `/` 로 끝나면 덧붙이지 않는다).
+ */
+function joinPath(parent: string | undefined, path: string): string {
+  if (parent == null || path.startsWith('/')) return path
+  if (path === '') return parent
+  return parent.endsWith('/') ? `${parent}${path}` : `${parent}/${path}`
+}
+
+/** `flattenRoutes` 와 같은 순서로 펴되, 레코드마다 전체 경로를 함께 준다. */
+function walkRoutes(
+  routes: readonly RouteRecordRaw[],
+  parent?: string,
+): { route: RouteRecordRaw; fullPath: string }[] {
+  return routes.flatMap((route) => {
+    const fullPath = joinPath(parent, route.path)
+    return [{ route, fullPath }, ...walkRoutes(route.children ?? [], fullPath)]
+  })
+}
+
 function metaOf<P extends string>(route: RouteRecordRaw): AdminRouteMeta<P> | undefined {
   return route.meta as AdminRouteMeta<P> | undefined
 }
@@ -96,6 +119,9 @@ function metaOf<P extends string>(route: RouteRecordRaw): AdminRouteMeta<P> | un
  * - 항목이 하나도 없는 그룹은 만들지 않는다.
  * - `depth` 기본 1 — 최상위 라우트만 본다. 🔴 hangang 의 `/settings` 자식은 인페이지 메뉴와
  *   중복되므로 사이드바에 올리지 않는다. 파일 기반 라우팅 프로젝트는 `'all'`.
+ * - 🔴 `id`·`to` 는 부모에 이은 **전체 경로**다. 파일 기반 라우팅(`vue-router/auto-routes` +
+ *   `setupLayouts`)은 페이지를 레이아웃 래퍼의 `path: ''` 자식·상대 경로 자식으로 낸다 — 레코드의
+ *   `path` 를 그대로 쓰면 `id: ''`·`to: ''` 가 되어 링크가 깨지고 Vue key 가 겹친다.
  */
 export function buildMenu<P extends string>(
   routes: readonly RouteRecordRaw[],
@@ -104,22 +130,25 @@ export function buildMenu<P extends string>(
     depth?: 1 | 'all'
   },
 ): MenuNode<P>[] {
-  const source = options.depth === 'all' ? flattenRoutes(routes) : routes
+  const source =
+    options.depth === 'all'
+      ? walkRoutes(routes)
+      : routes.map((route) => ({ route, fullPath: joinPath(undefined, route.path) }))
 
   type Slot = MenuNode<P> | { group: string }
   const slots: Slot[] = []
   const grouped = new Map<string, { node: MenuNode<P>; seq: number }[]>()
   let seq = 0
 
-  for (const route of source) {
+  for (const { route, fullPath } of source) {
     const meta = metaOf<P>(route)
     const menu = meta?.menu
     if (menu == null) continue
 
     const node: MenuNode<P> = {
-      id: route.path,
-      title: menu.title ?? meta?.title ?? route.path,
-      to: route.path,
+      id: fullPath,
+      title: menu.title ?? meta?.title ?? fullPath,
+      to: fullPath,
       permissions: meta?.permissions,
       anyPermissions: meta?.anyPermissions,
     }
@@ -131,7 +160,7 @@ export function buildMenu<P extends string>(
       continue
     }
     if (!options.groups.some((g) => g.key === menu.group)) {
-      throw new Error(`메뉴 그룹 '${menu.group}' 가 groups 에 없다 (${route.path})`)
+      throw new Error(`메뉴 그룹 '${menu.group}' 가 groups 에 없다 (${fullPath})`)
     }
     let list = grouped.get(menu.group)
     if (list == null) {
@@ -168,7 +197,7 @@ export function assertParentAnyPermissionsCoverChildren(routes: readonly RouteRe
       return [...(meta?.permissions ?? []), ...(meta?.anyPermissions ?? []), ...collect(child)]
     })
 
-  for (const route of flattenRoutes(routes)) {
+  for (const { route, fullPath } of walkRoutes(routes)) {
     if (route.children == null || route.children.length === 0) continue
     const needed = new Set(collect(route))
     if (needed.size === 0) continue
@@ -176,7 +205,7 @@ export function assertParentAnyPermissionsCoverChildren(routes: readonly RouteRe
     const missing = [...needed].filter((p) => !have.has(p))
     if (missing.length > 0) {
       throw new Error(
-        `라우트 '${route.path}' 의 anyPermissions 가 자식 권한을 덮지 못한다: ${missing.join(', ')}`,
+        `라우트 '${fullPath}' 의 anyPermissions 가 자식 권한을 덮지 못한다: ${missing.join(', ')}`,
       )
     }
   }
