@@ -24,7 +24,13 @@ export default defineConfig({
     sourcemap: true,
     cssCodeSplit: false,
     rollupOptions: {
-      external: ['vue', /^vuetify(\/.*)?$/, /^@ssworks\/admin-shared(\/.*)?$/, 'zod'],
+      external: [
+        'vue',
+        /^vuetify(\/.*)?$/,
+        /^@ssworks\/admin-shared(\/.*)?$/,
+        'zod',
+        /^vue-router(\/.*)?$/,
+      ],
       output: {
         // 소비 프로젝트의 tree-shaking 을 위해 모듈 구조를 유지하지 않고 한 파일로 — 이 패키지는
         // 작고 sideEffects 가 CSS 뿐이라 한 파일이 단순하다.
