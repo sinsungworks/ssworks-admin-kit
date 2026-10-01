@@ -1,0 +1,9 @@
+# 저장소는 LF 로 통일한다. autocrlf=true 환경(Windows)에서 기여해도 인덱스는 LF 로 들어간다.
+# 이게 없으면 prettier `endOfLine: lf` 검사가 체크아웃 직후부터 전부 빨갛고, 개행만 바뀐 파일이
+# diff 에서 전체 재작성으로 보여 실제 변경이 묻힌다.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.woff binary
+*.woff2 binary

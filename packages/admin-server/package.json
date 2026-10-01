@@ -1,0 +1,47 @@
+{
+  "name": "@ssworks/admin-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "관리자 API 공통 NestJS 모듈 — DB 모듈, 인증/세션, 권한 가드, 감사 로그, users/roles/teams 모듈. (Phase 2 — 아직 골격만)",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sinsungworks/ssworks-admin-kit.git",
+    "directory": "packages/admin-server"
+  },
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@ssworks/admin-shared": "workspace:^",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@ssworks/admin-shared": "workspace:*",
+    "@types/node": "^24.0.0",
+    "rimraf": "^6.0.1",
+    "typescript": "~5.9.2",
+    "vitest": "^4.1.10",
+    "zod": "^4.3.5"
+  }
+}

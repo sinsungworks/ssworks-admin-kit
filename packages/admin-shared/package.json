@@ -1,0 +1,43 @@
+{
+  "name": "@ssworks/admin-shared",
+  "version": "0.1.0",
+  "description": "관리자 페이지 공통 계약 — 권한 카탈로그 팩토리, scope, 에러 코드, 응답 봉투, 페이지네이션 스키마, BigInt JSON 코덱. 프레임워크 무의존(브라우저·NestJS 공용).",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sinsungworks/ssworks-admin-kit.git",
+    "directory": "packages/admin-shared"
+  },
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1",
+    "typescript": "~5.9.2",
+    "vitest": "^4.1.10",
+    "zod": "^4.3.5"
+  }
+}
