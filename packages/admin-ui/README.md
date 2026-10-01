@@ -344,4 +344,4 @@ import { routes } from 'vue-router/auto-routes'
 const items = buildMenu<Permission>(routes, { groups, depth: 'all' }) // setupLayouts(routes) 를 넘겨도 같다
 ```
 
-`assertParentAnyPermissionsCoverChildren` 은 부모 레코드가 곧 메뉴 부모인 손 라우트 표용이다. `setupLayouts` 래퍼·폴더 노드는 `meta` 가 없어서 자식이 권한을 선언하면 던진다.
+`assertParentAnyPermissionsCoverChildren` 은 `meta.anyPermissions` 를 **선언한** 레코드만 검사한다(그 값을 상속하는 후손의 `permissions` 를 덮어야 한다). 선언 없는 `setupLayouts` 래퍼·폴더 노드는 건너뛰므로 파일 기반 라우팅에서도 쓸 수 있다.

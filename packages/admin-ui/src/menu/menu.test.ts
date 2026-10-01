@@ -383,7 +383,116 @@ describe('assertParentAnyPermissionsCoverChildren', () => {
     expect(() => assertParentAnyPermissionsCoverChildren([parent(['a:read', 'b:read'])])).toThrow(
       /\/settings.*c:read/,
     )
-    expect(() => assertParentAnyPermissionsCoverChildren([parent(undefined)])).toThrow()
+  })
+
+  it('🔴 anyPermissions 를 선언하지 않은 부모는 검사하지 않는다 — 던지지 않는다', () => {
+    expect(() => assertParentAnyPermissionsCoverChildren([parent(undefined)])).not.toThrow()
+    expect(() => assertParentAnyPermissionsCoverChildren([parent([])])).not.toThrow()
+  })
+
+  it('🔴 setupLayouts 래퍼·폴더 노드는 던지지 않는다', () => {
+    const routes: RouteRecordRaw[] = [
+      {
+        path: '/users',
+        component: stub,
+        children: [{ path: '', component: stub, meta: { permissions: ['users:read'] } }],
+      },
+      {
+        path: '/admin',
+        component: stub,
+        children: [
+          {
+            path: 'roles',
+            component: stub,
+            children: [
+              { path: '', component: stub, meta: { permissions: ['roles:read'] } },
+              { path: ':id', component: stub, meta: { permissions: ['roles:write'] } },
+            ],
+          },
+        ],
+      },
+    ]
+    expect(() => assertParentAnyPermissionsCoverChildren(routes)).not.toThrow()
+  })
+
+  it('🔴 선언 없는 래퍼 아래 깊은 레코드가 anyPermissions 를 선언하면 그것은 검사한다', () => {
+    const routes: RouteRecordRaw[] = [
+      {
+        path: '/wrap',
+        component: stub,
+        children: [
+          {
+            path: 'x',
+            component: stub,
+            meta: { anyPermissions: ['a:read'] },
+            children: [{ path: 'y', component: stub, meta: { permissions: ['b:read'] } }],
+          },
+        ],
+      },
+    ]
+    expect(() => assertParentAnyPermissionsCoverChildren(routes)).toThrow(
+      /라우트 '\/wrap\/x' .*b:read/,
+    )
+  })
+
+  it('자식이 자기 anyPermissions 를 선언하면 부모가 덮지 않아도 된다(덮어쓰기)', () => {
+    const routes: RouteRecordRaw[] = [
+      {
+        path: '/p',
+        component: stub,
+        meta: { anyPermissions: ['a:read'] },
+        children: [
+          { path: 'a', component: stub, meta: { permissions: ['a:read'] } },
+          {
+            path: 'own',
+            component: stub,
+            meta: { permissions: ['z:read'], anyPermissions: ['z:read', 'y:read'] },
+          },
+        ],
+      },
+    ]
+    expect(() => assertParentAnyPermissionsCoverChildren(routes)).not.toThrow()
+  })
+
+  it('🔴 덮어쓴 자식도 자기 후손에 대해서는 검사받는다 — 그 서브트리는 부모 몫이 아니다', () => {
+    const routes: RouteRecordRaw[] = [
+      {
+        path: '/p',
+        component: stub,
+        meta: { anyPermissions: ['a:read'] },
+        children: [
+          {
+            path: 'own',
+            component: stub,
+            meta: { anyPermissions: ['z:read'] },
+            children: [{ path: 'deep', component: stub, meta: { permissions: ['q:read'] } }],
+          },
+        ],
+      },
+    ]
+    // 부모는 q:read 를 요구받지 않는다 — 자식 own 이 요구받는다.
+    expect(() => assertParentAnyPermissionsCoverChildren(routes)).toThrow(
+      /라우트 '\/p\/own' .*q:read/,
+    )
+    expect(() => assertParentAnyPermissionsCoverChildren(routes)).not.toThrow(/라우트 '\/p' /)
+  })
+
+  it('🔴 선언 없는 중간 자식 아래 손자의 permissions 도 부모에게 요구된다(상속)', () => {
+    const routes: RouteRecordRaw[] = [
+      {
+        path: '/p',
+        component: stub,
+        meta: { anyPermissions: ['a:read'] },
+        children: [
+          {
+            path: 'mid',
+            component: stub,
+            children: [{ path: 'leaf', component: stub, meta: { permissions: ['g:read'] } }],
+          },
+        ],
+      },
+    ]
+    expect(() => assertParentAnyPermissionsCoverChildren(routes)).toThrow(/라우트 '\/p' .*g:read/)
   })
 
   it('🔴 오류는 전체 경로로 레코드를 가리킨다 — 상대 경로 자식이어도', () => {

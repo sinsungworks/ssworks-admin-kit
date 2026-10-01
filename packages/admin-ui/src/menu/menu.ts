@@ -186,21 +186,36 @@ export function buildMenu<P extends string>(
 }
 
 /**
- * 부모 `anyPermissions` ⊇ 자식(후손 포함) `permissions`·`anyPermissions` 합집합 이어야 한다.
- * 아니면 던진다 — 부모 메뉴는 숨겨지는데 자식 화면만 열려 있는 상태(들어갈 길이 없는 화면)를
- * 부팅 시점에 잡는다. 자식에 권한 선언이 없으면 요구하지 않는다.
+ * `anyPermissions` 를 **선언한** 레코드 P 는, P 의 `anyPermissions` 를 **상속하는** 후손의
+ * `permissions` 합집합을 덮어야 한다(⊇). 아니면 전체 경로로 가리키며 던진다.
+ *
+ * - `anyPermissions` 가 없거나 빈 레코드는 검사하지 않는다(`setupLayouts` 래퍼·파일 기반 라우팅의
+ *   폴더 노드가 그렇다). 그래도 그 자식들은 계속 순회한다 — 더 깊은 레코드가 선언했을 수 있다.
+ * - 후손 중 자기 `anyPermissions` 를 선언한 레코드는 서브트리째 P 의 몫에서 뺀다. 그 레코드는 P 로서
+ *   따로 검사된다. 선언 없는 후손은 `permissions` 를 P 에 보태고 더 내려간다.
+ *
+ * 🔴 vue-router 는 `meta` 를 부모→자식으로 **얕게 assign** 한다(`mergeMetaFields`). 자식이
+ *    `anyPermissions` 를 선언하지 않으면 부모 것이 그대로 살아 가드가 그것을(OR) 자식 자신의
+ *    `permissions`(AND) 위에 더 요구한다. 부모 집합에 자식 권한이 없으면 그 권한만 가진 사용자는
+ *    메뉴는 보는데 가드에서 막힌다. 반대로 자기 선언을 가진 자식은 부모 값을 덮으므로 부모와 무관하다.
+ *
+ * 정본: hangang-home `apps/admin/src/router/route-meta.test.ts`(`/settings` 부모 한 곳). 바꾼 점:
+ * 정확히 같음(`===`)이 아니라 **상위집합**(⊇)만 요구한다 · 단일 `/settings` 가 아니라 모든 레코드로
+ * 일반화하고 상속 규칙을 따라 후손을 본다.
  */
 export function assertParentAnyPermissionsCoverChildren(routes: readonly RouteRecordRaw[]): void {
-  const collect = (route: RouteRecordRaw): string[] =>
-    (route.children ?? []).flatMap((child) => {
-      const meta = metaOf(child)
-      return [...(meta?.permissions ?? []), ...(meta?.anyPermissions ?? []), ...collect(child)]
-    })
+  const declared = (route: RouteRecordRaw): boolean =>
+    (metaOf(route)?.anyPermissions?.length ?? 0) > 0
+
+  // P 의 anyPermissions 를 상속하는 후손들의 permissions.
+  const inherited = (route: RouteRecordRaw): string[] =>
+    (route.children ?? []).flatMap((child) =>
+      declared(child) ? [] : [...(metaOf(child)?.permissions ?? []), ...inherited(child)],
+    )
 
   for (const { route, fullPath } of walkRoutes(routes)) {
-    if (route.children == null || route.children.length === 0) continue
-    const needed = new Set(collect(route))
-    if (needed.size === 0) continue
+    if (!declared(route)) continue
+    const needed = new Set(inherited(route))
     const have = new Set(metaOf(route)?.anyPermissions ?? [])
     const missing = [...needed].filter((p) => !have.has(p))
     if (missing.length > 0) {
