@@ -10,6 +10,10 @@ import AppBar from './AppBar.vue'
 
 // 정본: 신규(스펙 §3-3). hangang AppBar 에는 렌더 테스트가 없었다.
 // 🔴 스토어는 라우팅하지 않는다 — 로그아웃 뒤 이동은 AppBar 가 한다.
+// 🔴 이동 뒤 경로는 `vi.waitFor` 로 잰다. 사용자 메뉴(VMenu → VOverlay)가 마운트돼 있으면 Vuetify
+//    `useBackButton` 의 router.beforeEach 가 이동마다 setTimeout 한 번을 기다린다(뒤로가기 감지).
+//    flushPromises 는 setImmediate 라 둘의 순서가 실행마다 달라, flushPromises 한 번 뒤에 재면
+//    가끔 이전 경로가 나온다.
 
 installVisualViewport()
 
@@ -191,8 +195,7 @@ describe('AppBar — 사용자 메뉴', () => {
     })
     await openMenu()
     item('내 계정').click()
-    await flushPromises()
-    expect(router.currentRoute.value.path).toBe('/account')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/account'))
   })
 
   it('#user-menu 슬롯은 메뉴 전체를 교체한다(로그아웃 항목 없음)', async () => {
@@ -221,7 +224,7 @@ describe('AppBar — 사용자 메뉴', () => {
     buttonByText('내 로그아웃 김관리')!.click()
     await flushPromises()
     expect(calls).toEqual(['logout'])
-    expect(router.currentRoute.value.path).toBe('/login')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/login'))
   })
 })
 
@@ -253,6 +256,6 @@ describe('AppBar — 로그아웃', () => {
     item('로그아웃').click()
     await flushPromises()
     expect(calls).toEqual(['logout'])
-    expect(router.currentRoute.value.path).toBe('/login')
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/login'))
   })
 })
