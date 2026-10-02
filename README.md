@@ -10,7 +10,7 @@ kim5257-crm-v5 · ssworks-axion-admin · ssworks-gise-home · hangang-home 네 �
 | [`@ssworks/admin-ui`](packages/admin-ui)         | Vue 3 + Vuetify 4 — 레이아웃 프리미티브, 다이얼로그, 서버 페이지네이션 표, 토스트, Vuetify 프리셋, 권한 훅        | Phase 1 (1차 범위) |
 | [`@ssworks/admin-server`](packages/admin-server) | NestJS — DB 모듈, 인증/세션, 권한 가드, 감사, users/roles/teams 모듈                                              | Phase 2 (골격만)   |
 
-세 패키지는 함께 버전이 오른다(changesets `linked`). 소비 프로젝트는 "admin-kit 1.x" 한 숫자로 조합을 말한다.
+세 패키지는 항상 같은 번호로 함께 오른다(changesets `fixed`). 소비 프로젝트는 "admin-kit 0.x" 한 숫자로 조합을 말하고, **세 패키지를 같은 번호끼리 설치한다** — 0.x 동안 admin-shared peer 범위가 `^0` 이라 번호가 어긋나도 경고가 나지 않는다(`.changeset/README.md`).
 
 ## 설치 (소비 프로젝트)
 

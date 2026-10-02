@@ -33,7 +33,7 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@ssworks/admin-shared": "workspace:^",
+    "@ssworks/admin-shared": "workspace:^0",
     "zod": "^4.0.0"
   },
   "devDependencies": {

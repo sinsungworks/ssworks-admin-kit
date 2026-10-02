@@ -6,7 +6,7 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
 
 | 항목                    | 상태                                                                                                                                                                                                                                                                      |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 저장소                  | `main` 에 첫 커밋. 원격 `origin` = `https://github.com/sinsungworks/ssworks-admin-kit.git`(확인됨). **push 는 아직** — 사람이 한다                                                                                                                                        |
+| 저장소                  | `main` 에 첫 커밋. 원격 `origin` = `https://github.com/sinsungworks/ssworks-admin-kit.git`. **push 완료(2026-10-02)**, CI 초록. Version Packages PR #1 열림 — npm 준비 전에는 머지하지 않는다                                                                             |
 | `@ssworks/admin-shared` | Phase 1 완료. 54 테스트. `tsc` 빌드                                                                                                                                                                                                                                       |
 | `@ssworks/admin-ui`     | Phase 1 **PR #1**(프리미티브·다이얼로그·표·토스트·Vuetify 프리셋·권한 훅) · **PR #2**(셸·메뉴·가드·API 클라이언트·스토어·composable) 구현 완료 — PR #2 는 `main` 에 로컬 병합. 348 테스트. vite lib 빌드. 패킹 tarball 을 별도 Vite+vuetify 앱에서 typecheck·build 검증함 |
 | `@ssworks/admin-server` | 골격만. `private: true` 라 발행되지 않음. Phase 2                                                                                                                                                                                                                         |
@@ -18,12 +18,13 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
 
 1. ~~**설치·검증**~~ — **완료(2026-10-01).** 예상했던 경로 구분자·개행 문제는 없었다. 실제로 깨진 것은 Windows 와 무관한 **새 체크아웃 결함**: admin-ui 가 admin-shared 를 `dist/` 로 import 하는데 `check` 는 build 보다 typecheck·test 가 먼저라, `dist/` 가 없는 새 체크아웃(CI 포함)에서 "Cannot find module '@ssworks/admin-shared'" 로 실패했다. 컨테이너는 이전 빌드의 `dist/` 가 남아 있어 가려졌다. root `prepare` 가 install 직후 admin-shared 를 빌드하게 고쳤다. 같이 `.codegraph/` 를 `.gitignore` 에 올렸다.
 2. ~~**원격·첫 커밋**~~ — **완료(2026-10-01).** `repository.url`(`https://github.com/sinsungworks/ssworks-admin-kit.git`)이 맞다고 확인됐고 `origin` 으로 연결했다. 남은 것은 `git push -u origin main` — `.claude/settings.json` 이 `git push` 를 막으니 사람이 한다.
-3. ~~**PR #2 착수**~~ — **완료 · `main` 에 로컬 병합**(브랜치 `feat/admin-ui-shell`, 플랜 `docs/superpowers/plans/2026-10-01-admin-ui-shell.md` Task 1~10). 다음은 사람이: `git push -u origin main` — CI 가 돌고, release 워크플로가 Version Packages PR 을 연다(npm 스코프·`NPM_TOKEN` 이 준비되기 전에는 그 PR 을 머지하지 않는다). 그 뒤 **PR #3**(`docs/phase0-reports/fe-pages.md` §2)로 간다.
+3. ~~**PR #2 착수**~~ — **완료 · `main` 에 로컬 병합**(브랜치 `feat/admin-ui-shell`, 플랜 `docs/superpowers/plans/2026-10-01-admin-ui-shell.md` Task 1~10). push 완료(2026-10-02). release 워크플로가 연 Version Packages PR #1 이 처음엔 **1.0.0** 을 내놨다 — peer `workspace:^` 가 0.x 에서 minor 를 못 덮어 changesets 가 major 로 올린 것. 0.x 를 유지하기로 하고 `fixed` · peer `workspace:^0` · `onlyUpdatePeerDependentsWhenOutOfRange` 로 고쳤다(0.2.0, 근거는 `.changeset/README.md`). npm 스코프·`NPM_TOKEN` 이 준비되기 전에는 그 PR 을 머지하지 않는다. 그 뒤 **PR #3**(`docs/phase0-reports/fe-pages.md` §2)로 간다.
 
 ## 발행 전에 사람이 해야 하는 것
 
-- npm 에 `@ssworks` 조직(스코프)이 있어야 한다. 없으면 만들거나 `@kim5257` 로 바꾼다(세 `package.json` 의 `name` 과 `.changeset/config.json` 의 `linked` 목록).
-- GitHub 저장소 시크릿 `NPM_TOKEN`(automation 토큰). 그래야 `release.yml` 이 Version Packages PR → 발행까지 간다.
+- npm 에 `@ssworks` 조직(스코프)이 있어야 한다(2026-10-02 기준 비어 있음 — 레지스트리가 "Scope not found"). 없으면 만들거나 `@kim5257` 로 바꾼다(세 `package.json` 의 `name` 과 `.changeset/config.json` 의 `fixed` 목록).
+- GitHub 저장소 시크릿 `NPM_TOKEN`. npm 은 2025-11 부터 classic(automation) 토큰이 없다 — **granular access token** 을 "Read and write" · `@ssworks` 스코프 · **Bypass 2FA 체크**로 만든다(빠지면 CI 발행이 OTP 에서 실패). 만료일이 있으니 갱신 일정을 잡는다. 개인 계정 저장소라 시크릿은 소유자(`sinsungworks`)만 등록할 수 있다.
+- ~~저장소 Settings → Actions → "Allow GitHub Actions to create and approve pull requests"~~ — 켜 둠(2026-10-02). 꺼져 있으면 release 가 PR 생성에서 실패한다.
 
 ## 결정 사항 (바꾸려면 `docs/01-phase0.md` §4 를 먼저 고친다)
 
