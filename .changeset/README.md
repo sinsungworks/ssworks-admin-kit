@@ -4,7 +4,7 @@
 
 1. 변경을 만든 PR 에서 `pnpm changeset` 을 실행해 어느 패키지가 어떤 수준(patch/minor/major)으로 바뀌는지 적는다.
 2. `main` 에 합쳐지면 release 워크플로가 "Version Packages" PR 을 연다.
-3. 그 PR 을 합치면 npm 에 발행된다 (`NPM_TOKEN` 시크릿 필요).
+3. 그 PR 을 합치면 npm 에 발행된다 — 토큰 없이 Trusted Publishing(OIDC). 패키지마다 npmjs.com 설정에 이 저장소의 `release.yml` 이 Trusted Publisher 로 등록돼 있어야 한다. **새 패키지**는 등록할 화면이 없으니 첫 버전만 사람이 로컬에서 `pnpm --filter <패키지> publish` 로 올리고 등록한다.
 
 세 패키지는 `fixed` 로 묶여 있어 **항상 같은 번호로 함께** 오른다 — 소비 프로젝트가 "admin-kit 0.3" 한 숫자로 조합을 말할 수 있게 하기 위해서다. 변경이 없는 패키지도 번호가 올라 같이 발행된다(admin-server 는 Phase 2 까지 `private` 이라 번호만 오르고 발행되지 않는다).
 

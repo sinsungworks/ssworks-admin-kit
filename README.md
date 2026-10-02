@@ -78,7 +78,7 @@ pnpm --filter @ssworks/admin-ui build
 
 1. PR 에서 `pnpm changeset` 으로 변경 수준을 적는다.
 2. `main` 에 합쳐지면 release 워크플로가 **Version Packages** PR 을 연다.
-3. 그 PR 을 합치면 npm 공개 스코프 `@ssworks` 로 발행된다 (저장소 시크릿 `NPM_TOKEN` 필요).
+3. 그 PR 을 합치면 npm 공개 스코프 `@ssworks` 로 발행된다 — 토큰 시크릿 없이 npm Trusted Publishing(OIDC). 새 패키지를 추가할 때는 `.changeset/README.md` 를 본다.
 
 ## 문서
 
