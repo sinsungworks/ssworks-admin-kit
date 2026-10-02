@@ -4,7 +4,23 @@
 
 1. 변경을 만든 PR 에서 `pnpm changeset` 을 실행해 어느 패키지가 어떤 수준(patch/minor/major)으로 바뀌는지 적는다.
 2. `main` 에 합쳐지면 release 워크플로가 "Version Packages" PR 을 연다.
-3. 그 PR 을 합치면 npm 에 발행된다 — 토큰 없이 Trusted Publishing(OIDC). 패키지마다 npmjs.com 설정에 이 저장소의 `release.yml` 이 Trusted Publisher 로 등록돼 있어야 한다. **새 패키지**는 등록할 화면이 없으니 첫 버전만 사람이 로컬에서 `pnpm --filter <패키지> publish` 로 올리고 등록한다.
+3. 그 PR 을 합치면 CI 가 바뀐 버전을 npm 에 **스테이징**한다 — 토큰 없이 Trusted Publishing(OIDC), 아직 공개되지 않는다.
+4. 사람이 2FA 로 승인해 공개하고 태그를 붙인다:
+
+   ```bash
+   pnpm stage list                  # 승인 대기 중인 버전과 stage-id
+   pnpm stage view <stage-id>       # 필요하면 내용 확인
+   pnpm stage approve <stage-id>    # 패키지마다 — 2FA 를 묻는다
+   git pull && pnpm changeset tag && git push --tags
+   ```
+
+   잘못 올라간 버전은 `pnpm stage reject <stage-id>`. 스테이징된 버전도 그 번호를 점유하므로, 다시 올리려면 거절한 뒤 새 버전으로 간다.
+
+### npm 쪽 설정 (패키지마다 한 번)
+
+- Settings → Trusted Publisher: GitHub Actions · `sinsungworks` / `ssworks-admin-kit` / `release.yml`. **"Allow npm publish" 는 끈다**(stage only) — CI 가 뚫려도 승인 없이는 공개되지 않는다.
+- Settings → Publishing access: "Require two-factor authentication and disallow tokens".
+- **새 패키지**는 Trusted Publisher 를 등록할 화면이 없다. 첫 버전만 사람이 로컬에서 `pnpm --filter <패키지> publish` 로 올리고 위 설정을 한다. 여러 패키지를 한 번에 올리는 `changeset publish` 는 두 번째부터 2FA 브라우저 인증을 못 받아 `ERR_PNPM_OTP_NON_INTERACTIVE` 로 실패하니, 패키지마다 따로 올린다.
 
 세 패키지는 `fixed` 로 묶여 있어 **항상 같은 번호로 함께** 오른다 — 소비 프로젝트가 "admin-kit 0.3" 한 숫자로 조합을 말할 수 있게 하기 위해서다. 변경이 없는 패키지도 번호가 올라 같이 발행된다(admin-server 는 Phase 2 까지 `private` 이라 번호만 오르고 발행되지 않는다).
 

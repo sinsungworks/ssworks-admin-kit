@@ -10,7 +10,9 @@ permissions:
   contents: write
   pull-requests: write
   # npm Trusted Publishing(OIDC). 토큰 시크릿은 쓰지 않는다 — npmjs.com 의 각 패키지 설정에
-  # 이 저장소·이 파일(release.yml)이 Trusted Publisher 로 등록돼 있어야 발행된다.
+  # 이 저장소·이 파일(release.yml)이 Trusted Publisher 로 등록돼 있어야 한다.
+  # 🔴 Trusted Publisher 는 "Allow npm publish" 를 끈 채(stage only) 둔다. CI 는 스테이징만 하고,
+  #    공개는 사람이 `pnpm stage approve` 로 2FA 승인한다(scripts/stage-release.mjs).
   id-token: write
 
 jobs:
@@ -32,9 +34,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # changeset 이 쌓여 있으면 "Version Packages" PR 을 열고, 그 PR 이 합쳐진
-      # 커밋이면 npm 에 발행한다. NPM_TOKEN 이 없으면 changesets/action 이 OIDC 로 간다.
-      - name: Create Release Pull Request or Publish
+      # changeset 이 쌓여 있으면 "Version Packages" PR 을 열고, 그 PR 이 합쳐진 푸시면 바뀐 버전을
+      # npm 에 **스테이징**한다(`pnpm release` → scripts/stage-release.mjs). NPM_TOKEN 이 없으면
+      # changesets/action 이 OIDC 로 간다.
+      - name: Create Release Pull Request or Stage
         uses: changesets/action@v1
         with:
           version: pnpm version-packages
@@ -43,3 +46,5 @@ jobs:
           title: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 이번 푸시 직전 커밋 — 여러 커밋을 한 번에 푸시해도 버전 변경을 놓치지 않는다.
+          RELEASE_BASE_SHA: ${{ github.event.before }}

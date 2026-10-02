@@ -78,7 +78,8 @@ pnpm --filter @ssworks/admin-ui build
 
 1. PR 에서 `pnpm changeset` 으로 변경 수준을 적는다.
 2. `main` 에 합쳐지면 release 워크플로가 **Version Packages** PR 을 연다.
-3. 그 PR 을 합치면 npm 공개 스코프 `@ssworks` 로 발행된다 — 토큰 시크릿 없이 npm Trusted Publishing(OIDC). 새 패키지를 추가할 때는 `.changeset/README.md` 를 본다.
+3. 그 PR 을 합치면 CI 가 npm 공개 스코프 `@ssworks` 에 **스테이징**한다 — 토큰 시크릿 없이 npm Trusted Publishing(OIDC).
+4. 관리자가 `pnpm stage approve <stage-id>` 로 2FA 승인하면 공개된다. 순서·태그·새 패키지는 `.changeset/README.md`.
 
 ## 문서
 

@@ -23,8 +23,8 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
 ## 발행 전에 사람이 해야 하는 것
 
 - ~~npm `@ssworks` 스코프~~ — 확보(2026-10-02).
-- **토큰 시크릿(`NPM_TOKEN`)은 쓰지 않는다 — npm Trusted Publishing(OIDC).** Bypass 2FA granular 토큰은 2027-01 부터 직접 발행이 막힌다(스테이징 + 2FA 승인만 남음, [GitHub changelog 2026-07-31](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/)). Trusted Publisher 는 이미 있는 패키지에만 등록할 수 있어서, 0.2.0 은 사람이 로컬에서 2FA 로 발행했다. 그다음 패키지마다 npmjs.com Settings → Trusted Publisher(GitHub Actions · `sinsungworks` / `ssworks-admin-kit` / `release.yml`, **직접 발행 허용**) 등록, Publishing access 는 "Require two-factor authentication and disallow tokens".
-- 로컬 수동 발행은 `pnpm release` 대신 패키지마다 `pnpm --filter <패키지> publish` — changeset publish 는 여러 패키지를 동시에 올려, 두 번째부터 2FA 브라우저 인증을 못 받고 `ERR_PNPM_OTP_NON_INTERACTIVE` 로 실패한다.
+- **토큰 시크릿(`NPM_TOKEN`)은 쓰지 않는다 — npm Trusted Publishing(OIDC).** Bypass 2FA granular 토큰은 2027-01 부터 직접 발행이 막힌다(스테이징 + 2FA 승인만 남음, [GitHub changelog 2026-07-31](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/)). Trusted Publisher 는 이미 있는 패키지에만 등록할 수 있어서, 0.2.0 은 사람이 로컬에서 2FA 로 발행했다(2026-10-02).
+- **CI 는 스테이징만 한다**(Trusted Publisher 의 "Allow npm publish" 끔). 공개는 사람이 `pnpm stage approve` 로 2FA 승인 — 절차·이유는 `.changeset/README.md` 와 `scripts/stage-release.mjs`. changesets 의 `changeset publish` 는 `pnpm publish`(직접 공개)만 불러서 쓰지 않는다([pnpm #13183](https://github.com/pnpm/pnpm/issues/13183)). 첫 CI 스테이징(다음 버전)에서 OIDC 인증·provenance 가 실제로 되는지 확인할 것.
 - ~~저장소 Settings → Actions → "Allow GitHub Actions to create and approve pull requests"~~ — 켜 둠(2026-10-02). 꺼져 있으면 release 가 PR 생성에서 실패한다.
 
 ## 결정 사항 (바꾸려면 `docs/01-phase0.md` §4 를 먼저 고친다)

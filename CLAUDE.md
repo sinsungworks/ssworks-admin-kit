@@ -91,7 +91,7 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 
 1. 브랜치에서 작업 → `pnpm check` 초록.
 2. 공개 API 가 바뀌면 `pnpm changeset` (patch/minor/major 와 소비자가 고칠 것을 적는다).
-3. PR → CI → `main` 머지 → release 워크플로가 Version Packages PR 을 연다 → 머지하면 npm 발행.
+3. PR → CI → `main` 머지 → release 워크플로가 Version Packages PR 을 연다 → 머지하면 npm 에 **스테이징** → 사람이 `pnpm stage approve` 로 2FA 승인해야 공개(`.changeset/README.md`).
 
 ## 진행 상태와 다음 단계
 
