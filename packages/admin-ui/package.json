@@ -1,6 +1,6 @@
 {
   "name": "@ssworks/admin-ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "관리자 페이지 공통 Vue 3 + Vuetify 4 컴포넌트·composable — 레이아웃 프리미티브, 다이얼로그, 서버 페이지네이션 표, 토스트, Vuetify 프리셋, 권한 판정 훅, 관리자 셸(앱바·사이드 메뉴·IP 차단 안내), 라우트 meta 기반 메뉴·권한 가드, axios API 클라이언트, pinia 세션 스토어.",
   "license": "MIT",
   "type": "module",
