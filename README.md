@@ -70,7 +70,7 @@ pnpm test:watch
 pnpm --filter @ssworks/admin-ui build
 ```
 
-- Node 24 (`.nvmrc`), pnpm 10 (`packageManager` 로 고정 — corepack/pnpm 이 알아서 맞춘다).
+- Node 24 (`.nvmrc`), pnpm 12 (`packageManager` 로 고정 — corepack/pnpm 이 알아서 맞춘다). pnpm 설정은 `.npmrc` 가 아니라 `pnpm-workspace.yaml` 에 둔다(pnpm 11 부터 `.npmrc` 는 레지스트리·인증만 읽는다).
 - 테스트는 vitest. DOM 이 필요한 파일만 머리에 `// @vitest-environment happy-dom` 을 단다.
 - 포맷은 prettier(세미콜론 없음 · 작은따옴표 · 100자), 린트는 eslint flat config.
 

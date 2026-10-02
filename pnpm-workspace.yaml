@@ -1,2 +1,7 @@
 packages:
   - 'packages/*'
+
+# pnpm 11 부터 .npmrc 는 레지스트리·인증만 읽는다 — pnpm 설정은 여기 둔다(camelCase).
+# pnpm 12 는 모르는 키가 있으면 ERR_PNPM_UNRECOGNIZED_WORKSPACE_SETTINGS 로 멈춘다.
+autoInstallPeers: false
+strictPeerDependencies: false
