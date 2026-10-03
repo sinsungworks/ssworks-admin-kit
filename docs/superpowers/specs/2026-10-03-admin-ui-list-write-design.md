@@ -297,3 +297,9 @@ TDD — 실패하는 테스트부터. 라우터는 `createMemoryHistory`, 지연
 - 글자 입력 지연: 표는 적용된 필터만 본다. 입력값·적용값 분리와 Enter·버튼 적용은 페이지 몫(hangang·gise 공통).
 - 마지막 쪽의 마지막 행 삭제 뒤 빈 쪽 보정: 네 프로젝트 어디에도 없다.
 - 요청 취소(AbortController), gise `isRestoring`, crm 날짜 코덱, gise 표시 추적(→ B).
+
+## 10. 구현 중 정정 (2026-10-03)
+
+- **R1 — `ERR_COMMON_CONFLICT` 는 "상태 전이 충돌" 로 좁혔다.** §4-6 은 "중복 값 · 상태 전이 충돌" 이라 적었으나 중복 값에는 이미 `ERR_COMMON_DUPLICATED`(409)가 있다.
+- **R2 — `urlSync` 키 충돌은 환경과 무관하게 `console.error` 후 표 값으로 덮는다.** §4-3 의 "개발 빌드에서 throw" 는 라이브러리에서 지킬 수 없다 — vite 라이브러리 빌드는 `import.meta.env.DEV` 를 빌드 시점 상수(`false`)로 바꿔, 소비 앱의 개발 모드를 모른다.
+- **R3 — `confirmColor` 는 `gate: 'confirm'` 옵션에만 둔다.** §4-4 의 `DialogText` 주석("confirm 관문만")을 타입으로 옮겼다.

@@ -12,7 +12,7 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
 | `@ssworks/admin-server` | 골격만. `private: true` 라 발행되지 않음. Phase 2                                                                                                                                                                                                                         |
 | 검증                    | 컨테이너(Linux, Node 22)와 Windows(Node 24) 양쪽에서 `pnpm check`·`format:check` 초록(PR #1 시점 142 테스트). Windows 첫 실행에서 새 체크아웃 결함 하나를 고쳤다(아래)                                                                                                    |
 | 문서                    | `docs/00-admin-common-review.md`(방안 검토) · `docs/01-phase0.md`(정본·확장점·A/B/X·프로토콜 결정·§8 진행) · `docs/phase0-reports/`(대조 보고 5편)                                                                                                                        |
-| 다음 플랜               | PR #3 — `docs/phase0-reports/fe-pages.md` §2 (플랜은 아직 없다). 직전 PR #2: `docs/superpowers/plans/2026-10-01-admin-ui-shell.md` · 스펙 `docs/superpowers/specs/2026-10-01-admin-ui-shell-design.md`                                                                    |
+| 다음 플랜               | PR #3b(역할·설정 — `PermissionMatrix` · `useRoleEditor` · `SettingsShell`). 직전 PR #3a: 스펙 `docs/superpowers/specs/2026-10-03-admin-ui-list-write-design.md` · 플랜 `docs/superpowers/plans/2026-10-03-admin-ui-list-write.md`                                         |
 
 ## 첫 세션에서 할 일 (순서대로)
 

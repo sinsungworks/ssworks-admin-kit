@@ -73,21 +73,25 @@ export const usePermission = createUsePermission<Permission>(
 
 ## 셸 · 내비게이션 · 인프라
 
-| export                                                                                                                    | 설명                                                                                                           |
-| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `createAdminUi` · `useAdminUi` · `ADMIN_UI_KEY` · `AdminUserInfo` · `AdminUiOptions` · `AdminUiContext` · `AdminUiPlugin` | 셸이 호스트 앱에서 읽는 것(사용자·로그아웃·사이트명·IP 차단·표 설정)의 전부. `app.use()` 가 provide. 게터 주입 |
-| `AdminShell` · `AdminShellMenuProps` · `AdminShellAppBarProps`                                                            | 앱바 + 드로어 메뉴 + `RouterView`. 슬롯 `drawer` `app-bar` `banner` `default` `overlays` + 전달 슬롯(아래)     |
-| `AuthShell`                                                                                                               | 앱바·메뉴 없는 인증 전 화면 껍데기. 슬롯 `brand`                                                               |
-| `AppBar` · `AppBarMenuItem`                                                                                               | 사용자 메뉴·로그아웃이 있는 앱바. 슬롯 `brand` `actions` `user-info` `user-menu`(`{ user, logout }`)           |
-| `MainMenu` · `MainMenuItem`                                                                                               | 권한으로 걸러 그리는 사이드 메뉴. `groupMode: 'subheader' \| 'collapsible'`                                    |
-| `IpBlockedDialog`                                                                                                         | IP 차단 안내. 🔴 `App.vue` 최상위에 둔다(로그인 화면에서도 떠야 한다)                                          |
-| `MenuNode` · `filterMenu` · `buildMenu` · `flattenRoutes` · `assertParentAnyPermissionsCoverChildren`                     | 메뉴 파생 — 출처는 라우트 `meta` 하나. 선언 없음 = 공개                                                        |
-| `AdminRouteMeta` · `defineAdminRoute`                                                                                     | 라우트 `meta` 타입과 항등 헬퍼                                                                                 |
-| `createAdminGuard` · `AdminGuardDeps`                                                                                     | 전역 `beforeEach`. deps 주입, 기본 fail-closed                                                                 |
-| `createTitleGuard` · `installChunkRecovery` · `safeRedirect`                                                              | `afterEach` 문서 제목 · 청크 404 복구(1회 새로고침) · 오픈 리다이렉트 방어                                     |
-| `createApiClient` · `ApiClientOptions` · `ApiClient` · `ApiError`                                                         | axios 팩토리. 봉투 벗김 · bigint · 401 갱신(공유 Promise) · `onAuthFailure`/`onError` 콜백                     |
-| `createAppStore` · `SessionNotEstablishedError` · `AppStoreOptions` · `AppStoreState` · `AppStoreActions`                 | 세션 pinia 스토어 팩토리(`initialize` · `login` · `logout` · `clearSession`)                                   |
-| `useDirtyGuard` · `DirtyGuardOptions` · `useTableSelection`                                                               | 이탈 확인 · 대량 표 선택(Set + 반전 선택)                                                                      |
+| export                                                                                                                                                                                          | 설명                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `createAdminUi` · `useAdminUi` · `ADMIN_UI_KEY` · `AdminUserInfo` · `AdminUiOptions` · `AdminUiContext` · `AdminUiPlugin`                                                                       | 셸이 호스트 앱에서 읽는 것(사용자·로그아웃·사이트명·IP 차단·표 설정)의 전부. `app.use()` 가 provide. 게터 주입   |
+| `AdminShell` · `AdminShellMenuProps` · `AdminShellAppBarProps`                                                                                                                                  | 앱바 + 드로어 메뉴 + `RouterView`. 슬롯 `drawer` `app-bar` `banner` `default` `overlays` + 전달 슬롯(아래)       |
+| `AuthShell`                                                                                                                                                                                     | 앱바·메뉴 없는 인증 전 화면 껍데기. 슬롯 `brand`                                                                 |
+| `AppBar` · `AppBarMenuItem`                                                                                                                                                                     | 사용자 메뉴·로그아웃이 있는 앱바. 슬롯 `brand` `actions` `user-info` `user-menu`(`{ user, logout }`)             |
+| `MainMenu` · `MainMenuItem`                                                                                                                                                                     | 권한으로 걸러 그리는 사이드 메뉴. `groupMode: 'subheader' \| 'collapsible'`                                      |
+| `IpBlockedDialog`                                                                                                                                                                               | IP 차단 안내. 🔴 `App.vue` 최상위에 둔다(로그인 화면에서도 떠야 한다)                                            |
+| `MenuNode` · `filterMenu` · `buildMenu` · `flattenRoutes` · `assertParentAnyPermissionsCoverChildren`                                                                                           | 메뉴 파생 — 출처는 라우트 `meta` 하나. 선언 없음 = 공개                                                          |
+| `AdminRouteMeta` · `defineAdminRoute`                                                                                                                                                           | 라우트 `meta` 타입과 항등 헬퍼                                                                                   |
+| `createAdminGuard` · `AdminGuardDeps`                                                                                                                                                           | 전역 `beforeEach`. deps 주입, 기본 fail-closed                                                                   |
+| `createTitleGuard` · `installChunkRecovery` · `safeRedirect`                                                                                                                                    | `afterEach` 문서 제목 · 청크 404 복구(1회 새로고침) · 오픈 리다이렉트 방어                                       |
+| `createApiClient` · `ApiClientOptions` · `ApiClient` · `ApiError`                                                                                                                               | axios 팩토리. 봉투 벗김 · bigint · 401 갱신(공유 Promise) · `onAuthFailure`/`onError` 콜백                       |
+| `createAppStore` · `SessionNotEstablishedError` · `AppStoreOptions` · `AppStoreState` · `AppStoreActions`                                                                                       | 세션 pinia 스토어 팩토리(`initialize` · `login` · `logout` · `clearSession`)                                     |
+| `useDirtyGuard` · `DirtyGuardOptions` · `useTableSelection`                                                                                                                                     | 이탈 확인 · 대량 표 선택(Set + 반전 선택)                                                                        |
+| `useServerTable` · `ServerTable` · `ServerTableOptions` · `ServerTableParams`                                                                                                                   | 서버 페이징 목록 — 조회 1번 · 늦은 응답 무시 · 필터/쪽 크기 변경 시 1쪽 · 정렬 보정 · bigint `total` · `urlSync` |
+| `useQuerySyncedFilter` · `QuerySyncOptions` · `queryCodec` · `withDefault` · `bindQueryCodecs` · `QueryCodec` · `DefaultedQueryCodec` · `QueryCodecSpec` · `QuerySyncBinding` · `RawQueryValue` | 목록 상태 ↔ URL 쿼리. 타이밍 핵심(`read`·`toQuery`) + 선택형 코덱(기본 6종 · 커스텀)                             |
+| `useWriteFlow` · `WriteFlow` · `WriteRunOptions` · `ConfirmDialogBindings` · `ReauthDialogBindings`                                                                                             | 쓰기 관문(확인 · 재인증) · busy · 오류 분류. 다이얼로그는 `v-bind="confirmDialog"`                               |
+| `toFieldErrors`                                                                                                                                                                                 | `ERR_COMMON_VALIDATION` 의 `details.issues` → 필드 키별 메시지(`'members.0.name'`)                               |
 
 #### `AdminShell` 슬롯
 
@@ -143,6 +147,8 @@ export const client = createApiClient({
   baseURL: import.meta.env.VITE_API_BASE_URL,
   refreshPath: '/auth/refresh',
   noRetryPaths: ['/auth/login'],
+  // 🔴 onError 는 한 매크로태스크 뒤에 불리고, 호출처가 화면에 직접 보인 오류(`error.handled`)는
+  //    오지 않는다 — useWriteFlow 의 재인증 실패 · 필드 오류 · 충돌 안내가 토스트로 또 뜨지 않는다.
   onError: (error) => {
     // IP 차단은 토스트가 아니라 App.vue 의 IpBlockedDialog 가 알린다. 코드는 프로젝트의 에러 카탈로그 것.
     if (error.code === 'ERR_IP_NOT_ALLOWED') {
@@ -345,3 +351,49 @@ const items = buildMenu<Permission>(routes, { groups, depth: 'all' }) // setupLa
 ```
 
 `assertParentAnyPermissionsCoverChildren` 은 `meta.anyPermissions` 를 **선언한** 레코드만 검사한다(그 값을 상속하는 후손의 `permissions` 를 덮어야 한다). 선언 없는 `setupLayouts` 래퍼·폴더 노드는 건너뛰므로 파일 기반 라우팅에서도 쓸 수 있다.
+
+## 목록 · 쓰기
+
+```ts
+const applied = ref({ userId: '', teamNo: undefined as bigint | undefined })
+const { page, itemsPerPage, sortBy, items, total, loading, isFiltered, reload } = useServerTable({
+  fetch: (params) => api.get<Paginated<UserRow>>('/users', { params }),
+  sort: { keys: ['userId', 'joinAt'], default: { key: 'joinAt', order: 'desc' } },
+  filters: () => ({ userId: applied.value.userId || undefined, teamNo: applied.value.teamNo }),
+  urlSync: bindQueryCodecs(applied, {
+    userId: withDefault(queryCodec.string(), ''),
+    teamNo: queryCodec.bigint(),
+  }),
+})
+
+const { run, submitting, fieldErrors, confirmDialog, reauthDialog } = useWriteFlow()
+function resign(no: bigint) {
+  void run({
+    gate: 'reauth',
+    message: '이 계정을 퇴사 처리합니다.',
+    action: ({ currentPassword }) => api.post(`/users/${no}/resign`, { currentPassword }),
+    onSuccess: () => reload(),
+  })
+}
+```
+
+```vue
+<DataTableBody
+  v-model:page="page"
+  v-model:items-per-page="itemsPerPage"
+  v-model:sort-by="sortBy"
+  :headers="headers"
+  :items="items"
+  :items-length="total"
+  :loading="loading"
+>
+  <template #no-data><EmptyState :filtered="isFiltered" title="아직 없습니다" filtered-title="조건에 맞는 항목이 없습니다" /></template>
+</DataTableBody>
+<ConfirmDialog v-bind="confirmDialog" />
+<ReauthDialog v-bind="reauthDialog" />
+```
+
+- 반환값은 ref 묶음이다 — 구조 분해해서 템플릿에 건다(템플릿은 최상위 바인딩만 언래핑한다).
+- 표는 "적용된" 필터만 본다. 입력값과 적용값을 나눠 Enter · 버튼으로 적용한다.
+- `urlSync` 를 쓰는 화면은 동적 세그먼트 상세 라우트(`/users/:id`)가 아니어야 한다 — 같은 컴포넌트가 재사용돼 URL 감시가 꺼진다.
+- 서버는 revision 충돌에 `ERR_COMMON_REVISION_CONFLICT`, 검증 실패에 `ERR_COMMON_VALIDATION` + `details.issues[{ path: (string|number)[], message }]` 를 보낸다.

@@ -99,6 +99,7 @@ export { safeRedirect } from './router/safe-redirect.js'
 // ── API 클라이언트 ────────────────────────────────────────────────────
 export { createApiClient, type ApiClientOptions, type ApiClient } from './api/client.js'
 export { ApiError } from './api/error.js'
+export { toFieldErrors } from './api/field-errors.js'
 
 // ── 세션 스토어 ───────────────────────────────────────────────────────
 export {
@@ -112,3 +113,27 @@ export {
 // ── composable ────────────────────────────────────────────────────────
 export { useDirtyGuard, type DirtyGuardOptions } from './composables/useDirtyGuard.js'
 export { useTableSelection } from './composables/useTableSelection.js'
+export { useQuerySyncedFilter, type QuerySyncOptions } from './composables/useQuerySyncedFilter.js'
+export {
+  queryCodec,
+  withDefault,
+  bindQueryCodecs,
+  type QueryCodec,
+  type DefaultedQueryCodec,
+  type QueryCodecSpec,
+  type QuerySyncBinding,
+  type RawQueryValue,
+} from './composables/query-codec.js'
+export {
+  useServerTable,
+  type ServerTable,
+  type ServerTableOptions,
+  type ServerTableParams,
+} from './composables/useServerTable.js'
+export {
+  useWriteFlow,
+  type WriteFlow,
+  type WriteRunOptions,
+  type ConfirmDialogBindings,
+  type ReauthDialogBindings,
+} from './composables/useWriteFlow.js'
