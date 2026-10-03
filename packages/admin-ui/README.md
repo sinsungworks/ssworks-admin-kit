@@ -375,6 +375,14 @@ function resign(no: bigint) {
     onSuccess: () => reload(),
   })
 }
+
+// 폼이 그리지 않는 키(루트 '' · 중첩 경로 · 재인증의 currentPassword …)를 모아 보여 준다.
+const formKeys = ['userId', 'userName']
+const otherErrors = computed(() =>
+  Object.entries(fieldErrors.value)
+    .filter(([key]) => !formKeys.includes(key))
+    .flatMap(([, messages]) => messages),
+)
 ```
 
 ```vue
@@ -389,6 +397,11 @@ function resign(no: bigint) {
 >
   <template #no-data><EmptyState :filtered="isFiltered" title="아직 없습니다" filtered-title="조건에 맞는 항목이 없습니다" /></template>
 </DataTableBody>
+<VAlert v-if="otherErrors.length" type="error">
+  <div v-for="message in otherErrors" :key="message">{{ message }}</div>
+</VAlert>
+<VTextField v-model="form.userId" label="아이디" :error-messages="fieldErrors.userId" />
+<VBtn :disabled="submitting" @click="resign(no)">퇴사 처리</VBtn>
 <ConfirmDialog v-bind="confirmDialog" />
 <ReauthDialog v-bind="reauthDialog" />
 ```
@@ -396,4 +409,6 @@ function resign(no: bigint) {
 - 반환값은 ref 묶음이다 — 구조 분해해서 템플릿에 건다(템플릿은 최상위 바인딩만 언래핑한다).
 - 표는 "적용된" 필터만 본다. 입력값과 적용값을 나눠 Enter · 버튼으로 적용한다.
 - `urlSync` 를 쓰는 화면은 동적 세그먼트 상세 라우트(`/users/:id`)가 아니어야 한다 — 같은 컴포넌트가 재사용돼 URL 감시가 꺼진다.
+- 목록이 중첩 자식 라우트(`/users` 아래 `/users/:id` 드로어) 밑에서도 마운트된 채 남는 구조라면 상태와 URL 이 어긋날 수 있다 — 그런 화면에서는 `urlSync` 를 피하거나 쓰지 않는다.
+- 🔴 필드 오류는 처리됨으로 표시돼 전역 토스트가 뜨지 않는다 — 폼이 그리지 않는 키(루트 `''` 포함)는 반드시 따로 보여 줘야 한다. 안 그리면 오류가 조용히 사라진다.
 - 서버는 revision 충돌에 `ERR_COMMON_REVISION_CONFLICT`, 검증 실패에 `ERR_COMMON_VALIDATION` + `details.issues[{ path: (string|number)[], message }]` 를 보낸다.
