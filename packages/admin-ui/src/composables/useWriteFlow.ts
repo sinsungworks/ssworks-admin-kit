@@ -1,4 +1,12 @@
-import { computed, ref, shallowRef, type ComputedRef, type Ref } from 'vue'
+import {
+  computed,
+  getCurrentScope,
+  onScopeDispose,
+  ref,
+  shallowRef,
+  type ComputedRef,
+  type Ref,
+} from 'vue'
 import { CommonErrorCodes } from '@ssworks/admin-shared'
 import { ApiError } from '../api/error.js'
 import { toFieldErrors } from '../api/field-errors.js'
@@ -129,8 +137,9 @@ export function useWriteFlow(): WriteFlow {
           ? await options.action({ currentPassword: currentPassword ?? '' })
           : await options.action()
     } catch (caught) {
-      submitting.value = false
-      onFailure(current, caught)
+      // 🔴 비동기 `onConflict` 를 기다리는 동안은 submitting 을 유지한다(onSuccess 와 같게) — 풀면 `run()` 은
+      //    pending 때문에 조용히 false 인데 버튼은 켜져 보인다.
+      if (!onFailure(current, caught)) submitting.value = false
       return
     }
     closeGates()
@@ -144,12 +153,15 @@ export function useWriteFlow(): WriteFlow {
     }
   }
 
-  /** 🔴 `handled` 표시는 이 함수의 동기 구간에서 한다 — 지연 `onError` 보다 먼저여야 한다. */
-  function onFailure(current: Pending, caught: unknown): void {
+  /**
+   * 🔴 `handled` 표시는 이 함수의 동기 구간에서 한다 — 지연 `onError` 보다 먼저여야 한다.
+   * 반환값 true 는 `onConflict` 가 끝날 때까지 `submitting` 을 이 함수가 이어서 책임진다는 뜻이다.
+   */
+  function onFailure(current: Pending, caught: unknown): boolean {
     if (!(caught instanceof ApiError)) {
       closeGates()
       settle(current, { error: caught })
-      return
+      return false
     }
     const { options } = current
     if (
@@ -163,7 +175,7 @@ export function useWriteFlow(): WriteFlow {
       // 🔴 다이얼로그를 닫지 않는다 — 닫으면 사용자가 뒤의 폼을 처음부터 다시 채운다(hangang).
       caught.handled = true
       reauthError.value = caught.message
-      return
+      return false
     }
     if (caught.code === CommonErrorCodes.ERR_COMMON_VALIDATION) {
       const mapped = toFieldErrors(caught)
@@ -179,13 +191,20 @@ export function useWriteFlow(): WriteFlow {
       void Promise.resolve()
         .then(() => onConflict(caught))
         .then(
-          () => settle(current, { ok: false }),
-          (error: unknown) => settle(current, { error }),
+          () => {
+            submitting.value = false
+            settle(current, { ok: false })
+          },
+          (error: unknown) => {
+            submitting.value = false
+            settle(current, { error })
+          },
         )
-      return
+      return true
     }
     closeGates()
     settle(current, { ok: false })
+    return false
   }
 
   function onGateModel(gate: 'confirm' | 'reauth', open: boolean): void {
@@ -198,6 +217,15 @@ export function useWriteFlow(): WriteFlow {
     // 실행 중에 닫혔으면 결과를 기다린다 — 요청은 이미 나갔다. 끝나면 execute 가 정리한다.
     const current = pending.value
     if (current && !submitting.value) settle(current, { ok: false })
+  }
+
+  // 🔴 관문이 열린 채 컴포넌트가 사라지면 `await run()` 이 영구히 멈춘다 — false 로 끝낸다. 요청이 이미 나간
+  //    실행 중(submitting)이면 결과를 기다린다.
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      const current = pending.value
+      if (current && !submitting.value) settle(current, { ok: false })
+    })
   }
 
   const confirmDialog = computed<ConfirmDialogBindings>(() => {

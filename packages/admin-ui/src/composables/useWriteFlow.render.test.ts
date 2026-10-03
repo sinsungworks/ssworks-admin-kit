@@ -344,4 +344,31 @@ describe('useWriteFlow — 막히지 않는 흐름', () => {
     expect(await settledOrStuck(pending)).toBe(false)
     await expectNextRunWorks(flow)
   })
+
+  it('🔴 비동기 onConflict 가 끝날 때까지 submitting 은 true — 끝나면 false, 다음 실행이 된다', async () => {
+    const flow = await setup()
+    let finish!: () => void
+    const onConflict = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)))
+    const pending = flow.run({
+      action: vi.fn().mockRejectedValue(apiError('ERR_COMMON_REVISION_CONFLICT')),
+      onConflict,
+    })
+    await flushPromises()
+    expect(onConflict).toHaveBeenCalledTimes(1)
+    expect(flow.submitting.value).toBe(true)
+    finish()
+    expect(await settledOrStuck(pending)).toBe(false)
+    expect(flow.submitting.value).toBe(false)
+    await expectNextRunWorks(flow)
+  })
+
+  it('🔴 확인 관문이 열린 채 언마운트하면 대기 중인 run() 이 false 로 끝난다', async () => {
+    const flow = await setup()
+    const pending = flow.run({ gate: 'confirm', reversible: true, action: async () => 1 })
+    await flushPromises()
+    expect(flow.confirmDialog.value.modelValue).toBe(true)
+    wrapper?.unmount()
+    wrapper = null
+    expect(await settledOrStuck(pending)).toBe(false)
+  })
 })
