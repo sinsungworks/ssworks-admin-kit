@@ -178,7 +178,7 @@ const { page, itemsPerPage, sortBy, items, total, loading, isFiltered, reload } 
 3. **필터·쪽 크기 변경 → 1쪽.** 필터 안정 문자열이나 `itemsPerPage` 가 바뀌면 `page = 1` 을 같은 틱에 처리해 조회 1번(쪽 크기를 키우면 지금 쪽 번호가 범위를 넘을 수 있다). **URL 인바운드 복원 중에는 하지 않는다** — 복원한 쪽 번호가 같은 틱에 1로 덮인다(crm `onInbound` 의 이유를 표가 내부에서 처리).
 4. **정렬 보정.** `sortBy[0].key` 가 `keys` 밖이거나 `sortBy` 가 비면(Vuetify 는 같은 헤더 세 번째 클릭에 `[]` 로 만든다) 기본 정렬로 대체하고, `sortBy` ref 자체도 되돌려 라벨·화살표·요청이 한 값을 보게 한다(hangang). `sort: false` 면 `sortBy`·`sortOrder` 는 빈 배열로 보낸다.
 5. **`total` 은 number.** bigint 면 `Number()` — `DataTableBody.itemsLength` 는 number 라 그대로 넘기면 타입은 통과하는데 표가 조용히 틀린다(hangang 🔴).
-6. **오류.** `items = []`, `total = 0`, `error = toApiError(e)`. 처리 표시는 하지 않는다 — 알림은 전역 `onError` 몫이다. 다음 조회 시작 때 `error = null`.
+6. **오류.** `items = []`, `total` 은 유지(R4), `error = toApiError(e)`. 처리 표시는 하지 않는다 — 알림은 전역 `onError` 몫이다. 다음 조회 시작 때 `error = null`.
 7. **`urlSync`.** 표가 `page`(1이면 생략) · `size`(기본값이면 생략) · `sort`(`key:order`, 기본 정렬이면 생략)를 URL 에 싣고 읽는다. 필터 키는 `urlSync.read`·`toQuery` 몫. 필터 `toQuery()` 결과에 `page`·`size`·`sort` 키가 나오면(기본값 생략 때문에 setup 시점엔 안 보일 수 있으니 **쓸 때마다** 검사) 개발 빌드에서 throw, 배포 빌드는 `console.error` 후 표 값으로 덮어 진행(crm 과 같은 이유 — 배포에서 던지면 화면이 백지).
 8. **itemsPerPage** 는 1..100 으로 자르고 정수가 아니면 기본값.
 
@@ -303,3 +303,8 @@ TDD — 실패하는 테스트부터. 라우터는 `createMemoryHistory`, 지연
 - **R1 — `ERR_COMMON_CONFLICT` 는 "상태 전이 충돌" 로 좁혔다.** §4-6 은 "중복 값 · 상태 전이 충돌" 이라 적었으나 중복 값에는 이미 `ERR_COMMON_DUPLICATED`(409)가 있다.
 - **R2 — `urlSync` 키 충돌은 환경과 무관하게 `console.error` 후 표 값으로 덮는다.** §4-3 의 "개발 빌드에서 throw" 는 라이브러리에서 지킬 수 없다 — vite 라이브러리 빌드는 `import.meta.env.DEV` 를 빌드 시점 상수(`false`)로 바꿔, 소비 앱의 개발 모드를 모른다.
 - **R3 — `confirmColor` 는 `gate: 'confirm'` 옵션에만 둔다.** §4-4 의 `DialogText` 주석("confirm 관문만")을 타입으로 옮겼다.
+- **R4 — 조회 오류 시 `total` 을 0 으로 만들지 않고 이전 값을 유지한다**(§4-3 #6 정정). 0 이면 VDataTableServer 가 `page > ceil(total/size)` 로 보고 page 를 1 로 되돌려 실패한 요청이 한 번 더 나가고 URL 의 `page` 가 사라진다(최종 리뷰 F1 · S1).
+- **R5 — urlSync 복원(`read()`) 때 `total` 을 `(page - 1) * itemsPerPage + 1` 까지 임시로 올린다.** 낡은(작은) total 이 복원한 쪽 번호를 Vuetify 가 되돌리지 못하게 한다. 새 조회가 끝나면 진짜 total 로 바뀐다(F1 · S2).
+- **R6 — 재인증 다이얼로그를 처리 중에 닫은 뒤 `ERR_REAUTH_REQUIRED` 가 오면 handled 로 표시하지 않는다.** 문구를 보일 곳이 없으므로 전역 토스트가 알린다(Task 7 수정).
+- **R7 — 비동기 `onConflict` 가 끝날 때까지 `submitting` 을 true 로 유지한다**(`onSuccess` 와 같게). 그동안 `run()` 이 조용히 false 를 돌려주는데 버튼은 켜져 보이던 문제를 없앤다(F4).
+- **R8 — 확인 · 재인증 관문이 열린 채 컴포넌트(스코프)가 해제되면 대기 중인 `run()` 을 false 로 settle 한다.** `await run()` 이 영구히 멈추지 않게 한다(F5).

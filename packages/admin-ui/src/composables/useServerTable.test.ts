@@ -192,7 +192,7 @@ describe('useServerTable — 1쪽 되돌리기 · 정렬 보정', () => {
 })
 
 describe('useServerTable — 오류 · isFiltered', () => {
-  it('실패하면 목록을 비우고 error 에 ApiError — 처리 표시는 안 한다, 다음 조회 시작에 비운다', async () => {
+  it('실패하면 목록을 비우고(total 은 유지 — R4) error 에 ApiError — 처리 표시는 안 한다, 다음 조회 시작에 비운다', async () => {
     const failure = new ApiError('서버 오류', {
       status: 500,
       code: 'ERR_COMMON_INTERNAL',
@@ -208,7 +208,7 @@ describe('useServerTable — 오류 · isFiltered', () => {
     table().page.value = 2
     await flushPromises()
     expect(table().items.value).toEqual([])
-    expect(table().total.value).toBe(0)
+    expect(table().total.value).toBe(1)
     expect(table().error.value).toBe(failure)
     expect(failure.handled).toBe(false)
     await table().reload()

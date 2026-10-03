@@ -153,6 +153,13 @@ export function useServerTable<TRow, TFilter extends object = Record<string, nev
           itemsPerPage.value = sizeCodec.decode(query.size)
           sortBy.value = decodeSort(query.sort)
           urlSync.read(query)
+          // 🔴 낡은 total 이 복원한 쪽 번호를 덮지 않게 한다 — VDataTableServer 는 page 가
+          //    ceil(total / size) 를 넘으면 현재 total 로 page 를 되돌린다. 필터로 총계가 작아진 뒤
+          //    `?page=5` 로 돌아오면(뒤로 가기)
+          //    새 조회가 끝나기 전에 1쪽으로 밀려 복원이 사라진다. 그 쪽이 존재할 만큼만 임시로 올리고, 조회가
+          //    끝나면 진짜 total 이 대신한다(정말 범위 밖이면 그때 Vuetify 가 되돌린다 — 맞는 동작).
+          const needed = (page.value - 1) * itemsPerPage.value + 1
+          if (total.value < needed) total.value = needed
         } finally {
           restoring = false
         }
@@ -252,8 +259,9 @@ export function useServerTable<TRow, TFilter extends object = Record<string, nev
       if (!(caught instanceof ApiError)) {
         console.error('[useServerTable] fetch 가 ApiError 가 아닌 예외를 던졌다', caught)
       }
+      // 🔴 total 을 0 으로 만들지 않는다 — 0 이면 VDataTableServer 가 page 를 1 로 되돌려 실패한 요청이
+      //    한 번 더 나가고, 사용자는 1쪽으로 튀며 URL 의 page 도 사라진다. 이전 total 을 유지한다.
       items.value = []
-      total.value = 0
       error.value = toApiError(caught)
     } finally {
       if (mine === seq) loading.value = false
