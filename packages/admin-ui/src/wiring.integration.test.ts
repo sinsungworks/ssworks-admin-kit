@@ -12,6 +12,7 @@ import { createUsePermission } from './permission/createUsePermission.js'
 import { createAdminGuard } from './router/guard.js'
 import { defineAdminRoute } from './router/route-meta.js'
 import { createAppStore } from './store/app-store.js'
+import { useWriteFlow } from './composables/useWriteFlow.js'
 
 // README「최소 배선」을 그대로 옮겨 패키지 실물로 돌린다. 템플릿이 이 배선을 복사하므로 README 를 고치면
 // 여기도 같이 고친다. (네트워크는 axios 어댑터 교체 — api/client.test.ts 와 같은 방식)
@@ -242,5 +243,45 @@ describe('README 최소 배선 — IP 차단', () => {
     blocked = false
     await useAppStore().login({ userId: 'kim01', password: 'pw' })
     expect(ipBlock).toEqual({ blocked: false, ip: '' })
+  })
+})
+
+describe('README 최소 배선 — 쓰기 오류와 전역 토스트(D3)', () => {
+  const fail = (status: number, code: string, details?: unknown): Reply => ({
+    status,
+    body: { success: false, code, message: code, details },
+  })
+
+  it('🔴 매핑된 검증 오류 · 열린 재인증 실패는 전역 onError 에 닿지 않고, 매핑 안 된 검증 오류는 정확히 1번 닿는다', async () => {
+    let reply: Reply = ok(null)
+    const { api, toast } = setup(() => reply)
+    const flow = useWriteFlow()
+
+    // 매핑된 검증 오류 → fieldErrors, 토스트 없음
+    reply = fail(400, 'ERR_COMMON_VALIDATION', { issues: [{ path: ['name'], message: 'req' }] })
+    expect(await flow.run({ action: () => api.post('/users', {}) })).toBe(false)
+    await settle()
+    expect(flow.fieldErrors.value).toEqual({ name: ['req'] })
+    expect(toast.error).not.toHaveBeenCalled()
+
+    // 재인증 실패 + 다이얼로그 열림 → 다이얼로그 문구, 토스트 없음
+    reply = fail(403, 'ERR_REAUTH_REQUIRED')
+    const pending = flow.run({
+      gate: 'reauth',
+      // 🔴 async 래퍼 — 소비 앱이 흔히 이렇게 감싼다. handled 표시는 마이크로태스크 안에서도 늦지 않아야 한다.
+      action: async ({ currentPassword }) => api.post('/users/1/resign', { currentPassword }),
+    })
+    flow.reauthDialog.value.onConfirm('wrong')
+    await settle()
+    expect(flow.reauthDialog.value.error).toBe('ERR_REAUTH_REQUIRED')
+    expect(toast.error).not.toHaveBeenCalled()
+    flow.reauthDialog.value['onUpdate:modelValue'](false)
+    expect(await pending).toBe(false)
+
+    // 매핑 안 되는 검증 오류 → 전역 토스트 1번
+    reply = fail(400, 'ERR_COMMON_VALIDATION', { other: 1 })
+    expect(await flow.run({ action: () => api.post('/users', {}) })).toBe(false)
+    await settle()
+    expect(toast.error).toHaveBeenCalledTimes(1)
   })
 })
