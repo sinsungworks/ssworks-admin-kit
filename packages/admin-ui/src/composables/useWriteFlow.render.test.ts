@@ -256,3 +256,92 @@ describe('useWriteFlow — 결과 분류', () => {
     expect(await flow.run({ action: async () => 1 })).toBe(true)
   })
 })
+
+describe('useWriteFlow — 막히지 않는 흐름', () => {
+  const stuck = Symbol('stuck')
+  async function settledOrStuck<T>(promise: Promise<T>): Promise<T | typeof stuck> {
+    await flushPromises()
+    return Promise.race([promise, Promise.resolve(stuck)])
+  }
+  async function expectNextRunWorks(flow: WriteFlow) {
+    expect(await settledOrStuck(flow.run({ action: async () => 1 }))).toBe(true)
+  }
+
+  it('🔴 처리 중에 재인증 다이얼로그를 닫은 뒤 ERR_REAUTH_REQUIRED 로 실패해도 false 로 끝나고 handled 가 아니다', async () => {
+    const flow = await setup()
+    const failure = apiError('ERR_REAUTH_REQUIRED')
+    let fail!: (error: unknown) => void
+    const action = vi.fn(() => new Promise<void>((_resolve, reject) => (fail = reject)))
+    const pending = flow.run({ gate: 'reauth', action })
+    await flushPromises()
+    await typePassword('pw')
+    await click('확인')
+    flow.reauthDialog.value['onUpdate:modelValue'](false)
+    await flushPromises()
+    fail(failure)
+    expect(await settledOrStuck(pending)).toBe(false)
+    expect(failure.handled).toBe(false)
+    expect(flow.reauthDialog.value.modelValue).toBe(false)
+    await expectNextRunWorks(flow)
+  })
+
+  it('onSuccess 가 던지면 run() 이 그 오류로 reject 하고 다음 실행은 막히지 않는다', async () => {
+    const flow = await setup()
+    const boom = new Error('onSuccess boom')
+    await expect(
+      flow.run({
+        action: async () => 1,
+        onSuccess: () => {
+          throw boom
+        },
+      }),
+    ).rejects.toBe(boom)
+    expect(flow.submitting.value).toBe(false)
+    await expectNextRunWorks(flow)
+  })
+
+  it('onConflict 가 던지면 run() 이 그 오류로 reject 하고 다음 실행은 막히지 않는다', async () => {
+    const flow = await setup()
+    const boom = new Error('onConflict boom')
+    const failure = apiError('ERR_COMMON_REVISION_CONFLICT')
+    await expect(
+      flow.run({
+        action: vi.fn().mockRejectedValue(failure),
+        onConflict: () => {
+          throw boom
+        },
+      }),
+    ).rejects.toBe(boom)
+    await expectNextRunWorks(flow)
+  })
+
+  it('재인증 관문의 action 이 ApiError 가 아닌 예외를 던지면 reject, 다이얼로그는 닫히고 다음 실행은 막히지 않는다', async () => {
+    const flow = await setup()
+    const bug = new TypeError('x is undefined')
+    const pending = flow.run({ gate: 'reauth', action: vi.fn().mockRejectedValue(bug) })
+    const caught = pending.catch((error: unknown) => error)
+    await flushPromises()
+    await typePassword('pw')
+    await click('확인')
+    expect(await caught).toBe(bug)
+    expect(flow.reauthDialog.value.modelValue).toBe(false)
+    await expectNextRunWorks(flow)
+  })
+
+  it('재인증 실패 문구가 보이는 상태에서 취소하면 false 로 끝나고 다음 실행은 막히지 않는다', async () => {
+    const flow = await setup()
+    const failure = new ApiError('현재 비밀번호가 올바르지 않습니다', {
+      status: 403,
+      code: 'ERR_REAUTH_REQUIRED',
+      raw: null,
+    })
+    const pending = flow.run({ gate: 'reauth', action: vi.fn().mockRejectedValue(failure) })
+    await flushPromises()
+    await typePassword('wrong')
+    await click('확인')
+    expect(document.body.textContent).toContain('현재 비밀번호가 올바르지 않습니다')
+    await click('취소')
+    expect(await settledOrStuck(pending)).toBe(false)
+    await expectNextRunWorks(flow)
+  })
+})

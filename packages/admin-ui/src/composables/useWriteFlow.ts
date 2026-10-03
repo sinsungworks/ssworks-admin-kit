@@ -152,7 +152,14 @@ export function useWriteFlow(): WriteFlow {
       return
     }
     const { options } = current
-    if (caught.code === CommonErrorCodes.ERR_REAUTH_REQUIRED && options.gate === 'reauth') {
+    if (
+      caught.code === CommonErrorCodes.ERR_REAUTH_REQUIRED &&
+      options.gate === 'reauth' &&
+      reauthOpen.value
+    ) {
+      // 🔴 다이얼로그가 아직 열려 있을 때만 유지한다 — 처리 중에 사용자가 닫았으면 문구를 보일 곳이 없고,
+      //    여기서 settle 없이 return 하면 pending 이 남아 이후 run() 이 영구히 false 가 된다. 닫혔으면
+      //    아래로 흘려 handled 없이(전역 토스트가 알림) 정리한다.
       // 🔴 다이얼로그를 닫지 않는다 — 닫으면 사용자가 뒤의 폼을 처음부터 다시 채운다(hangang).
       caught.handled = true
       reauthError.value = caught.message
