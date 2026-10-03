@@ -12,6 +12,13 @@ export class ApiError extends Error {
   readonly details?: unknown
   /** 원본 — AxiosError 또는 응답 본문. 모양이 다른 서버 오류를 호출자가 직접 읽을 때 쓴다. */
   readonly raw: unknown
+  /**
+   * 🔴 호출처가 이 오류를 화면에 직접 보였다는 표시(재인증 다이얼로그 안 문구 · 필드 오류 · 충돌 안내).
+   *    `createApiClient` 는 `onError` 를 한 매크로태스크 뒤에 부르고, 그때 이 값이 true 면 건너뛴다 —
+   *    전역 토스트로 두 번 알리지 않는다. `catch` 안에서 **동기로**(또는 마이크로태스크 안에서) 세운다.
+   *    타이머를 한 번이라도 기다린 뒤 세우면 이미 늦다.
+   */
+  handled = false
 
   constructor(
     message: string,

@@ -25,8 +25,14 @@ export const CommonErrorCodes = {
   /** 인증은 됐으나 권한이 없음. fail-closed 가드의 기본 응답 */
   ERR_COMMON_FORBIDDEN: 'ERR_COMMON_FORBIDDEN',
   ERR_COMMON_NOT_FOUND: 'ERR_COMMON_NOT_FOUND',
-  /** 상태 전이 충돌 · 낙관적 잠금(revision) 불일치 */
+  /** 상태 전이 충돌(이미 처리됨 · 지금 상태에서 허용되지 않는 전이). 중복 값은 `ERR_COMMON_DUPLICATED` */
   ERR_COMMON_CONFLICT: 'ERR_COMMON_CONFLICT',
+  /**
+   * 낙관적 잠금(revision) 불일치 — 다른 곳에서 먼저 바뀌었다. 프론트는 다시 불러오기를 안내한다.
+   * 🔴 `ERR_COMMON_CONFLICT` 와 가른다. 한 코드에 두 뜻을 실으면 프론트가 "다시 불러오기" 와
+   *    "값을 고치세요" 를 구분하지 못한다(gise 역할 폼이 실제로 겪었다).
+   */
+  ERR_COMMON_REVISION_CONFLICT: 'ERR_COMMON_REVISION_CONFLICT',
   /** 유니크 제약 위반 */
   ERR_COMMON_DUPLICATED: 'ERR_COMMON_DUPLICATED',
   /** 다른 행이 참조 중이라 삭제·변경 불가 (FK restrict) */
@@ -87,6 +93,7 @@ export const COMMON_ERROR_STATUS: Record<CommonErrorCode, number> = {
   [CommonErrorCodes.ERR_COMMON_FORBIDDEN]: 403,
   [CommonErrorCodes.ERR_COMMON_NOT_FOUND]: 404,
   [CommonErrorCodes.ERR_COMMON_CONFLICT]: 409,
+  [CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT]: 409,
   [CommonErrorCodes.ERR_COMMON_DUPLICATED]: 409,
   [CommonErrorCodes.ERR_COMMON_IN_USE]: 409,
   [CommonErrorCodes.ERR_COMMON_PAYLOAD_TOO_LARGE]: 413,

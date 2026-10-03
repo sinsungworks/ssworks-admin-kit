@@ -185,6 +185,7 @@ describe('README 최소 배선 — 미인증 첫 진입', () => {
     await expect(useAppStore().login({ userId: 'kim01', password: 'wrong' })).rejects.toThrow(
       ApiError,
     )
+    await settle()
     expect(toast.error).not.toHaveBeenCalled()
   })
 
@@ -194,6 +195,7 @@ describe('README 최소 배선 — 미인증 첫 진입', () => {
       body: { success: false, code: 'ERR_INTERNAL', message: '서버 오류' },
     }))
     await expect(api.get('/anything')).rejects.toThrow('서버 오류')
+    await settle()
     expect(toast.error).toHaveBeenCalledWith('서버 오류')
   })
 })
@@ -227,6 +229,7 @@ describe('README 최소 배선 — IP 차단', () => {
       return blocked ? ipBlocked() : ok([])
     })
     await expect(api.get('/users')).rejects.toThrow(ApiError)
+    await settle()
     expect(ipBlock).toEqual({ blocked: true, ip: '203.0.113.9' })
     expect(toast.error).not.toHaveBeenCalled()
 
@@ -234,6 +237,7 @@ describe('README 최소 배선 — IP 차단', () => {
     expect(ipBlock).toEqual({ blocked: false, ip: '' })
 
     await expect(api.get('/users')).rejects.toThrow(ApiError)
+    await settle()
     expect(ipBlock.blocked).toBe(true)
     blocked = false
     await useAppStore().login({ userId: 'kim01', password: 'pw' })

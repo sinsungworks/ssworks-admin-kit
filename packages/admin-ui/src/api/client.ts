@@ -30,7 +30,10 @@ export interface ApiClientOptions {
   bigint?: boolean
   /** 갱신이 실패했다 = 로그아웃 상태다. 한 번의 실패에 한 번 불린다. */
   onAuthFailure?: () => void
-  /** `api.*` 가 거부하는 최종 실패마다 한 번. 갱신으로 복구되는 중간 401 은 안 불린다. */
+  /**
+   * `api.*` 가 거부하는 최종 실패마다 한 번, **한 매크로태스크 뒤에**. 갱신으로 복구되는 중간 401 은
+   * 안 불린다. 호출처가 `error.handled = true` 로 표시한 오류도 안 불린다(이미 화면에 보였다).
+   */
   onError?: (error: ApiError) => void
 }
 
@@ -199,10 +202,18 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       return data as T // 봉투가 아닌 본문(204 빈 본문 등)
     } catch (error) {
       const apiError = toApiError(error)
-      try {
-        onError?.(apiError)
-      } catch (hookError) {
-        console.error('onError 훅 오류', hookError)
+      if (onError) {
+        // 🔴 한 매크로태스크 뒤에 부른다. 호출처의 await 연쇄와 catch 는 전부 마이크로태스크라 그
+        //    사이에 끝난다 — 거기서 `handled` 를 세운 오류(useWriteFlow 가 다이얼로그·필드에 직접
+        //    보인 것)는 전역 토스트로 두 번 알리지 않는다.
+        setTimeout(() => {
+          if (apiError.handled) return
+          try {
+            onError(apiError)
+          } catch (hookError) {
+            console.error('onError 훅 오류', hookError)
+          }
+        }, 0)
       }
       throw apiError
     }

@@ -55,6 +55,8 @@ function stub(
 }
 
 const ok = (data: unknown): Reply => ({ body: { success: true, data } })
+/** 🔴 onError 는 한 매크로태스크 뒤에 불린다 — 단언 전에 이것을 기다린다. */
+const macrotask = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 const unauthorized = (): Reply => ({
   status: 401,
   body: { success: false, code: 'ERR_AUTH_UNAUTHORIZED', message: 'x' },
@@ -101,6 +103,7 @@ describe('봉투 · bigint 기본 경로', () => {
     const client = createApiClient({ baseURL: '/api', onError })
     stub(client, () => ({ body: { success: false, code: 'ERR_X', message: 'm' } }))
     await expect(client.api.get('/x')).rejects.toMatchObject({ code: 'ERR_X', message: 'm' })
+    await macrotask()
     expect(onError).toHaveBeenCalledTimes(1)
   })
 })
@@ -168,6 +171,7 @@ describe('ApiError 정규화 · onError', () => {
       details: { a: 1 },
     })
     expect((error as ApiError).raw).toBeDefined()
+    await macrotask()
     expect(onError).toHaveBeenCalledTimes(1)
     expect(onError).toHaveBeenCalledWith(error)
   })
@@ -209,6 +213,7 @@ describe('ApiError 정규화 · onError', () => {
     expect(error).toBeInstanceOf(ApiError)
     expect(error.status).toBeUndefined()
     expect(error.message).toBe('Network Error')
+    await macrotask()
     expect(onError).toHaveBeenCalledTimes(1)
   })
 
@@ -223,7 +228,55 @@ describe('ApiError 정규화 · onError', () => {
     const client = createApiClient({ baseURL: '/api', onError })
     stub(client, () => ok(1))
     await client.api.get('/x')
+    await macrotask()
     expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('🔴 onError 는 한 매크로태스크 뒤에 불린다 — 거부 직후에는 아직 안 불렸다', async () => {
+    const onError = vi.fn()
+    const client = createApiClient({ baseURL: '/api', onError })
+    stub(client, () => ({ status: 500, body: { success: false, code: 'ERR_X', message: 'm' } }))
+    await client.api.get('/x').catch(() => {})
+    expect(onError).not.toHaveBeenCalled()
+    await macrotask()
+    expect(onError).toHaveBeenCalledTimes(1)
+  })
+
+  it('🔴 catch 에서 handled 를 세우면 onError 를 건너뛴다 — 마이크로태스크를 거쳐도 늦지 않다', async () => {
+    const onError = vi.fn()
+    const client = createApiClient({ baseURL: '/api', onError })
+    stub(client, () => ({ status: 500, body: { success: false, code: 'ERR_X', message: 'm' } }))
+    await client.api.get('/x').catch(async (error: ApiError) => {
+      await Promise.resolve()
+      error.handled = true
+    })
+    await macrotask()
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('handled 를 매크로태스크 뒤에 세우면 이미 늦다 — onError 가 불린다(계약의 경계)', async () => {
+    const onError = vi.fn()
+    const client = createApiClient({ baseURL: '/api', onError })
+    stub(client, () => ({ status: 500, body: { success: false, code: 'ERR_X', message: 'm' } }))
+    const error = (await client.api.get('/x').catch((e: unknown) => e)) as ApiError
+    await macrotask()
+    error.handled = true
+    expect(onError).toHaveBeenCalledTimes(1)
+  })
+
+  it('onError 훅이 던져도 격리된다', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const client = createApiClient({
+      baseURL: '/api',
+      onError: () => {
+        throw new Error('boom')
+      },
+    })
+    stub(client, () => ({ status: 500, body: { success: false, code: 'ERR_X', message: 'm' } }))
+    await expect(client.api.get('/x')).rejects.toBeInstanceOf(ApiError)
+    await macrotask()
+    expect(log).toHaveBeenCalledWith('onError 훅 오류', expect.any(Error))
+    log.mockRestore()
   })
 })
 
@@ -243,6 +296,7 @@ describe('401 갱신', () => {
     })
     expect(await client.api.get('/me')).toEqual({ v: 1 })
     expect(seen.map((s) => s.url)).toEqual(['/me', '/auth/refresh', '/me'])
+    await macrotask()
     expect(onError).not.toHaveBeenCalled()
     expect(onAuthFailure).not.toHaveBeenCalled()
   })
@@ -299,6 +353,7 @@ describe('401 갱신', () => {
     expect(seen.filter((s) => s.url === '/auth/refresh')).toHaveLength(1)
     expect(onAuthFailure).toHaveBeenCalledTimes(1)
     expect(registered).toHaveBeenCalledTimes(1)
+    await macrotask()
     expect(onError).toHaveBeenCalledTimes(3)
   })
 
@@ -326,6 +381,7 @@ describe('401 갱신', () => {
     )
     await expect(client.api.get('/a')).rejects.toMatchObject({ status: 401 })
     expect(seen.filter((s) => s.url === '/auth/refresh')).toHaveLength(1)
+    await macrotask()
     expect(onError).toHaveBeenCalledTimes(1)
   })
 

@@ -45,6 +45,14 @@ describe('CommonErrorCodes — 코어 코드 표', () => {
       expect(COMMON_ERROR_STATUS[code], code).toBe(401)
     }
   })
+
+  it('revision 충돌은 전용 코드다 — 409, ERR_COMMON_CONFLICT 와 다른 값', () => {
+    expect(CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT).toBe('ERR_COMMON_REVISION_CONFLICT')
+    expect(COMMON_ERROR_STATUS[CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT]).toBe(409)
+    expect(CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT).not.toBe(
+      CommonErrorCodes.ERR_COMMON_CONFLICT,
+    )
+  })
 })
 
 describe('defineErrorCodes — 프로젝트 코드 병합', () => {
