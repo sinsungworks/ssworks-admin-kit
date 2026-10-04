@@ -1,6 +1,6 @@
 {
   "name": "@ssworks/admin-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "관리자 API 공통 NestJS 모듈 — DB 모듈, 인증/세션, 권한 가드, 감사 로그, users/roles/teams 모듈. (Phase 2 — 아직 골격만)",
   "license": "MIT",
