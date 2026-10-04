@@ -123,6 +123,8 @@ export function useServerTable<TRow, TFilter extends object = Record<string, nev
   // ── URL 동기화 — 🔴 아래 감시들보다 먼저. 초기 복원이 감시에 관측되면 첫 요청이 2번 나간다.
   /** URL 에서 상태를 되채우는 중 — 이 동안의 필터·크기 변경은 1쪽 되돌리기를 하지 않는다. */
   let restoring = false
+  /** setup 의 첫 복원이 끝났는가 — 임시 total 은 그 뒤의 인바운드 복원에만 필요하다. */
+  let restoredOnce = false
   let flushUrl: () => Promise<void> = () => Promise.resolve()
   const urlSync = options.urlSync
   if (urlSync) {
@@ -153,15 +155,20 @@ export function useServerTable<TRow, TFilter extends object = Record<string, nev
           itemsPerPage.value = sizeCodec.decode(query.size)
           sortBy.value = decodeSort(query.sort)
           urlSync.read(query)
-          // 🔴 낡은 total 이 복원한 쪽 번호를 덮지 않게 한다 — VDataTableServer 는 page 가
+          // 🔴 낡은 total 이 복원한 쪽 번호를 덮지 않게 한다 — 이미 떠 있는 VDataTableServer 는 page 가
           //    ceil(total / size) 를 넘으면 현재 total 로 page 를 되돌린다. 필터로 총계가 작아진 뒤
-          //    `?page=5` 로 돌아오면(뒤로 가기)
-          //    새 조회가 끝나기 전에 1쪽으로 밀려 복원이 사라진다. 그 쪽이 존재할 만큼만 임시로 올리고, 조회가
-          //    끝나면 진짜 total 이 대신한다(정말 범위 밖이면 그때 Vuetify 가 되돌린다 — 맞는 동작).
-          const needed = (page.value - 1) * itemsPerPage.value + 1
-          if (total.value < needed) total.value = needed
+          //    `?page=5` 로 돌아오면(뒤로 가기) 새 조회가 끝나기 전에 1쪽으로 밀려 복원이 사라진다. 그 쪽이
+          //    존재할 만큼만 임시로 올리고, 조회가 성공하면 진짜 total 이 대신한다(정말 범위 밖이면 그때
+          //    Vuetify 가 되돌린다 — 맞는 동작). 조회가 실패하면 임시 값이 남는다(R4 와 같은 대가).
+          // 🔴 첫 복원(setup)과 1쪽은 올리지 않는다 — 마운트 때 Vuetify 의 되돌리기 감시는 돌지 않고,
+          //    1쪽은 되돌릴 곳이 없다. 올리면 빈 목록 · 첫 조회 실패가 「1 중 1-1」로 남는다(R5).
+          if (restoredOnce && page.value > 1) {
+            const needed = (page.value - 1) * itemsPerPage.value + 1
+            if (total.value < needed) total.value = needed
+          }
         } finally {
           restoring = false
+          restoredOnce = true
         }
       },
       toQuery() {

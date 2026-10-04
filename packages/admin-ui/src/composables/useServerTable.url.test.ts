@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, ref } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
+import { ApiError } from '../api/error.js'
 import { bindQueryCodecs, queryCodec, withDefault, type QuerySyncBinding } from './query-codec.js'
 import { useServerTable, type ServerTable } from './useServerTable.js'
 
@@ -14,9 +15,16 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-async function setup(initial: string, urlSyncOverride?: QuerySyncBinding) {
+async function setup(
+  initial: string,
+  urlSyncOverride?: QuerySyncBinding,
+  fetchImpl: () => Promise<{ items: never[]; total: number }> = async () => ({
+    items: [],
+    total: 0,
+  }),
+) {
   const filter = ref<{ q: string }>({ q: '' })
-  const fetch = vi.fn(async () => ({ items: [] as never[], total: 0 }))
+  const fetch = vi.fn(fetchImpl)
   let table!: ServerTable<never>
   const List = defineComponent({
     setup() {
@@ -120,5 +128,32 @@ describe('useServerTable — urlSync', () => {
     await flushPromises()
     expect(log).toHaveBeenCalledWith(expect.stringContaining('page'))
     expect(router.currentRoute.value.query.page).toBe('2')
+  })
+})
+
+describe('useServerTable — urlSync 의 임시 total', () => {
+  const failing = async (): Promise<never> => {
+    throw new ApiError('서버 오류', { status: 500, code: 'ERR_COMMON_INTERNAL', raw: null })
+  }
+
+  it('🔴 첫 복원(1쪽)은 total 을 올리지 않는다 — 첫 조회가 실패해도 "1 중 1-1" 이 남지 않는다', async () => {
+    const { table } = await setup('/list', undefined, failing)
+    expect(table().error.value).toBeInstanceOf(ApiError)
+    expect(table().total.value).toBe(0)
+  })
+
+  it('🔴 첫 복원(깊은 쪽)도 total 을 올리지 않는다 — 첫 조회가 실패해도 지어낸 개수가 남지 않고 쪽은 그대로', async () => {
+    const { table } = await setup('/list?page=5', undefined, failing)
+    expect(table().total.value).toBe(0)
+    expect(table().page.value).toBe(5)
+  })
+
+  it('🔴 1쪽으로의 인바운드 복원은 total 을 올리지 않는다 — 조회가 없으면 빈 목록이 그대로 0건', async () => {
+    const { router, table, fetch } = await setup('/list?q=zzz')
+    fetch.mockClear()
+    await router.push('/list?q=zzz&page=1')
+    await flushPromises()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(table().total.value).toBe(0)
   })
 })

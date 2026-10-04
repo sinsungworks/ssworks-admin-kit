@@ -304,7 +304,7 @@ TDD — 실패하는 테스트부터. 라우터는 `createMemoryHistory`, 지연
 - **R2 — `urlSync` 키 충돌은 환경과 무관하게 `console.error` 후 표 값으로 덮는다.** §4-3 의 "개발 빌드에서 throw" 는 라이브러리에서 지킬 수 없다 — vite 라이브러리 빌드는 `import.meta.env.DEV` 를 빌드 시점 상수(`false`)로 바꿔, 소비 앱의 개발 모드를 모른다.
 - **R3 — `confirmColor` 는 `gate: 'confirm'` 옵션에만 둔다.** §4-4 의 `DialogText` 주석("confirm 관문만")을 타입으로 옮겼다.
 - **R4 — 조회 오류 시 `total` 을 0 으로 만들지 않고 이전 값을 유지한다**(§4-3 #6 정정). 0 이면 VDataTableServer 가 `page > ceil(total/size)` 로 보고 page 를 1 로 되돌려 실패한 요청이 한 번 더 나가고 URL 의 `page` 가 사라진다(최종 리뷰 F1 · S1).
-- **R5 — urlSync 복원(`read()`) 때 `total` 을 `(page - 1) * itemsPerPage + 1` 까지 임시로 올린다.** 낡은(작은) total 이 복원한 쪽 번호를 Vuetify 가 되돌리지 못하게 한다. 새 조회가 끝나면 진짜 total 로 바뀐다(F1 · S2).
+- **R5 — urlSync 의 인바운드 복원(마운트 뒤의 `read()`)이 2쪽 이상이면 `total` 을 `(page - 1) * itemsPerPage + 1` 까지 임시로 올린다.** 낡은(작은) total 이 복원한 쪽 번호를 Vuetify 가 되돌리지 못하게 한다. 조회가 성공하면 진짜 total 로 바뀌고, 실패하면 임시 값이 남는다(R4 와 같은 대가)(F1 · S2). setup 의 첫 복원과 1쪽은 올리지 않는다 — 마운트 때 Vuetify 의 되돌리기 감시는 돌지 않고 1쪽은 되돌릴 곳이 없다. 처음 구현은 둘 다 올려 빈 목록 · 첫 조회 실패가 「1 중 1-1」로 남았다(최종 수정분 재검토).
 - **R6 — 재인증 다이얼로그를 처리 중에 닫은 뒤 `ERR_REAUTH_REQUIRED` 가 오면 handled 로 표시하지 않는다.** 문구를 보일 곳이 없으므로 전역 토스트가 알린다(Task 7 수정).
 - **R7 — 비동기 `onConflict` 가 끝날 때까지 `submitting` 을 true 로 유지한다**(`onSuccess` 와 같게). 그동안 `run()` 이 조용히 false 를 돌려주는데 버튼은 켜져 보이던 문제를 없앤다(F4).
 - **R8 — 확인 · 재인증 관문이 열린 채 컴포넌트(스코프)가 해제되면 대기 중인 `run()` 을 false 로 settle 한다.** `await run()` 이 영구히 멈추지 않게 한다(F5).
