@@ -90,7 +90,7 @@ export type AdminRole = z.infer<typeof adminRoleSchema>
 // AdminRoleCreate · AdminRoleUpdate · AdminRoleMove · AdminRoleRemove 도 같은 방식
 ```
 
-- 🔴 **`.refine()` 을 걸지 않는다.** zod 4 는 refinement 가 있는 객체 스키마의 `.extend()` 를 거부한다. 그러면 프로젝트가 `permissions` 를 좁힐 수 없다. "수정할 값이 없다" 검사는 서버가 원하면 따로 건다.
+- 🔴 **`.refine()` 을 걸지 않는다.** zod 4 는 refinement 가 있는 객체 스키마의 `.omit()` · `.pick()` 을 던진다(4.6.5 실측 — `.extend()` 는 refinement 를 안고 동작한다). 그러면 프로젝트가 필드를 덜어 낼 수 없고, §10 의 "`revision` 끄는 경로"(`.omit({ revision: true })`)도 막힌다. "수정할 값이 없다" 검사는 서버가 원하면 따로 건다.
 - `roleName` 최대 64 는 hangang 의 `maxlength` 이다. Phase 2 컬럼 길이와 맞춘다.
 - 🔴 **`'*'` 는 `permissions` 안에서 `['*']` 하나로만 쓴다**(hangang 서버 정규화 규칙 ①). 스키마는 이것을 강제하지 않고 서버 정규화가 맡는다. 주석으로 적는다.
 
@@ -377,7 +377,7 @@ interface WriteCommon<T> {
 
 TDD — 실패하는 테스트부터. DOM 이 필요한 파일은 `// @vitest-environment happy-dom`, 오버레이를 여는 테스트는 `installVisualViewport()`. 라우터는 `createMemoryHistory`.
 
-- **역할 스키마**: 필수 필드 · `revision` 누락 거부 · 수정 본문의 선택 필드 · `.extend({ permissions })` 로 좁히기가 동작(refine 없음의 근거).
+- **역할 스키마**: 필수 필드 · `revision` 누락 거부 · 수정 본문의 선택 필드 · `.extend({ permissions })` 로 좁히기와 `.omit({ revision: true })` 가 동작(refine 없음의 근거).
 - **`role-permissions`**: 연쇄 함의(`delete ⇒ write ⇒ read`) · 끄는 방향 유도 · 순환 함의에서 멈춤 · 카탈로그 밖 키를 만들지도 지우지도 않음 · `'*'` 제거 · 순서 대조.
 - **`PermissionMatrix`**(렌더): 카테고리 · 열 · 행 라벨 · 접근 가능한 이름과 `name` · 없는 칸 비활성 · `disabled` · `canPick` 거짓 칸 비활성 · 칸 하나만 토글(다른 키 보존) · `#row-extra` 열 · `'*'` 미렌더 · `assertMatrixCoversPermissions` 의 누락 나열과 통과.
 - **`useRoleEditor`**(실제 `PermissionMatrix` · `ConfirmDialog` · `ReauthDialog` 를 `v-bind` 로 붙인 렌더 하네스 + 가짜 어댑터): §4-4-1 표의 각 값 · §4-4-2 의 1~10 각각. 특히 — 전체 권한 켬 → `['*']` 전송과 끔 → 이전 값 복귀 · 함의 써 넣기 · 이름만 고치면 `permissions` 미전송 · 범위 밖 역할의 매트릭스 잠금과 이름 저장 가능 · `'*'` 없는 행위자의 전체 권한 스위치 잠금 · 이웃 `displayOrder` 와 경계 무요청 · 실패 시 폼 유지와 재조회 · 관문 취소 시 재조회 없음 · 자기 직책 판정이 원본 기준 · `onSelfRoleSaved` 가 수정 성공에서만 · revision 충돌의 `conflicted` 와 재선택 해제 · 저장 중 `select` 무시 · 늦은 목록 응답 무시 · `reauth` 옵션별 관문(이동은 늘 없음) · 서버 검증 오류가 `fieldErrors.roleName` 에 들어오고 처리됨.
