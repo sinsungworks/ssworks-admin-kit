@@ -376,13 +376,14 @@ function resign(no: bigint) {
   })
 }
 
-// 폼이 그리지 않는 키(루트 '' · 중첩 경로 · 재인증의 currentPassword …)를 모아 보여 준다.
-const formKeys = ['userId', 'userName']
-const otherErrors = computed(() =>
-  Object.entries(fieldErrors.value)
-    .filter(([key]) => !formKeys.includes(key))
-    .flatMap(([, messages]) => messages),
-)
+function saveUser() {
+  void run({
+    action: () => api.post('/users', form.value),
+    // 폼이 그리는 키. 검증 오류의 키가 전부 여기 있을 때만 처리됨(전역 토스트 없음)
+    fields: ['userId', 'userName'],
+    onSuccess: () => reload(),
+  })
+}
 ```
 
 ```vue
@@ -397,9 +398,6 @@ const otherErrors = computed(() =>
 >
   <template #no-data><EmptyState :filtered="isFiltered" title="아직 없습니다" filtered-title="조건에 맞는 항목이 없습니다" /></template>
 </DataTableBody>
-<VAlert v-if="otherErrors.length" type="error">
-  <div v-for="message in otherErrors" :key="message">{{ message }}</div>
-</VAlert>
 <VTextField v-model="form.userId" label="아이디" :error-messages="fieldErrors.userId" />
 <VBtn :disabled="submitting" @click="resign(no)">퇴사 처리</VBtn>
 <ConfirmDialog v-bind="confirmDialog" />
@@ -410,5 +408,104 @@ const otherErrors = computed(() =>
 - 표는 "적용된" 필터만 본다. 입력값과 적용값을 나눠 Enter · 버튼으로 적용한다.
 - `urlSync` 를 쓰는 화면은 동적 세그먼트 상세 라우트(`/users/:id`)가 아니어야 한다 — 같은 컴포넌트가 재사용돼 URL 감시가 꺼진다.
 - 목록이 중첩 자식 라우트(`/users` 아래 `/users/:id` 드로어) 밑에서도 마운트된 채 남는 구조라면 상태와 URL 이 어긋날 수 있다 — 그런 화면에서는 `urlSync` 를 피하거나 쓰지 않는다.
-- 🔴 필드 오류는 처리됨으로 표시돼 전역 토스트가 뜨지 않는다 — 폼이 그리지 않는 키(루트 `''` 포함)는 반드시 따로 보여 줘야 한다. 안 그리면 오류가 조용히 사라진다.
+- 🔴 검증 오류는 `fields` 가 키를 **전부** 덮을 때만 처리됨으로 표시돼 전역 토스트가 뜨지 않는다. 하나라도 밖이면(루트 `''` · 중첩 경로 포함) 전역 토스트가 알린다 — `fields` 를 안 주면 늘 그렇다. `fieldErrors` 는 어느 경우든 채운다. 키는 정확히 일치해야 한다(`permissions` 는 `permissions.3` 을 덮지 않는다).
+- 재인증 관문의 `currentPassword` 검증 오류는 재인증 다이얼로그 안에 보이고, 다이얼로그는 열린 채 남는다.
 - 서버는 revision 충돌에 `ERR_COMMON_REVISION_CONFLICT`, 검증 실패에 `ERR_COMMON_VALIDATION` + `details.issues[{ path: (string|number)[], message }]` 를 보낸다.
+
+## 역할 · 설정
+
+```ts
+const categories: PermissionMatrixCategory[] = [
+  {
+    id: 'org',
+    label: '조직',
+    columns: [
+      { action: 'read', label: '읽기' },
+      { action: 'write', label: '편집' },
+    ],
+    rows: [
+      { resource: 'org.users', label: '직원' },
+      { resource: 'org.roles', label: '역할' },
+    ],
+  },
+]
+
+const {
+  roles,
+  selected,
+  select,
+  startCreate,
+  form,
+  matrix,
+  canToggleAll,
+  conflicted,
+  canSave,
+  save,
+  remove,
+  move,
+  canMove,
+  submitting,
+  fieldErrors,
+  confirmDialog,
+  reauthDialog,
+} = useRoleEditor({
+  api: rolesApi, // list · create · update · remove · move — 프로젝트 API 어댑터
+  permissions: permissions.ALL_PERMISSION_VALUES,
+  canWrite: () => check.hasPermission(PERMISSIONS.ORG_ROLES_WRITE),
+  implies: { 'org.users:write': ['org.users:read'], 'org.roles:write': ['org.roles:read'] },
+  reauth: true,
+  onSelfRoleSaved: async () => {
+    await appStore.refresh()
+    if (!check.hasPermission(PERMISSIONS.ORG_ROLES_READ)) await router.replace('/403')
+  },
+})
+```
+
+```vue
+<VTextField
+  v-model="form.roleName"
+  label="역할 이름"
+  name="roleName"
+  :error-messages="fieldErrors.roleName"
+/>
+<VSwitch v-model="form.isAll" :disabled="!canToggleAll" label="전체 권한" />
+<VAlert
+  v-if="conflicted"
+  type="warning"
+>다른 사람이 먼저 바꿨습니다. 역할을 다시 선택하면 최신 값으로 열립니다.</VAlert>
+<PermissionMatrix v-bind="matrix" :categories="categories" />
+<VBtn :disabled="!canSave" :loading="submitting" @click="onSave">저장</VBtn>
+<ConfirmDialog v-bind="confirmDialog" />
+<ReauthDialog v-bind="reauthDialog" />
+```
+
+- 템플릿 테스트에서 `assertMatrixCoversPermissions(categories, permissions.ALL_PERMISSION_VALUES)` 를 부른다 — 권한을 카탈로그에 더하고 매트릭스에 안 넣으면 그 권한은 화면에서 줄 길이 없다.
+- 🔴 전체 권한은 매트릭스 행이 아니라 `form.isAll` 스위치다. `categories` 에 `'*'` 행을 만들지 않는다.
+- 어댑터 `list()` 는 전량을 `displayOrder` 오름차순으로 준다 — 쪽을 나누는 서버면 끝까지 받아 이어 붙인다.
+- 수정 · 삭제 본문에는 `revision` 이 실린다. 서버는 불일치에 409 `ERR_COMMON_REVISION_CONFLICT` 를 보낸다. 이동은 `revision` 과 무관하고 재인증도 없다.
+- 성공 문구는 `save()` · `remove()` · `move()` 가 `true` 를 돌려줄 때 화면이 띄운다. 처리 안 된 실패는 전역 `onError` 가 알린다.
+- `isDirty` 를 `useDirtyGuard` 에 이으면 다른 역할로 옮길 때 경고할 수 있다.
+- 관문 문구의 용어(직책 · 권한 그룹)는 `dialogText` 로 바꾼다.
+
+### 설정 셸
+
+```ts
+defineAdminRoute<Permission>({
+  path: '/settings',
+  component: () => import('./pages/settings.vue'), // <SettingsShell />
+  meta: { anyPermissions: [P.SETTING_READ, P.ORG_ROLES_READ] }, // 🔴 자식 권한의 합집합 이상
+  children: [
+    { path: 'site', component: SitePage, meta: { title: '사이트', permissions: [P.SETTING_READ] } },
+    {
+      path: 'roles',
+      component: RolesPage,
+      meta: { title: '역할', permissions: [P.ORG_ROLES_READ], menu: { icon: 'mdi-account-key' } },
+    },
+  ],
+})
+```
+
+- 메뉴는 직속 자식의 `meta` 에서 만든다(인덱스 `path: ''` · `:id` 자식 제외, 제목은 `meta.menu.title` → `meta.title`). 부모로 들어오면 권한이 있는 첫 자식으로 보내고, 없으면 `forbiddenPath`(기본 `/403`).
+- 🔴 부모의 `anyPermissions` 가 자식 권한을 덮지 않으면 가드가 셸을 열기 전에 막는다 — 라우트 테스트에서 `assertParentAnyPermissionsCoverChildren(routes)` 를 부른다.
+- 설정 자식은 사이드바에 올리지 않는다(`buildMenu` 의 `depth: 1` 기본값).
+- 자식 페이지는 자기 루트에서 `ColumnPane` 을 낸다 — 셸의 메뉴 pane 옆에 나란히 붙는다.

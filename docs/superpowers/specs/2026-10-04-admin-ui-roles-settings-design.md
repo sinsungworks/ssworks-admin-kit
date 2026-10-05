@@ -410,3 +410,11 @@ TDD — 실패하는 테스트부터. DOM 이 필요한 파일은 `// @vitest-en
 - gise 처럼 자원마다 액션 어휘가 다른 평면 목록 레이아웃(M3) — 빈 칸 많은 격자로 그린다.
 - `revision` 을 끄는 경로(`.omit({ revision: true })` + `useRoleEditor({ revision: false })`) — 필요한 프로젝트가 나오면.
 - 다른 역할로 옮길 때 저장 안 한 변경 경고 — `isDirty` 만 내고 `useDirtyGuard` 연결은 B.
+
+## 11. 구현 중 정정 (2026-10-04)
+
+- **R1 — refine 금지의 근거를 고쳤다(§4-1).** zod 4.6.5 에서 refinement 가 있는 객체 스키마의 `.extend()` 는 동작하고, 던지는 것은 `.omit()` · `.pick()` 이다. 결론은 같다 — 프로젝트가 필드를 덜어 내는 길과 §10 의 `revision` 끄는 경로(`.omit({ revision: true })`)를 막지 않는다.
+- **R2 — `joinPath` 를 `menu.ts` 에서 export 한다**(패키지 내부용, index 에는 없음). `SettingsShell` 이 `buildMenu` 와 같은 경로 규칙을 쓴다.
+- **R3 — `refresh()` 는 진행 중인 요청을 기다리기 **전에** 세대 번호를 잡는다(§4-6).** 플랜 코드는 기다린 뒤에 잡아, 기다리는 동안 `clearSession()` 이 불리면 `/me` 를 다시 받아 지운 세션을 되살렸다. 기다리는 동안 세대가 바뀌었으면 받지 않는다(Task 3 리뷰).
+- **R4 — `save()` · `remove()` 는 쓰기 뒤 재조회 동안 사용자가 다른 행을 골랐으면 재선택(수정 · 만들기) · 첫 행 이동(삭제)을 하지 않는다(§4-4-2 #3 보강).** `select()` 는 요청이 나가 있는 동안(`submitting`)만 무시하고, 재조회 중의 선택은 사용자의 선택으로 존중한다. 자기 직책 수정이면 `onSelfRoleSaved` 는 그래도 부른다(Task 7 리뷰).
+- **R5 — `SettingsShell` 의 "RouterView 밖" 테스트는 `expect(() => mount(…)).toThrow(/RouterView/)` 로 잰다.** `@vue/test-utils` 의 `mount()` 는 `config.errorHandler` 와 무관하게 setup 오류를 다시 던져, 플랜의 errorHandler 수집 방식은 통과할 수 없었다(Task 8).
