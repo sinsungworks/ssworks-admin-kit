@@ -57,6 +57,15 @@ export {
 export { createUsePermission } from './permission/createUsePermission.js'
 export type { PermissionCheck } from '@ssworks/admin-shared'
 
+// ── 역할 · 설정 ───────────────────────────────────────────────────────
+export { default as PermissionMatrix } from './components/permission/PermissionMatrix.vue'
+export {
+  assertMatrixCoversPermissions,
+  type PermissionMatrixCategory,
+  type PermissionMatrixColumn,
+  type PermissionMatrixRow,
+} from './components/permission/permission-matrix.js'
+
 // ── 컨텍스트 (셸 → 호스트 앱) ────────────────────────────────────────
 export {
   createAdminUi,
