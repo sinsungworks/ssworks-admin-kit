@@ -168,6 +168,31 @@ describe('save — 수정', () => {
     expect(fake.api.list).toHaveBeenCalledTimes(1)
   })
 
+  it('🔴 저장 뒤 재조회 중에 고른 행은 되돌리지 않는다 — 자기 직책 훅은 그래도 부른다', async () => {
+    const onSelfRoleSaved = vi.fn()
+    const { editor, fake, me } = await mountRoleEditor({ onSelfRoleSaved })
+    me.value = '운영자'
+    editor.select(editor.roles.value[1]!)
+    editor.form.value.roleName = '운영팀'
+    const realList = fake.api.list.getMockImplementation()!
+    let releaseList!: () => void
+    fake.api.list.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => (releaseList = resolve))
+      return realList()
+    })
+    const pending = editor.save()
+    await flushPromises()
+    expect(editor.submitting.value).toBe(false)
+    expect(editor.loading.value).toBe(true)
+    editor.select(editor.roles.value[2]!)
+    editor.form.value.roleName = '감사팀'
+    releaseList()
+    expect(await pending).toBe(true)
+    expect(editor.selected.value?.roleNo).toBe(3n)
+    expect(editor.form.value.roleName).toBe('감사팀')
+    expect(onSelfRoleSaved).toHaveBeenCalledTimes(1)
+  })
+
   it('🔴 저장 중 select 는 무시한다 — 진행 중이던 저장이 선택을 되돌리지 않게', async () => {
     const { editor, fake } = await mountRoleEditor()
     let release!: () => void
@@ -242,6 +267,25 @@ describe('재인증 · 확인 관문', () => {
     await click('확인')
     expect(await pending).toBe(true)
     expect(fake.api.remove).toHaveBeenCalledWith(3n, { revision: 0 }, { currentPassword: 'pw' })
+  })
+
+  it('🔴 삭제 뒤 재조회 중에 고른 행은 되돌리지 않는다', async () => {
+    const { editor, fake } = await mountRoleEditor()
+    editor.select(editor.roles.value[2]!)
+    const realList = fake.api.list.getMockImplementation()!
+    let releaseList!: () => void
+    fake.api.list.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => (releaseList = resolve))
+      return realList()
+    })
+    const pending = editor.remove()
+    await flushPromises()
+    await click('확인')
+    expect(editor.loading.value).toBe(true)
+    editor.select(editor.roles.value[1]!)
+    releaseList()
+    expect(await pending).toBe(true)
+    expect(editor.selected.value?.roleNo).toBe(2n)
   })
 
   it('remove 가 실패하면 선택이 그대로이고 목록은 다시 받는다', async () => {

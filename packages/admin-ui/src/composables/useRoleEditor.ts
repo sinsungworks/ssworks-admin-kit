@@ -321,8 +321,8 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
   // ── 선택 ──────────────────────────────────────────────────────────
 
   /**
-   * 🔴 선택은 읽기 동작이다 — `canWrite` 로 막지 않는다. 저장 중에는 무시한다 — 진행 중이던 저장이 성공하며 선택을
-   *    되돌린다.
+   * 🔴 선택은 읽기 동작이다 — `canWrite` 로 막지 않는다. 요청이 나가 있는 동안(`submitting`)은 무시한다. 뒤따르는
+   *    재조회 중에 한 선택은 받아들인다 — save · remove 가 선택이 그대로일 때만 재선택해 되돌리지 않는다.
    */
   function select(role: R): void {
     if (flow.submitting.value) return
@@ -420,10 +420,14 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
     await reload()
     // 🔴 실패면 선택 · 폼을 그대로 둔다 — 관리자가 고친 값을 잃지 않는다.
     if (!ok) return false
-    const targetRoleNo = role == null ? createdRoleNo : role.roleNo
-    const next = roles.value.find((item) => item.roleNo === targetRoleNo)
-    if (next != null) applySelection(next)
-    else if (role == null) clearSelection()
+    // 🔴 재조회 중에 사용자가 다른 행을 골랐으면 재선택하지 않는다 — 재조회 중의 클릭은 사용자의 선택이고, 쓰기가
+    //    그것을 되돌려서는 안 된다(스펙 §4-4-2 #3). 저장은 성공했으니 아래 훅은 어디에 있든 부른다.
+    if (selected.value === role) {
+      const targetRoleNo = role == null ? createdRoleNo : role.roleNo
+      const next = roles.value.find((item) => item.roleNo === targetRoleNo)
+      if (next != null) applySelection(next)
+      else if (role == null) clearSelection()
+    }
     if (role != null && wasSelf) await options.onSelfRoleSaved?.()
     return true
   }
@@ -442,6 +446,9 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
     // 🔴 목록에서 지우는 것은 서버 성공 뒤의 재조회다 — 화면이 먼저 지우지 않는다(hangang §7-2 ④).
     await reload()
     if (!ok) return false
+    // 🔴 재조회 중에 다른 행을 골랐으면 첫 행으로 뛰지 않는다 — 그 클릭이 이미 피드백을 비웠고, 삭제가 사용자의
+    //    선택을 되돌려서는 안 된다(스펙 §4-4-2 #3).
+    if (selected.value !== role) return true
     const first = roles.value[0]
     if (first != null) applySelection(first)
     else clearSelection()
