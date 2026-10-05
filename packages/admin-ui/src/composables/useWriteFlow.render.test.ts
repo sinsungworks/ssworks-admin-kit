@@ -177,12 +177,16 @@ describe('useWriteFlow — 결과 분류', () => {
     expect(action).toHaveBeenLastCalledWith({ currentPassword: 'right' })
   })
 
-  it('검증 실패는 fieldErrors 를 채우고 handled, 다이얼로그를 닫고 false', async () => {
+  it('검증 실패 — 키가 전부 fields 안이면 fieldErrors 를 채우고 handled, 다이얼로그를 닫고 false', async () => {
     const flow = await setup()
     const failure = apiError('ERR_COMMON_VALIDATION', {
       issues: [{ path: ['userId'], message: '이미 쓰는 아이디입니다' }],
     })
-    const pending = flow.run({ gate: 'reauth', action: vi.fn().mockRejectedValue(failure) })
+    const pending = flow.run({
+      gate: 'reauth',
+      action: vi.fn().mockRejectedValue(failure),
+      fields: ['userId'],
+    })
     await flushPromises()
     await typePassword('pw')
     await click('확인')
@@ -254,6 +258,101 @@ describe('useWriteFlow — 결과 분류', () => {
     await expect(flow.run({ action: vi.fn().mockRejectedValue(bug) })).rejects.toBe(bug)
     expect(flow.submitting.value).toBe(false)
     expect(await flow.run({ action: async () => 1 })).toBe(true)
+  })
+})
+
+describe('useWriteFlow — 검증 오류와 fields', () => {
+  const validation = (...issues: { path: (string | number)[]; message: string }[]) =>
+    apiError('ERR_COMMON_VALIDATION', { issues })
+
+  it('🔴 fields 를 안 주면 fieldErrors 는 채우되 handled 가 아니다 — 전역 토스트가 알린다', async () => {
+    const flow = await setup()
+    const failure = validation({ path: ['roleName'], message: '이미 있는 이름입니다' })
+    expect(await flow.run({ action: vi.fn().mockRejectedValue(failure) })).toBe(false)
+    expect(flow.fieldErrors.value).toEqual({ roleName: ['이미 있는 이름입니다'] })
+    expect(failure.handled).toBe(false)
+  })
+
+  it('키가 하나라도 fields 밖이면 handled 가 아니다 — fieldErrors 는 둘 다 채운다', async () => {
+    const flow = await setup()
+    const failure = validation(
+      { path: ['roleName'], message: 'a' },
+      { path: ['memo'], message: 'b' },
+    )
+    await flow.run({ action: vi.fn().mockRejectedValue(failure), fields: ['roleName'] })
+    expect(flow.fieldErrors.value).toEqual({ roleName: ['a'], memo: ['b'] })
+    expect(failure.handled).toBe(false)
+  })
+
+  it('루트 오류(path [])의 키는 빈 문자열이다 — fields 에 없으면 handled 가 아니다', async () => {
+    const flow = await setup()
+    const failure = validation({ path: [], message: '본문이 비었습니다' })
+    await flow.run({ action: vi.fn().mockRejectedValue(failure), fields: ['roleName'] })
+    expect(flow.fieldErrors.value).toEqual({ '': ['본문이 비었습니다'] })
+    expect(failure.handled).toBe(false)
+  })
+
+  it('🔴 접두만 일치하면 덮지 않는다 — fields 의 permissions 는 permissions.3 을 처리하지 않는다', async () => {
+    const flow = await setup()
+    const failure = validation({ path: ['permissions', 3], message: '모르는 권한' })
+    await flow.run({ action: vi.fn().mockRejectedValue(failure), fields: ['permissions'] })
+    expect(flow.fieldErrors.value).toEqual({ 'permissions.3': ['모르는 권한'] })
+    expect(failure.handled).toBe(false)
+  })
+
+  it('🔴 재인증 관문의 currentPassword 오류는 다이얼로그 안에 보이고 다이얼로그를 유지한다 — 다시 입력하면 이어서 성공', async () => {
+    const flow = await setup()
+    const failure = validation({ path: ['currentPassword'], message: '256자 이하로 입력하세요' })
+    const action = vi.fn().mockRejectedValueOnce(failure).mockResolvedValueOnce(undefined)
+    const pending = flow.run({ gate: 'reauth', action, fields: ['roleName'] })
+    await flushPromises()
+    await typePassword('pw')
+    await click('확인')
+    expect(flow.reauthDialog.value.modelValue).toBe(true)
+    expect(flow.reauthDialog.value.error).toBe('256자 이하로 입력하세요')
+    expect(document.body.textContent).toContain('256자 이하로 입력하세요')
+    expect(flow.fieldErrors.value).toEqual({})
+    expect(failure.handled).toBe(true)
+    await typePassword('right')
+    await click('확인')
+    expect(await pending).toBe(true)
+  })
+
+  it('currentPassword 와 함께 온 나머지 키는 fieldErrors 로 — 전부 fields 안이면 handled, 밖이면 아니다', async () => {
+    const flow = await setup()
+    const inside = validation(
+      { path: ['currentPassword'], message: 'p' },
+      { path: ['roleName'], message: 'n' },
+    )
+    const first = flow.run({
+      gate: 'reauth',
+      action: vi.fn().mockRejectedValue(inside),
+      fields: ['roleName'],
+    })
+    await flushPromises()
+    await typePassword('pw')
+    await click('확인')
+    expect(flow.fieldErrors.value).toEqual({ roleName: ['n'] })
+    expect(inside.handled).toBe(true)
+    await click('취소')
+    expect(await first).toBe(false)
+
+    const outside = validation(
+      { path: ['currentPassword'], message: 'p' },
+      { path: ['memo'], message: 'm' },
+    )
+    const second = flow.run({
+      gate: 'reauth',
+      action: vi.fn().mockRejectedValue(outside),
+      fields: ['roleName'],
+    })
+    await flushPromises()
+    await typePassword('pw')
+    await click('확인')
+    expect(flow.reauthDialog.value.modelValue).toBe(true)
+    expect(outside.handled).toBe(false)
+    await click('취소')
+    expect(await second).toBe(false)
   })
 })
 
@@ -370,5 +469,75 @@ describe('useWriteFlow — 막히지 않는 흐름', () => {
     wrapper?.unmount()
     wrapper = null
     expect(await settledOrStuck(pending)).toBe(false)
+  })
+
+  it('🔴 재인증 요청이 나간 동안 언마운트된 뒤 ERR_REAUTH_REQUIRED 가 와도 false 로 끝나고 handled 가 아니다', async () => {
+    const flow = await setup()
+    const failure = apiError('ERR_REAUTH_REQUIRED')
+    let fail!: (error: unknown) => void
+    const pending = flow.run({
+      gate: 'reauth',
+      action: vi.fn(() => new Promise<void>((_resolve, reject) => (fail = reject))),
+    })
+    await flushPromises()
+    await typePassword('pw')
+    await click('확인')
+    wrapper?.unmount()
+    wrapper = null
+    fail(failure)
+    expect(await settledOrStuck(pending)).toBe(false)
+    expect(failure.handled).toBe(false)
+  })
+
+  it('해제 뒤 도착한 검증 오류는 fields 안이어도 handled 가 아니다 — 보여 줄 화면이 없다', async () => {
+    const flow = await setup()
+    const failure = apiError('ERR_COMMON_VALIDATION', {
+      issues: [{ path: ['roleName'], message: 'n' }],
+    })
+    let fail!: (error: unknown) => void
+    const pending = flow.run({
+      action: () => new Promise<void>((_resolve, reject) => (fail = reject)),
+      fields: ['roleName'],
+    })
+    await flushPromises()
+    wrapper?.unmount()
+    wrapper = null
+    fail(failure)
+    expect(await settledOrStuck(pending)).toBe(false)
+    expect(failure.handled).toBe(false)
+  })
+
+  it('해제 뒤 도착한 revision 충돌은 onConflict 를 부르지 않고 handled 가 아니다', async () => {
+    const flow = await setup()
+    const failure = apiError('ERR_COMMON_REVISION_CONFLICT')
+    const onConflict = vi.fn()
+    let fail!: (error: unknown) => void
+    const pending = flow.run({
+      action: () => new Promise<void>((_resolve, reject) => (fail = reject)),
+      onConflict,
+    })
+    await flushPromises()
+    wrapper?.unmount()
+    wrapper = null
+    fail(failure)
+    expect(await settledOrStuck(pending)).toBe(false)
+    expect(onConflict).not.toHaveBeenCalled()
+    expect(failure.handled).toBe(false)
+  })
+
+  it('해제 뒤에 성공하면 onSuccess 는 부른다 — 쓰기는 이미 일어났다', async () => {
+    const flow = await setup()
+    const onSuccess = vi.fn()
+    let release!: () => void
+    const pending = flow.run({
+      action: () => new Promise<void>((resolve) => (release = resolve)),
+      onSuccess,
+    })
+    await flushPromises()
+    wrapper?.unmount()
+    wrapper = null
+    release()
+    expect(await settledOrStuck(pending)).toBe(true)
+    expect(onSuccess).toHaveBeenCalledTimes(1)
   })
 })

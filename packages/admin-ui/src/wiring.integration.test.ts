@@ -257,9 +257,9 @@ describe('README 최소 배선 — 쓰기 오류와 전역 토스트(D3)', () =>
     const { api, toast } = setup(() => reply)
     const flow = useWriteFlow()
 
-    // 매핑된 검증 오류 → fieldErrors, 토스트 없음
+    // 매핑된 검증 오류 → fieldErrors, 토스트 없음 (폼이 그리는 키를 fields 로 밝힌다)
     reply = fail(400, 'ERR_COMMON_VALIDATION', { issues: [{ path: ['name'], message: 'req' }] })
-    expect(await flow.run({ action: () => api.post('/users', {}) })).toBe(false)
+    expect(await flow.run({ action: () => api.post('/users', {}), fields: ['name'] })).toBe(false)
     await settle()
     expect(flow.fieldErrors.value).toEqual({ name: ['req'] })
     expect(toast.error).not.toHaveBeenCalled()

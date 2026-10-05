@@ -20,11 +20,19 @@ import { toFieldErrors } from '../api/field-errors.js'
 //  - 🔴 화면에 직접 보인 오류만 `handled` 로 표시한다 — `createApiClient` 의 지연 `onError` 가 그것을
 //    건너뛴다(전역 토스트 이중 알림 방지). 표시는 `catch` 의 동기 구간에서 한다.
 //  - 성공 알림은 하지 않는다 — 문구가 페이지마다 달라 `onSuccess` 에서 페이지가 띄운다.
+//  - 🔴 검증 오류는 `fields`(폼이 그리는 키)가 키를 전부 덮을 때만 처리됨이다 — 폼이 안 그리는 키를 처리됨으로
+//    표시하면 오류가 조용히 사라진다(3b 스펙 §4-7). 재인증 관문의 `currentPassword` 오류는 다이얼로그 안에 보인다.
+//  - 🔴 스코프가 해제된 뒤 도착한 실패는 처리됨으로 표시하지 않는다 — 보여 줄 화면이 없다.
 
 interface WriteCommon<T> {
   onSuccess?: (result: T) => void | Promise<void>
   /** `ERR_COMMON_REVISION_CONFLICT`. 있으면 처리 표시(전역 토스트를 막음), 없으면 전역 토스트에 맡긴다. */
   onConflict?: (error: ApiError) => void | Promise<void>
+  /**
+   * 폼이 그리는 필드 키(`toFieldErrors` 의 점 경로). 검증 오류의 키가 **전부** 여기 있을 때만 처리됨이다.
+   * 생략하면 처리됨으로 표시하지 않는다 — `fieldErrors` 는 채우고 전역 토스트도 뜬다.
+   */
+  fields?: readonly string[]
 }
 
 interface DialogText {
@@ -90,6 +98,23 @@ interface Pending {
   reject: (error: unknown) => void
 }
 
+/** 재인증 다이얼로그가 받는 필드. 이 키의 검증 오류는 폼이 아니라 다이얼로그 안에 보인다. */
+const REAUTH_FIELD = 'currentPassword'
+
+/**
+ * 바뀐 키가 전부 `fields` 안인가. 키가 하나도 없을 때의 답은 부르는 쪽이 정한다.
+ * 🔴 정확히 일치한다. 접두 일치면 `fields: ['permissions']` 가 폼이 그리지 않는 `permissions.3` 을 덮어 오류가 사라진다.
+ */
+function coveredByFields(
+  mapped: Record<string, string[]>,
+  fields: readonly string[] | undefined,
+  whenEmpty: boolean,
+): boolean {
+  const keys = Object.keys(mapped)
+  if (keys.length === 0) return whenEmpty
+  return fields != null && keys.every((key) => fields.includes(key))
+}
+
 /** 쓰기 흐름. 페이지당 하나 — 동작마다 `run()` 을 부르고 두 다이얼로그는 페이지에 한 번씩 둔다. */
 export function useWriteFlow(): WriteFlow {
   const submitting = ref(false)
@@ -98,6 +123,8 @@ export function useWriteFlow(): WriteFlow {
   const confirmOpen = ref(false)
   const reauthOpen = ref(false)
   const reauthError = ref('')
+  /** 🔴 스코프가 해제됐는가. 해제 뒤 도착한 실패는 보일 곳이 없으니 처리됨으로 표시하지 않는다. */
+  let disposed = false
 
   function closeGates(): void {
     confirmOpen.value = false
@@ -164,14 +191,12 @@ export function useWriteFlow(): WriteFlow {
       return false
     }
     const { options } = current
-    if (
-      caught.code === CommonErrorCodes.ERR_REAUTH_REQUIRED &&
-      options.gate === 'reauth' &&
-      reauthOpen.value
-    ) {
-      // 🔴 다이얼로그가 아직 열려 있을 때만 유지한다 — 처리 중에 사용자가 닫았으면 문구를 보일 곳이 없고,
-      //    여기서 settle 없이 return 하면 pending 이 남아 이후 run() 이 영구히 false 가 된다. 닫혔으면
-      //    아래로 흘려 handled 없이(전역 토스트가 알림) 정리한다.
+    // 🔴 다이얼로그를 유지할 수 있는 것은 그것이 아직 열려 있고 화면이 살아 있을 때뿐이다. 처리 중에 사용자가 닫았거나
+    //    컴포넌트가 사라졌으면 문구를 보일 곳이 없고, 여기서 settle 없이 return 하면 pending 이 남아 `await run()` 이
+    //    영구히 멈춘다(사용자가 닫음 — 3a R6, 화면이 사라짐 — 3b). 그때는 아래로 흘려 handled 없이(전역 토스트가 알림)
+    //    정리한다.
+    const keepReauth = options.gate === 'reauth' && reauthOpen.value && !disposed
+    if (caught.code === CommonErrorCodes.ERR_REAUTH_REQUIRED && keepReauth) {
       // 🔴 다이얼로그를 닫지 않는다 — 닫으면 사용자가 뒤의 폼을 처음부터 다시 채운다(hangang).
       caught.handled = true
       reauthError.value = caught.message
@@ -179,12 +204,26 @@ export function useWriteFlow(): WriteFlow {
     }
     if (caught.code === CommonErrorCodes.ERR_COMMON_VALIDATION) {
       const mapped = toFieldErrors(caught)
-      if (Object.keys(mapped).length > 0) {
-        caught.handled = true
-        fieldErrors.value = mapped
+      const passwordMessages = mapped[REAUTH_FIELD]
+      if (keepReauth && passwordMessages != null) {
+        // 🔴 비밀번호 형식 오류는 비밀번호를 받은 다이얼로그 안에 보이고 다이얼로그를 유지한다 — 폼은 그 키를 그리지 않는다.
+        const rest = Object.fromEntries(
+          Object.entries(mapped).filter(([key]) => key !== REAUTH_FIELD),
+        )
+        reauthError.value = passwordMessages.join(' ')
+        fieldErrors.value = rest
+        if (coveredByFields(rest, options.fields, true)) caught.handled = true
+        return false
       }
+      // `fieldErrors` 는 어느 경우든 채운다 — 처리됨 표시와 무관하게 폼은 자기 키를 그린다.
+      fieldErrors.value = mapped
+      if (!disposed && coveredByFields(mapped, options.fields, false)) caught.handled = true
     }
-    if (caught.code === CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT && options.onConflict) {
+    if (
+      caught.code === CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT &&
+      options.onConflict &&
+      !disposed
+    ) {
       caught.handled = true
       closeGates()
       const onConflict = options.onConflict
@@ -220,9 +259,10 @@ export function useWriteFlow(): WriteFlow {
   }
 
   // 🔴 관문이 열린 채 컴포넌트가 사라지면 `await run()` 이 영구히 멈춘다 — false 로 끝낸다. 요청이 이미 나간
-  //    실행 중(submitting)이면 결과를 기다린다.
+  //    실행 중(submitting)이면 결과를 기다린다. 그 결과가 실패면 `disposed` 때문에 처리됨 없이 false 로 끝난다.
   if (getCurrentScope()) {
     onScopeDispose(() => {
+      disposed = true
       const current = pending.value
       if (current && !submitting.value) settle(current, { ok: false })
     })
