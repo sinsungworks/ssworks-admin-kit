@@ -299,6 +299,26 @@ describe('createAppStore', () => {
       expect(store.userInfo).toBeNull()
       expect(store.authorized).toBe(false)
     })
+
+    it('🔴 진행 중인 initialize() 를 기다리는 동안 clearSession 이 불리면 새로 받지도 되살리지도 않는다', async () => {
+      const { fetchMe, store } = setup()
+      let resolveFirst!: (me: AdminUserInfo) => void
+      fetchMe.mockImplementationOnce(
+        () =>
+          new Promise<AdminUserInfo>((resolve) => {
+            resolveFirst = resolve
+          }),
+      )
+      fetchMe.mockResolvedValueOnce(ME)
+      const initializing = store.initialize()
+      const refreshing = store.refresh()
+      store.clearSession()
+      resolveFirst(ME)
+      await Promise.all([initializing, refreshing])
+      expect(fetchMe).toHaveBeenCalledTimes(1)
+      expect(store.authorized).toBe(false)
+      expect(store.userInfo).toBeNull()
+    })
   })
 
   describe('logout() / clearSession()', () => {

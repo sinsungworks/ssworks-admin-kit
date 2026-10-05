@@ -181,10 +181,12 @@ export function createAppStore<TMe extends AdminUserInfo>(
      * 🔴 실패하면 아무것도 바꾸지 않는다. `load()` 처럼 세션을 비우면 저장 직후의 일시 오류 하나로 로그아웃된다.
      *    401 은 `createApiClient` 의 `onUnauthorized` 경로가 따로 처리한다.
      * 🔴 진행 중인 요청이 있으면 끝나기를 기다린 뒤 **새로** 받는다 — `login()` 과 같은 이유로 옛 요청의 응답을 믿지 않는다.
+     *    세대를 먼저 캡처한다 — 대기 중 `clearSession()` 이 불려도 늦게 온 응답이 세션을 되살리지 못한다.
      */
     async function refresh(): Promise<void> {
-      if (inFlight) await inFlight
       const started = generation
+      if (inFlight) await inFlight
+      if (started !== generation) return
       try {
         const me = await options.fetchMe()
         if (started !== generation) return
