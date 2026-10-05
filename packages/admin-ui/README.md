@@ -454,6 +454,7 @@ const {
   canWrite: () => check.hasPermission(PERMISSIONS.ORG_ROLES_WRITE),
   implies: { 'org.users:write': ['org.users:read'], 'org.roles:write': ['org.roles:read'] },
   reauth: true,
+  fields: ['roleName', 'isDefault'], // 폼이 그리는 키 — 이 키의 검증 오류만 처리됨(기본 ['roleName'])
   onSelfRoleSaved: async () => {
     await appStore.refresh()
     if (!check.hasPermission(PERMISSIONS.ORG_ROLES_READ)) await router.replace('/403')
@@ -468,6 +469,7 @@ const {
   name="roleName"
   :error-messages="fieldErrors.roleName"
 />
+<VSwitch v-model="form.isDefault" label="기본 역할" :error-messages="fieldErrors.isDefault" />
 <VSwitch v-model="form.isAll" :disabled="!canToggleAll" label="전체 권한" />
 <VAlert
   v-if="conflicted"
@@ -484,6 +486,7 @@ const {
 - 어댑터 `list()` 는 전량을 `displayOrder` 오름차순으로 준다 — 쪽을 나누는 서버면 끝까지 받아 이어 붙인다.
 - 수정 · 삭제 본문에는 `revision` 이 실린다. 서버는 불일치에 409 `ERR_COMMON_REVISION_CONFLICT` 를 보낸다. 이동은 `revision` 과 무관하고 재인증도 없다.
 - 성공 문구는 `save()` · `remove()` · `move()` 가 `true` 를 돌려줄 때 화면이 띄운다. 처리 안 된 실패는 전역 `onError` 가 알린다.
+- 저장 검증 오류 중 `fields`(기본 `['roleName']`) 에 든 키만 처리됨이다 — 폼이 `isDefault` · `permissions` 오류를 그리면 `fields` 에 더한다. 나머지는 `fieldErrors` 에 채워지고 전역 토스트도 뜬다.
 - `isDirty` 를 `useDirtyGuard` 에 이으면 다른 역할로 옮길 때 경고할 수 있다.
 - 관문 문구의 용어(직책 · 권한 그룹)는 `dialogText` 로 바꾼다.
 

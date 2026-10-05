@@ -64,6 +64,35 @@ describe('save — 만들기', () => {
     await editor.save()
     expect(fake.api.create.mock.calls[0]![0].permissions).toEqual(['*'])
   })
+
+  it('🔴 만든 뒤 재조회가 실패하면 선택 · 폼을 비운다 — 채운 "새 역할" 폼이 남으면 중복을 만든다', async () => {
+    const { editor, fake } = await mountRoleEditor()
+    editor.startCreate()
+    editor.form.value.roleName = '신규'
+    fake.api.list.mockRejectedValueOnce(new Error('network'))
+    expect(await editor.save()).toBe(true)
+    expect(editor.selected.value).toBeNull()
+    expect(editor.form.value.roleName).toBe('')
+    expect(editor.loadError.value).toBeInstanceOf(Error)
+  })
+
+  it('🔴 만든 뒤 재조회가 실패해도, 그동안 고른 행은 비우지 않는다', async () => {
+    const { editor, fake } = await mountRoleEditor()
+    editor.startCreate()
+    editor.form.value.roleName = '신규'
+    let failList!: () => void
+    fake.api.list.mockImplementationOnce(
+      () => new Promise((_, reject) => (failList = () => reject(new Error('network')))),
+    )
+    const pending = editor.save()
+    await flushPromises()
+    expect(editor.loading.value).toBe(true)
+    editor.select(editor.roles.value[1]!)
+    failList()
+    expect(await pending).toBe(true)
+    expect(editor.selected.value?.roleNo).toBe(2n)
+    expect(editor.form.value.roleName).toBe('운영자')
+  })
 })
 
 describe('save — 수정', () => {
@@ -129,6 +158,17 @@ describe('save — 수정', () => {
     expect(editor.selected.value?.revision).toBe(4)
   })
 
+  it('🔴 저장 뒤 재조회가 실패하면 옛 목록으로 재선택하지 않는다 — 방금 저장한 값으로 폼이 남는다', async () => {
+    const { editor, fake } = await mountRoleEditor()
+    editor.select(editor.roles.value[1]!)
+    editor.form.value.roleName = '운영팀'
+    fake.api.list.mockRejectedValueOnce(new Error('network'))
+    expect(await editor.save()).toBe(true)
+    expect(editor.form.value.roleName).toBe('운영팀')
+    expect(editor.selected.value?.roleNo).toBe(2n)
+    expect(editor.loadError.value).toBeInstanceOf(Error)
+  })
+
   it('서버 검증 오류는 fieldErrors.roleName 에 — 폼이 그리는 키라 처리됨이다', async () => {
     const { editor, fake } = await mountRoleEditor()
     const failure = apiError('ERR_COMMON_VALIDATION', 400, {
@@ -140,6 +180,39 @@ describe('save — 수정', () => {
     expect(await editor.save()).toBe(false)
     expect(editor.fieldErrors.value).toEqual({ roleName: ['이미 있는 이름입니다'] })
     expect(failure.handled).toBe(true)
+  })
+
+  it("🔴 fields 기본값은 ['roleName'] — isDefault 오류는 fieldErrors 에 채우되 처리됨이 아니다(전역 토스트가 알린다)", async () => {
+    const { editor, fake } = await mountRoleEditor()
+    const failure = apiError('ERR_COMMON_VALIDATION', 400, {
+      issues: [{ path: ['isDefault'], message: '기본 역할은 하나여야 합니다' }],
+    })
+    fake.api.update.mockRejectedValueOnce(failure)
+    editor.select(editor.roles.value[1]!)
+    editor.form.value.roleName = '운영팀'
+    expect(await editor.save()).toBe(false)
+    expect(editor.fieldErrors.value).toEqual({ isDefault: ['기본 역할은 하나여야 합니다'] })
+    expect(failure.handled).toBe(false)
+  })
+
+  it('fields 옵션에 든 키의 오류만 처리됨이다 — 폼이 그리는 키를 더한다', async () => {
+    const { editor, fake } = await mountRoleEditor({ fields: ['roleName', 'isDefault'] })
+    const isDefaultFailure = apiError('ERR_COMMON_VALIDATION', 400, {
+      issues: [{ path: ['isDefault'], message: '기본 역할은 하나여야 합니다' }],
+    })
+    const permissionsFailure = apiError('ERR_COMMON_VALIDATION', 400, {
+      issues: [{ path: ['permissions'], message: '알 수 없는 권한입니다' }],
+    })
+    fake.api.update
+      .mockRejectedValueOnce(isDefaultFailure)
+      .mockRejectedValueOnce(permissionsFailure)
+    editor.select(editor.roles.value[1]!)
+    editor.form.value.roleName = '운영팀'
+    expect(await editor.save()).toBe(false)
+    expect(isDefaultFailure.handled).toBe(true)
+    expect(await editor.save()).toBe(false)
+    expect(editor.fieldErrors.value).toEqual({ permissions: ['알 수 없는 권한입니다'] })
+    expect(permissionsFailure.handled).toBe(false)
   })
 
   it('🔴 revision 충돌 — 처리됨, 폼 유지, conflicted 동안 저장 불가, 같은 행을 다시 열면 풀린다', async () => {
@@ -288,6 +361,18 @@ describe('재인증 · 확인 관문', () => {
     expect(editor.selected.value?.roleNo).toBe(2n)
   })
 
+  it('🔴 삭제 뒤 재조회가 실패하면 옛 목록으로 고르지 않고 선택을 비운다', async () => {
+    const { editor, fake } = await mountRoleEditor()
+    editor.select(editor.roles.value[2]!)
+    fake.api.list.mockRejectedValueOnce(new Error('network'))
+    const pending = editor.remove()
+    await flushPromises()
+    await click('확인')
+    expect(await pending).toBe(true)
+    expect(editor.selected.value).toBeNull()
+    expect(editor.loadError.value).toBeInstanceOf(Error)
+  })
+
   it('remove 가 실패하면 선택이 그대로이고 목록은 다시 받는다', async () => {
     const { editor, fake } = await mountRoleEditor()
     fake.api.remove.mockRejectedValueOnce(apiError('ERR_COMMON_CONFLICT', 409))
@@ -298,6 +383,21 @@ describe('재인증 · 확인 관문', () => {
     expect(await pending).toBe(false)
     expect(editor.selected.value?.roleNo).toBe(3n)
     expect(fake.api.list).toHaveBeenCalledTimes(2)
+  })
+
+  it('🔴 remove 의 revision 충돌 — 처리됨, conflicted, 선택 그대로', async () => {
+    const { editor, fake } = await mountRoleEditor()
+    editor.select(editor.roles.value[2]!)
+    fake.rows().find((row) => row.roleNo === 3n)!.revision = 9 // 남이 먼저 고쳤다
+    const pending = editor.remove()
+    await flushPromises()
+    await click('확인')
+    expect(await pending).toBe(false)
+    const settled = fake.api.remove.mock.settledResults[0]
+    expect(settled?.type).toBe('rejected')
+    expect((settled?.value as ApiError).handled).toBe(true)
+    expect(editor.conflicted.value).toBe(true)
+    expect(editor.selected.value?.roleNo).toBe(3n)
   })
 
   it('dialogText 로 문구를 바꾼다', async () => {

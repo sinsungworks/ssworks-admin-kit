@@ -81,6 +81,11 @@ export interface RoleEditorOptions<P extends string = string, R extends AdminRol
   onSelfRoleSaved?: () => void | Promise<void>
   /** 관문 다이얼로그 문구. 기본은 "역할" 용어(스펙 §4-4-3). */
   dialogText?: (action: RoleEditorAction, role: R | null) => RoleDialogText
+  /**
+   * 저장 폼이 그리는 필드 키. 이 키의 서버 검증 오류만 처리됨(전역 토스트 없음)이다. 기본 `['roleName']` — 폼이
+   * `isDefault` · `permissions` 오류도 그리면 더한다.
+   */
+  fields?: readonly string[]
 }
 
 export interface RoleForm {
@@ -136,8 +141,12 @@ export interface RoleEditor<R extends AdminRole = AdminRole> {
   reauthDialog: ComputedRef<ReauthDialogBindings>
 }
 
-/** 저장 폼이 그리는 필드 — 이 키의 서버 검증 오류만 처리됨(전역 토스트 없음)이다. */
-const SAVE_FIELDS = ['roleName', 'isDefault', 'permissions'] as const
+/**
+ * `fields` 를 안 줄 때 처리됨으로 볼 저장 검증 오류 키.
+ * 🔴 headless 라 템플릿이 무엇을 그리는지 모른다 — 세 키를 박아 두면 `isDefault` · `permissions` 오류를 안 그리는
+ *    템플릿에서 오류가 토스트도 필드 문구도 없이 사라진다(최종 리뷰). 확실히 그리는 이름 하나만 기본으로 둔다.
+ */
+const DEFAULT_SAVE_FIELDS = ['roleName'] as const
 
 function defaultDialogText(action: RoleEditorAction, role: AdminRole | null): RoleDialogText {
   if (action === 'create') return { title: '역할 만들기', message: '새 역할을 만듭니다.' }
@@ -217,13 +226,17 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
   let loadSeq = 0
   let loadedOnce = false
 
-  async function reload(): Promise<void> {
+  /**
+   * 이 호출의 결과가 `roles` 에 반영됐으면 true. 실패했거나 더 새 조회에 밀렸으면 false.
+   * 🔴 쓰기 뒤 재선택은 이 값을 본다 — `roles` 가 쓰기 전 목록 그대로일 수 있다(스펙 §11 R8).
+   */
+  async function load(): Promise<boolean> {
     const seq = ++loadSeq
     loading.value = true
     loadError.value = null
     try {
       const items = await api.list()
-      if (seq !== loadSeq) return
+      if (seq !== loadSeq) return false
       roles.value = items
       // 🔴 첫 조회가 성공하면 첫 행을 연다 — 오른쪽이 빈 첫 화면을 피한다(hangang).
       if (!loadedOnce) {
@@ -231,13 +244,19 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
         const first = items[0]
         if (selected.value == null && first != null) applySelection(first)
       }
+      return true
     } catch (error) {
-      if (seq !== loadSeq) return
+      if (seq !== loadSeq) return false
       // 🔴 목록은 그대로 둔다 — 화면이 로딩 · 목록 · 실패 · 빈 목록 네 갈래를 가를 수 있게.
       loadError.value = error
+      return false
     } finally {
       if (seq === loadSeq) loading.value = false
     }
+  }
+
+  async function reload(): Promise<void> {
+    await load()
   }
 
   // ── 판정 ──────────────────────────────────────────────────────────
@@ -396,7 +415,7 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
     const { ok, attempted } = await write<bigint | void>({
       gate: options.reauth ? 'reauth' : 'none',
       text: dialogText(role == null ? 'create' : 'update', role),
-      fields: SAVE_FIELDS,
+      fields: options.fields ?? DEFAULT_SAVE_FIELDS,
       onConflict: markConflicted,
       action: (ctx) =>
         role == null
@@ -417,16 +436,26 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
     })
     if (!attempted) return false
     // 🔴 실패해도 다시 조회한다 — 404 는 "목록이 낡았다", 409 는 "상태가 갈렸다" 이다(hangang).
-    await reload()
+    const applied = await load()
     // 🔴 실패면 선택 · 폼을 그대로 둔다 — 관리자가 고친 값을 잃지 않는다.
     if (!ok) return false
-    // 🔴 재조회 중에 사용자가 다른 행을 골랐으면 재선택하지 않는다 — 재조회 중의 클릭은 사용자의 선택이고, 쓰기가
+    // 🔴 재조회 중에 사용자가 다른 행을 골랐으면 아무것도 하지 않는다 — 재조회 중의 클릭은 사용자의 선택이고, 쓰기가
     //    그것을 되돌려서는 안 된다(스펙 §4-4-2 #3). 저장은 성공했으니 아래 훅은 어디에 있든 부른다.
     if (selected.value === role) {
-      const targetRoleNo = role == null ? createdRoleNo : role.roleNo
-      const next = roles.value.find((item) => item.roleNo === targetRoleNo)
-      if (next != null) applySelection(next)
-      else if (role == null) clearSelection()
+      if (applied) {
+        const targetRoleNo = role == null ? createdRoleNo : role.roleNo
+        const next = roles.value.find((item) => item.roleNo === targetRoleNo)
+        if (next != null) applySelection(next)
+        else if (role == null) clearSelection()
+      } else if (role == null) {
+        // 🔴 재조회가 반영되지 않았다(실패 · 더 새 조회에 밀림) — 만든 행을 찾을 목록이 없다. 채운 "새 역할" 폼을
+        //    남기면 한 번 더 눌러 같은 역할을 또 만든다. 선택을 비운다(스펙 §11 R8).
+        clearSelection()
+        resetFeedback()
+      }
+      // 🔴 수정인데 재조회가 반영되지 않았으면 선택 · 폼을 그대로 둔다 — 옛 목록으로 재선택하면 방금 저장한 값이
+      //    화면에서 되돌아간다. 옛 revision 으로 다시 저장하면 409 와 conflicted 배너가 뜬다 — 재조회가 들어올
+      //    때까지는 그것이 정직한 결과다(스펙 §11 R8).
     }
     if (role != null && wasSelf) await options.onSelfRoleSaved?.()
     return true
@@ -444,11 +473,18 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
     })
     if (!attempted) return false
     // 🔴 목록에서 지우는 것은 서버 성공 뒤의 재조회다 — 화면이 먼저 지우지 않는다(hangang §7-2 ④).
-    await reload()
+    const applied = await load()
     if (!ok) return false
     // 🔴 재조회 중에 다른 행을 골랐으면 첫 행으로 뛰지 않는다 — 그 클릭이 이미 피드백을 비웠고, 삭제가 사용자의
     //    선택을 되돌려서는 안 된다(스펙 §4-4-2 #3).
     if (selected.value !== role) return true
+    if (!applied) {
+      // 🔴 재조회가 반영되지 않았다 — `roles` 는 지운 행이 남은 옛 목록이다. 거기서 고르면 지운 역할(또는 낡은
+      //    revision 의 행)이 다시 열린다. 선택을 비운다(스펙 §11 R8).
+      clearSelection()
+      resetFeedback()
+      return true
+    }
     const first = roles.value[0]
     if (first != null) applySelection(first)
     else clearSelection()
