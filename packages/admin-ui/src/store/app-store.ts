@@ -15,7 +15,8 @@ import type { AdminUserInfo } from '../context/admin-ui.js'
 //  - hangang 의 `ipBlocked`·`blockedIp`·`setIpBlocked` 를 뺐다 — `createApiClient({ onError })` 와 `useAdminUi().ipBlocked` 몫.
 //  - 로그인 자격증명은 `{ userId, password }` 한 객체로 받고 `login` 의 응답은 돌려주지 않는다(주입한 쪽이 이미 가진다).
 //  - `initialize()` 가 진행 중 Promise 를 공유하고, 한 번 끝나면 다시 가져오지 않는다(hangang 은 호출마다 재요청).
-//    다시 읽을 곳은 `login()` 뿐이다.
+//    다시 읽을 곳은 `login()` 과 `refresh()` 다. `refresh()` 는 자기 직책 저장 뒤처럼 권한이 바뀌었을 수 있을 때
+//    부르고, 실패해도 세션을 비우지 않는다.
 //  - 실패를 로깅하지 않는다(hangang 과 같다). 401 이 정상 경로라 구별 없이 남기면 첫 진입마다 콘솔이 더러워진다.
 //    `logout()` 의 API 실패만 `console.warn` 한다(gise).
 
@@ -60,6 +61,11 @@ export interface AppStoreActions {
   login: (credentials: { userId: string; password: string }) => Promise<void>
   logout: () => Promise<void>
   clearSession: () => void
+  /**
+   * `/me` 를 다시 받는다 — 자기 직책 저장 뒤처럼 권한이 바뀌었을 수 있을 때.
+   * 🔴 절대 거부하지 않고, 실패하면 아무것도 바꾸지 않는다.
+   */
+  refresh: () => Promise<void>
 }
 
 export function createAppStore<TMe extends AdminUserInfo>(
@@ -171,6 +177,25 @@ export function createAppStore<TMe extends AdminUserInfo>(
       }
     }
 
+    /**
+     * 🔴 실패하면 아무것도 바꾸지 않는다. `load()` 처럼 세션을 비우면 저장 직후의 일시 오류 하나로 로그아웃된다.
+     *    401 은 `createApiClient` 의 `onUnauthorized` 경로가 따로 처리한다.
+     * 🔴 진행 중인 요청이 있으면 끝나기를 기다린 뒤 **새로** 받는다 — `login()` 과 같은 이유로 옛 요청의 응답을 믿지 않는다.
+     */
+    async function refresh(): Promise<void> {
+      if (inFlight) await inFlight
+      const started = generation
+      try {
+        const me = await options.fetchMe()
+        if (started !== generation) return
+        userInfo.value = options.sanitize ? options.sanitize(me) : me
+        authorized.value = true
+        permissionDenied.value = false
+      } catch {
+        // 기존 상태를 그대로 둔다.
+      }
+    }
+
     return {
       initialized,
       authorized,
@@ -180,6 +205,7 @@ export function createAppStore<TMe extends AdminUserInfo>(
       login,
       logout,
       clearSession,
+      refresh,
     }
   })
   // setup 스토어의 추론 타입(Ref 해제 조건부 타입)은 제네릭 TMe 에서 펼쳐지지 않아 명시 타입으로 단언한다.

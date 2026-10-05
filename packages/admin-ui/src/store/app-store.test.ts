@@ -238,6 +238,69 @@ describe('createAppStore', () => {
     })
   })
 
+  describe('refresh()', () => {
+    it('/me 를 다시 받아 userInfo 를 바꾼다 — sanitize 를 거친다', async () => {
+      const { fetchMe, store } = setup({
+        sanitize: (me) => ({ ...me, permissions: me.permissions.filter((p) => p !== 'bogus') }),
+      })
+      fetchMe.mockResolvedValueOnce(ME)
+      await store.initialize()
+      fetchMe.mockResolvedValueOnce({ ...ME, permissions: ['org.roles:read', 'bogus'] })
+      await store.refresh()
+      expect(fetchMe).toHaveBeenCalledTimes(2)
+      expect(store.userInfo?.permissions).toEqual(['org.roles:read'])
+      expect(store.authorized).toBe(true)
+    })
+
+    it('🔴 실패하면 아무것도 바꾸지 않고 거부하지 않는다 — 일시 오류 하나로 로그아웃되면 안 된다', async () => {
+      const { fetchMe, store } = setup()
+      fetchMe.mockResolvedValueOnce(ME)
+      await store.initialize()
+      fetchMe.mockRejectedValueOnce(new FakeForbidden())
+      await expect(store.refresh()).resolves.toBeUndefined()
+      expect(store.userInfo).toEqual(ME)
+      expect(store.authorized).toBe(true)
+      expect(store.permissionDenied).toBe(false)
+    })
+
+    it('진행 중인 initialize() 가 있으면 끝난 뒤 새로 받는다 — 옛 요청의 응답을 믿지 않는다', async () => {
+      const { fetchMe, store } = setup()
+      let resolveFirst!: (me: AdminUserInfo) => void
+      fetchMe.mockImplementationOnce(
+        () =>
+          new Promise<AdminUserInfo>((resolve) => {
+            resolveFirst = resolve
+          }),
+      )
+      fetchMe.mockResolvedValueOnce({ ...ME, userName: '새 이름' })
+      const initializing = store.initialize()
+      const refreshing = store.refresh()
+      resolveFirst(ME)
+      await Promise.all([initializing, refreshing])
+      expect(fetchMe).toHaveBeenCalledTimes(2)
+      expect(store.userInfo?.userName).toBe('새 이름')
+    })
+
+    it('🔴 진행 중에 clearSession 이 불리면 늦게 온 응답이 세션을 되살리지 못한다', async () => {
+      const { fetchMe, store } = setup()
+      fetchMe.mockResolvedValueOnce(ME)
+      await store.initialize()
+      let resolveMe!: (me: AdminUserInfo) => void
+      fetchMe.mockImplementationOnce(
+        () =>
+          new Promise<AdminUserInfo>((resolve) => {
+            resolveMe = resolve
+          }),
+      )
+      const pending = store.refresh()
+      store.clearSession()
+      resolveMe(ME)
+      await pending
+      expect(store.userInfo).toBeNull()
+      expect(store.authorized).toBe(false)
+    })
+  })
+
   describe('logout() / clearSession()', () => {
     it('API 를 부르고 세션을 비운다', async () => {
       const { fetchMe, logout, store } = setup()
