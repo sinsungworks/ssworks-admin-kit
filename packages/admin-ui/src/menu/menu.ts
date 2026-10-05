@@ -87,8 +87,9 @@ export function flattenRoutes(routes: readonly RouteRecordRaw[]): RouteRecordRaw
 /**
  * vue-router 가 레코드를 등록할 때와 같은 규칙으로 전체 경로를 만든다 — `/` 로 시작하면 그대로,
  * `''` 이면 부모 경로, 아니면 부모 경로에 슬래시 하나로 잇는다(부모가 `/` 로 끝나면 덧붙이지 않는다).
+ * 패키지 내부용(`SettingsShell` 이 같은 규칙을 쓴다) — index 에서 내보내지 않는다.
  */
-function joinPath(parent: string | undefined, path: string): string {
+export function joinPath(parent: string | undefined, path: string): string {
   if (parent == null || path.startsWith('/')) return path
   if (path === '') return parent
   return parent.endsWith('/') ? `${parent}${path}` : `${parent}/${path}`

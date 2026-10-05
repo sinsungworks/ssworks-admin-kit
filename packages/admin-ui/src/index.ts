@@ -76,6 +76,7 @@ export {
   type RoleWriteContext,
   type PermissionMatrixBindings,
 } from './composables/useRoleEditor.js'
+export { default as SettingsShell } from './layout/SettingsShell.vue'
 
 // ── 컨텍스트 (셸 → 호스트 앱) ────────────────────────────────────────
 export {
