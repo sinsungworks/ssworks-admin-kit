@@ -125,10 +125,26 @@ export interface RoleEditor<R extends AdminRole = AdminRole> {
   canRemove: ComputedRef<boolean>
   canMove: (role: R, direction: 'up' | 'down') => boolean
 
+  /** 성공 true · 취소 · 실패 · 막힘 false. */
+  save: () => Promise<boolean>
+  remove: () => Promise<boolean>
+  move: (role: R, direction: 'up' | 'down') => Promise<boolean>
+
   submitting: Readonly<Ref<boolean>>
   fieldErrors: Readonly<Ref<Record<string, string[]>>>
   confirmDialog: ComputedRef<ConfirmDialogBindings>
   reauthDialog: ComputedRef<ReauthDialogBindings>
+}
+
+/** 저장 폼이 그리는 필드 — 이 키의 서버 검증 오류만 처리됨(전역 토스트 없음)이다. */
+const SAVE_FIELDS = ['roleName', 'isDefault', 'permissions'] as const
+
+function defaultDialogText(action: RoleEditorAction, role: AdminRole | null): RoleDialogText {
+  if (action === 'create') return { title: '역할 만들기', message: '새 역할을 만듭니다.' }
+  // 🔴 원본(`selected`)의 이름이다 — 폼에서 고친 새 이름이 아니다.
+  const name = role?.roleName ?? ''
+  if (action === 'update') return { title: '역할 저장', message: `「${name}」 역할을 저장합니다.` }
+  return { title: '역할 삭제', message: `「${name}」 역할을 삭제합니다.` }
 }
 
 function emptyForm(): RoleForm {
@@ -320,6 +336,135 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
     resetFeedback()
   }
 
+  // ── 쓰기 ──────────────────────────────────────────────────────────
+
+  interface WriteStep<T> {
+    gate: 'none' | 'confirm' | 'reauth'
+    text: RoleDialogText
+    action: (ctx: RoleWriteContext) => Promise<T>
+    onSuccess?: (result: T) => void
+    onConflict?: () => void
+    fields?: readonly string[]
+  }
+
+  /** 결과와 함께 요청이 실제로 나갔는지(관문 취소가 아닌지)를 돌려준다 — 재조회는 나갔을 때만 한다. */
+  async function write<T>(step: WriteStep<T>): Promise<{ ok: boolean; attempted: boolean }> {
+    let attempted = false
+    const action = (ctx: RoleWriteContext): Promise<T> => {
+      attempted = true
+      return step.action(ctx)
+    }
+    const common = { onSuccess: step.onSuccess, onConflict: step.onConflict, fields: step.fields }
+    let ok: boolean
+    if (step.gate === 'reauth') {
+      ok = await flow.run({ gate: 'reauth', ...step.text, ...common, action: (ctx) => action(ctx) })
+    } else if (step.gate === 'confirm') {
+      // 🔴 이 composable 의 확인 관문은 삭제뿐이다 — 지운 역할을 되살릴 길이 없다.
+      ok = await flow.run({
+        gate: 'confirm',
+        reversible: false,
+        ...step.text,
+        ...common,
+        action: () => action({}),
+      })
+    } else {
+      ok = await flow.run({ ...common, action: () => action({}) })
+    }
+    return { ok, attempted }
+  }
+
+  function dialogText(action: RoleEditorAction, role: R | null): RoleDialogText {
+    return options.dialogText?.(action, role) ?? defaultDialogText(action, role)
+  }
+
+  function markConflicted(): void {
+    conflicted.value = true
+  }
+
+  async function save(): Promise<boolean> {
+    if (!canSave.value) return false
+    const role = selected.value
+    // 🔴 요청 전에 잡아 둔다 — 재조회 뒤에는 원본이 바뀐다.
+    const wasSelf = isSelfRole.value
+    const roleName = form.value.roleName.trim()
+    const isDefault = form.value.isDefault
+    const permissions = built()
+    // 🔴 `permissions` 는 바뀐 경우에만 싣는다. 늘 실으면 서버의 권한 상승 검사가 바뀌었는지와 무관하게 보낸 배열
+    //    전부를 행위자와 대조해, 범위 밖 권한을 가진 역할은 이름조차 못 고친다(hangang `samePermissionSet`).
+    const permissionsChanged = !samePermissionList(permissions, snapshot.value)
+    let createdRoleNo: bigint | null = null
+    const { ok, attempted } = await write<bigint | void>({
+      gate: options.reauth ? 'reauth' : 'none',
+      text: dialogText(role == null ? 'create' : 'update', role),
+      fields: SAVE_FIELDS,
+      onConflict: markConflicted,
+      action: (ctx) =>
+        role == null
+          ? api.create({ roleName, isDefault, permissions }, ctx)
+          : api.update(
+              role.roleNo,
+              {
+                roleName,
+                isDefault,
+                revision: role.revision,
+                ...(permissionsChanged ? { permissions } : {}),
+              },
+              ctx,
+            ),
+      onSuccess: (result) => {
+        if (typeof result === 'bigint') createdRoleNo = result
+      },
+    })
+    if (!attempted) return false
+    // 🔴 실패해도 다시 조회한다 — 404 는 "목록이 낡았다", 409 는 "상태가 갈렸다" 이다(hangang).
+    await reload()
+    // 🔴 실패면 선택 · 폼을 그대로 둔다 — 관리자가 고친 값을 잃지 않는다.
+    if (!ok) return false
+    const targetRoleNo = role == null ? createdRoleNo : role.roleNo
+    const next = roles.value.find((item) => item.roleNo === targetRoleNo)
+    if (next != null) applySelection(next)
+    else if (role == null) clearSelection()
+    if (role != null && wasSelf) await options.onSelfRoleSaved?.()
+    return true
+  }
+
+  async function remove(): Promise<boolean> {
+    const role = selected.value
+    if (!canRemove.value || role == null) return false
+    const { ok, attempted } = await write({
+      // 🔴 재인증이면 그 다이얼로그 하나로 — 문구가 확인을 겸한다. 아니면 되돌릴 수 없다는 확인.
+      gate: options.reauth ? 'reauth' : 'confirm',
+      text: dialogText('remove', role),
+      onConflict: markConflicted,
+      action: (ctx) => api.remove(role.roleNo, { revision: role.revision }, ctx),
+    })
+    if (!attempted) return false
+    // 🔴 목록에서 지우는 것은 서버 성공 뒤의 재조회다 — 화면이 먼저 지우지 않는다(hangang §7-2 ④).
+    await reload()
+    if (!ok) return false
+    const first = roles.value[0]
+    if (first != null) applySelection(first)
+    else clearSelection()
+    resetFeedback()
+    return true
+  }
+
+  async function move(role: R, direction: 'up' | 'down'): Promise<boolean> {
+    // 🔴 이웃 없는 경계(맨 위 · 막내)도 여기서 요청 없이 끝난다.
+    const neighbor = neighborOf(role, direction)
+    if (!canMove(role, direction) || neighbor == null) return false
+    // 🔴 목표값은 「내 순서 ± 1」이 아니라 이웃 행의 `displayOrder` 다. 서버가 구간 재번호라 ±1 은 구멍(삭제가
+    //    재번호를 안 한다)이 있으면 200 을 받고도 한 줄도 안 움직인다(hangang).
+    const displayOrder = neighbor.displayOrder
+    const { ok, attempted } = await write({
+      gate: 'none',
+      text: { message: '' },
+      action: () => api.move(role.roleNo, { displayOrder }),
+    })
+    if (attempted) await reload()
+    return ok
+  }
+
   void reload()
 
   return {
@@ -340,6 +485,9 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
     canSave,
     canRemove,
     canMove,
+    save,
+    remove,
+    move,
     submitting: flow.submitting,
     fieldErrors: flow.fieldErrors,
     confirmDialog: flow.confirmDialog,
