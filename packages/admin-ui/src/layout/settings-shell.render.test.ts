@@ -142,6 +142,18 @@ describe('SettingsShell — 메뉴', () => {
     expect(menuTitles()).toEqual(['사이트', '정보'])
   })
 
+  it('meta.menu.order 로 정렬한다 — order 있는 것이 먼저(오름차순), 없는 것은 그 뒤에 선언 순서(buildMenu 와 같음)', async () => {
+    const children: RouteRecordRaw[] = [
+      { path: 'a', component: page('A'), meta: { title: '가' } },
+      { path: 'b', component: page('B'), meta: { title: '나', menu: { order: 1 } } },
+      { path: 'c', component: page('C'), meta: { title: '다', menu: { order: 0 } } },
+      { path: 'd', component: page('D'), meta: { title: '라' } },
+    ]
+    const router = await setup({ children })
+    expect(menuTitles()).toEqual(['다', '나', '가', '라'])
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/settings/c'))
+  })
+
   it('자식 페이지는 셸의 RouterView 에 그려진다', async () => {
     await setup({ start: '/settings/about' })
     expect(document.body.textContent).toContain('ABOUT')

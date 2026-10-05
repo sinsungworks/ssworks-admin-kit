@@ -22,7 +22,8 @@
   //     setup 때 고정하고 인스턴스 재사용일 때만 바꾼다(아래 `own`).
   //  ② `usePermission()` 직접 import 를 `check` prop 으로. 안 주면 `useAdminUi().user()` 의 권한(MainMenu 와 같음).
   //  ③ 판정을 킷 `filterMenu` 로 — 빈 권한은 공개, `permissions` AND, `anyPermissions` OR(가드와 같은 meta).
-  //  ④ 인덱스(`path: ''`) · 동적 세그먼트 자식을 뺀다 — 메뉴로 갈 수 있는 자리가 아니다. 제목은 `meta.menu.title` 우선.
+  //  ④ 인덱스(`path: ''`) · 동적 세그먼트 자식을 뺀다 — 메뉴로 갈 수 있는 자리가 아니다. 제목은 `meta.menu.title` 우선,
+  //     순서는 `meta.menu.order`(`buildMenu` 와 같은 규칙).
   //  ⑤ `forbiddenPath` · `menuWidth` prop, 기본 슬롯(기본 내용 `RouterView`).
   //
   // 🔴 **좌측 메뉴를 손으로 나열하지 않는다** — 자식 `meta` 에서 파생한다. 메뉴가 자기 권한을 따로 들면 둘이 갈릴 때
@@ -96,7 +97,7 @@
   const items = computed<MenuNode[]>(() => {
     const record = own.value
     if (record == null || isDynamic(record.path)) return []
-    return (record.children ?? [])
+    const nodes = (record.children ?? [])
       .filter((child) => child.path !== '' && !isDynamic(child.path))
       .map((child) => {
         const meta = child.meta as AdminRouteMeta | undefined
@@ -109,8 +110,14 @@
           anyPermissions: meta?.anyPermissions,
         }
         if (meta?.menu?.icon != null) node.icon = meta.menu.icon
+        if (meta?.menu?.order != null) node.order = meta.menu.order
         return node
       })
+    // `buildMenu` 의 그룹 안 순서와 같다 — `order` 있는 것이 먼저(오름차순), 없는 것은 그 뒤에 선언 순서.
+    return nodes
+      .map((node, seq) => ({ node, seq }))
+      .sort((a, b) => (a.node.order ?? Infinity) - (b.node.order ?? Infinity) || a.seq - b.seq)
+      .map((entry) => entry.node)
   })
 
   const visibleItems = computed(() => filterMenu(items.value, props.check ?? contextCheck))
