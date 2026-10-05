@@ -1,0 +1,348 @@
+import { computed, ref, shallowRef, type ComputedRef, type Ref, type ShallowRef } from 'vue'
+import {
+  ALL_PERMISSION,
+  coversPermissions,
+  type AdminRole,
+  type AdminRoleCreate,
+  type AdminRoleMove,
+  type AdminRoleRemove,
+  type AdminRoleUpdate,
+} from '@ssworks/admin-shared'
+import { useAdminUi } from '../context/admin-ui.js'
+import {
+  impliedClosure,
+  orderedPermissions,
+  samePermissionList,
+  togglePermission,
+  type ImpliesMap,
+} from './role-permissions.js'
+import {
+  useWriteFlow,
+  type ConfirmDialogBindings,
+  type ReauthDialogBindings,
+} from './useWriteFlow.js'
+
+// 정본: hangang-home apps/admin/src/pages/settings/roles.vue(상태 · 규칙) · roles-messages.ts
+//       + ssworks-gise-home 역할 편집의 권한 상승 방지(`coversPermissions` 로 칸 · 행 잠금)와 revision 충돌
+// 바꾼 점:
+//  ① 화면(2단 · 문구 · VAlert)을 버리고 상태 · 규칙만 headless 로 낸다. 배치는 템플릿(B)이 한다.
+//  ② 재인증 고정을 `reauth` 옵션으로. 수정 · 삭제는 `revision` 을 늘 싣는다(3b 스펙 §2-1 — 필수, 끄는 경로 없음).
+//  ③ 함의 표(액션 단위 `IMPLIED_BY`)를 `implies` 옵션(권한 키 단위 · 연쇄)으로.
+//  ④ 권한 상승 방지를 더했다 — hangang 은 서버 판정만 있었다.
+//  ⑤ 메시지 해석(`resolveRolesMessage`)을 버렸다 — 처리 안 된 실패는 `createApiClient` 의 전역 `onError` 가 서버
+//     `message` 그대로 알린다. 성공 문구는 `save()` 등이 true 를 돌려주면 화면이 띄운다.
+//  ⑥ `total` 잘림 안내를 버렸다 — 어댑터가 전량을 준다.
+//  ⑦ 자기 직책 저장 뒤 `/me` 재조회 · 이동을 `onSelfRoleSaved` 훅으로.
+
+export interface RoleWriteContext {
+  /** `reauth: true` 일 때만 있다. 본문 · 헤더 중 어디에 실을지는 어댑터가 정한다. */
+  currentPassword?: string
+}
+
+export interface RoleEditorApi<R extends AdminRole = AdminRole> {
+  /**
+   * 🔴 전량, `displayOrder` 오름차순. 쪽을 나누는 서버면 어댑터가 끝까지 받아 이어 붙인다 — hangang 은 서버 상한
+   *    100건에 잘린 역할이 편집 · 삭제 · 이동 모두 도달 불가가 됐다.
+   */
+  list(): Promise<readonly R[]>
+  /** 새 `roleNo` 를 돌려준다 — 만든 행을 선택하는 데 쓴다. */
+  create(body: AdminRoleCreate, ctx: RoleWriteContext): Promise<bigint>
+  update(roleNo: bigint, body: AdminRoleUpdate, ctx: RoleWriteContext): Promise<void>
+  remove(roleNo: bigint, body: AdminRoleRemove, ctx: RoleWriteContext): Promise<void>
+  /**
+   * 🔴 재인증 없음 · revision 없음 — 순서는 내용이 아니다(3b 스펙 D1). hangang: 이동 본문에 비밀번호를 실으면 서버가
+   *    조용히 떨궈 200 이라, 화면은 재인증했다고 믿는데 서버는 비밀번호를 본 적이 없다.
+   */
+  move(roleNo: bigint, body: AdminRoleMove): Promise<void>
+}
+
+export type RoleEditorAction = 'create' | 'update' | 'remove'
+
+export interface RoleDialogText {
+  title?: string
+  message: string
+}
+
+export interface RoleEditorOptions<P extends string = string, R extends AdminRole = AdminRole> {
+  api: RoleEditorApi<R>
+  /** 정렬 순서이자 유효 키 목록. 보통 카탈로그의 `ALL_PERMISSION_VALUES`. `'*'` 는 걸러 낸다. */
+  permissions: readonly P[]
+  /** 쓰기 권한. 게터 — 호출 시점마다 평가한다. */
+  canWrite: () => boolean
+  /** `{ 'org.users:write': ['org.users:read'] }`. 연쇄를 펼친다. 끄는 방향은 여기서 유도한다. */
+  implies?: Partial<Record<P, readonly P[]>>
+  /** 기본 false. true 면 만들기 · 수정 · 삭제에 재인증 관문. 🔴 이동은 늘 관문 없음. */
+  reauth?: boolean
+  /** 기본 `useAdminUi().user()?.permissions ?? []`. */
+  actorPermissions?: () => readonly string[]
+  /** 기본 `user()?.roleName === role.roleName` — roleName 은 UNIQUE 전제(hangang). */
+  isSelf?: (role: R) => boolean
+  /** 자기 직책 **수정** 성공 뒤(재조회 · 재선택 뒤). 템플릿이 `store.refresh()` 와 권한 상실 시 이동을 한다. */
+  onSelfRoleSaved?: () => void | Promise<void>
+  /** 관문 다이얼로그 문구. 기본은 "역할" 용어(스펙 §4-4-3). */
+  dialogText?: (action: RoleEditorAction, role: R | null) => RoleDialogText
+}
+
+export interface RoleForm {
+  roleName: string
+  isDefault: boolean
+  /** 🔴 전체 권한 — 매트릭스 행이 아니라 독립 스위치다. 켜면 정확히 `['*']` 만 보낸다. */
+  isAll: boolean
+  /** 매트릭스의 키들. 🔴 `'*'` 가 들어오는 길이 없다(`orderedPermissions`). */
+  permissions: string[]
+}
+
+/** `<PermissionMatrix v-bind="matrix" :categories="…" />` */
+export interface PermissionMatrixBindings {
+  modelValue: string[]
+  'onUpdate:modelValue': (value: string[]) => void
+  permissions: readonly string[]
+  disabled: boolean
+  canPick: (permission: string) => boolean
+}
+
+export interface RoleEditor<R extends AdminRole = AdminRole> {
+  roles: Readonly<Ref<readonly R[]>>
+  loading: Readonly<Ref<boolean>>
+  /** 마지막 목록 조회의 오류. 다음 조회 시작 때 비운다. */
+  loadError: Readonly<Ref<unknown>>
+  reload: () => Promise<void>
+
+  /** 불러온 원본 스냅샷. `null` 이면 새 역할 모드. */
+  selected: Readonly<Ref<R | null>>
+  select: (role: R) => void
+  startCreate: () => void
+
+  form: Ref<RoleForm>
+  matrix: ComputedRef<PermissionMatrixBindings>
+
+  canToggleAll: ComputedRef<boolean>
+  permissionsLocked: ComputedRef<boolean>
+  isSelfRole: ComputedRef<boolean>
+  isDirty: ComputedRef<boolean>
+  conflicted: Readonly<Ref<boolean>>
+  canSave: ComputedRef<boolean>
+  canRemove: ComputedRef<boolean>
+  canMove: (role: R, direction: 'up' | 'down') => boolean
+
+  submitting: Readonly<Ref<boolean>>
+  fieldErrors: Readonly<Ref<Record<string, string[]>>>
+  confirmDialog: ComputedRef<ConfirmDialogBindings>
+  reauthDialog: ComputedRef<ReauthDialogBindings>
+}
+
+function emptyForm(): RoleForm {
+  return { roleName: '', isDefault: false, isAll: false, permissions: [] }
+}
+
+/** setup 안에서 부른다. 페이지당 하나 — 다이얼로그 둘과 매트릭스는 반환된 바인딩을 `v-bind` 로 붙인다. */
+export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>(
+  options: RoleEditorOptions<P, R>,
+): RoleEditor<R> {
+  const { api } = options
+  /** 🔴 매트릭스와 폼이 쓰는 카탈로그 — `'*'` 를 뺀다. 전체 권한은 행이 아니라 `form.isAll` 스위치다. */
+  const catalog: readonly string[] = options.permissions.filter((key) => key !== ALL_PERMISSION)
+  const implies: ImpliesMap = options.implies ?? {}
+  const flow = useWriteFlow()
+
+  // 기본값을 쓸 때만 컨텍스트를 찾는다 — 두 옵션을 다 주면 플러그인 없이도 쓸 수 있다.
+  const ui = options.actorPermissions != null && options.isSelf != null ? null : useAdminUi()
+  // 🔴 게터로 읽는다 — 값을 캐시하면 `refresh()` 뒤에도 옛 권한으로 판정한다.
+  const actor = options.actorPermissions ?? (() => ui?.user()?.permissions ?? [])
+  const isSelf =
+    options.isSelf ??
+    ((role: R) => {
+      const name = ui?.user()?.roleName
+      return name != null && name === role.roleName
+    })
+
+  const roles = shallowRef<readonly R[]>([])
+  const loading = ref(false)
+  const loadError = shallowRef<unknown>(null)
+  /** 🔴 불러온 원본. 자기 직책 판정 · revision 은 폼이 아니라 이것으로 한다. */
+  const selected: ShallowRef<R | null> = shallowRef(null)
+  const form = ref<RoleForm>(emptyForm())
+  /** 선택할 때의 전송값(`built()`). 수정 저장이 `permissions` 를 바뀐 경우에만 싣는 판정에 쓴다. */
+  const snapshot = shallowRef<readonly string[]>([])
+  const conflicted = ref(false)
+
+  const busy = computed(() => loading.value || flow.submitting.value)
+
+  /** 🔴 전체 권한이면 정확히 `['*']` 다 — 매트릭스 키를 함께 보내지 않는다(hangang). */
+  function built(): string[] {
+    return form.value.isAll ? [ALL_PERMISSION] : orderedPermissions(catalog, form.value.permissions)
+  }
+
+  function applySelection(role: R): void {
+    selected.value = role
+    form.value = {
+      roleName: role.roleName,
+      isDefault: role.isDefault,
+      isAll: role.permissions.includes(ALL_PERMISSION),
+      permissions: orderedPermissions(catalog, role.permissions),
+    }
+    snapshot.value = built()
+  }
+
+  function clearSelection(): void {
+    selected.value = null
+    form.value = emptyForm()
+    snapshot.value = []
+  }
+
+  function resetFeedback(): void {
+    flow.clearFieldErrors()
+    conflicted.value = false
+  }
+
+  // ── 목록 ──────────────────────────────────────────────────────────
+
+  /** 🔴 응답 경합 — 쓰기 뒤 재조회와 첫 조회가 겹치면 먼저 보낸 느린 응답이 나중에 도착해 이긴다(hangang). */
+  let loadSeq = 0
+  let loadedOnce = false
+
+  async function reload(): Promise<void> {
+    const seq = ++loadSeq
+    loading.value = true
+    loadError.value = null
+    try {
+      const items = await api.list()
+      if (seq !== loadSeq) return
+      roles.value = items
+      // 🔴 첫 조회가 성공하면 첫 행을 연다 — 오른쪽이 빈 첫 화면을 피한다(hangang).
+      if (!loadedOnce) {
+        loadedOnce = true
+        const first = items[0]
+        if (selected.value == null && first != null) applySelection(first)
+      }
+    } catch (error) {
+      if (seq !== loadSeq) return
+      // 🔴 목록은 그대로 둔다 — 화면이 로딩 · 목록 · 실패 · 빈 목록 네 갈래를 가를 수 있게.
+      loadError.value = error
+    } finally {
+      if (seq === loadSeq) loading.value = false
+    }
+  }
+
+  // ── 판정 ──────────────────────────────────────────────────────────
+
+  const permissionsLocked = computed(
+    () => selected.value != null && !coversPermissions(actor(), snapshot.value),
+  )
+  const canToggleAll = computed(
+    () => options.canWrite() && !busy.value && actor().includes(ALL_PERMISSION),
+  )
+  const matrixDisabled = computed(
+    () => !options.canWrite() || busy.value || form.value.isAll || permissionsLocked.value,
+  )
+
+  /** 🔴 켜면 함께 켜질 키까지 행위자가 가져야 한다 — 아니면 서버의 권한 상승 검사에 걸린다(gise). */
+  function canPick(permission: string): boolean {
+    return coversPermissions(actor(), [permission, ...impliedClosure(implies, permission)])
+  }
+
+  /**
+   * 🔴 매트릭스는 칸 하나만 더하거나 뺀 원본을 낸다. 옛 값과 대조해 바뀐 키 하나를 찾아 함의를 값에 써 넣는다
+   *    (hangang §7-2 "표시만 하지 말라" — 화면은 부여됐다 하고 저장소는 없다고 하면 안 된다).
+   */
+  function onMatrixUpdate(next: string[]): void {
+    if (matrixDisabled.value) return
+    const before = form.value.permissions
+    const added = next.find((key) => !before.includes(key))
+    const removed = before.find((key) => !next.includes(key))
+    const changed = added ?? removed
+    if (changed == null || !canPick(changed)) return
+    form.value.permissions = togglePermission(catalog, implies, before, changed, added != null)
+  }
+
+  const matrix = computed<PermissionMatrixBindings>(() => ({
+    // 🔴 전체 권한이면 카탈로그 전체를 넘겨 체크된 채 잠가 보인다. `form.permissions` 는 건드리지 않는다 — 끄면
+    //    이전 값이 돌아온다.
+    modelValue: form.value.isAll ? [...catalog] : form.value.permissions,
+    'onUpdate:modelValue': onMatrixUpdate,
+    permissions: catalog,
+    disabled: matrixDisabled.value,
+    canPick,
+  }))
+
+  /** 🔴 폼이 아니라 불러온 원본으로 판정한다 — 폼에서 이름을 고치는 순간 경고가 사라지면 안 된다(hangang §1-4). */
+  const isSelfRole = computed(() => selected.value != null && isSelf(selected.value))
+
+  const isDirty = computed(() => {
+    const name = form.value.roleName.trim()
+    const current = built()
+    const role = selected.value
+    if (role == null) return name !== '' || form.value.isDefault || current.length > 0
+    return (
+      name !== role.roleName ||
+      form.value.isDefault !== role.isDefault ||
+      !samePermissionList(current, snapshot.value)
+    )
+  })
+
+  /** 🔴 빈 이름 · 변경 없는 저장을 버튼 단계에서 막는다 — hangang 은 둘 다 서버 400 이었다. */
+  const canSave = computed(
+    () =>
+      options.canWrite() &&
+      !busy.value &&
+      !conflicted.value &&
+      form.value.roleName.trim() !== '' &&
+      (selected.value == null || isDirty.value),
+  )
+  const canRemove = computed(() => options.canWrite() && !busy.value && selected.value != null)
+
+  /** 🔴 `indexOf` 가 아니라 `roleNo` 로 찾는다 — 슬롯이 넘기는 행이 `roles` 의 원본 참조라는 보장이 없다(hangang). */
+  function neighborOf(role: R, direction: 'up' | 'down'): R | undefined {
+    const index = roles.value.findIndex((candidate) => candidate.roleNo === role.roleNo)
+    if (index < 0) return undefined
+    return roles.value[direction === 'up' ? index - 1 : index + 1]
+  }
+
+  function canMove(role: R, direction: 'up' | 'down'): boolean {
+    return options.canWrite() && !busy.value && neighborOf(role, direction) != null
+  }
+
+  // ── 선택 ──────────────────────────────────────────────────────────
+
+  /**
+   * 🔴 선택은 읽기 동작이다 — `canWrite` 로 막지 않는다. 저장 중에는 무시한다 — 진행 중이던 저장이 성공하며 선택을
+   *    되돌린다.
+   */
+  function select(role: R): void {
+    if (flow.submitting.value) return
+    applySelection(role)
+    resetFeedback()
+  }
+
+  function startCreate(): void {
+    if (!options.canWrite() || busy.value) return
+    clearSelection()
+    resetFeedback()
+  }
+
+  void reload()
+
+  return {
+    roles,
+    loading,
+    loadError,
+    reload,
+    selected,
+    select,
+    startCreate,
+    form,
+    matrix,
+    canToggleAll,
+    permissionsLocked,
+    isSelfRole,
+    isDirty,
+    conflicted,
+    canSave,
+    canRemove,
+    canMove,
+    submitting: flow.submitting,
+    fieldErrors: flow.fieldErrors,
+    confirmDialog: flow.confirmDialog,
+    reauthDialog: flow.reauthDialog,
+  }
+}

@@ -65,6 +65,17 @@ export {
   type PermissionMatrixColumn,
   type PermissionMatrixRow,
 } from './components/permission/permission-matrix.js'
+export {
+  useRoleEditor,
+  type RoleEditor,
+  type RoleEditorApi,
+  type RoleEditorOptions,
+  type RoleEditorAction,
+  type RoleDialogText,
+  type RoleForm,
+  type RoleWriteContext,
+  type PermissionMatrixBindings,
+} from './composables/useRoleEditor.js'
 
 // ── 컨텍스트 (셸 → 호스트 앱) ────────────────────────────────────────
 export {
