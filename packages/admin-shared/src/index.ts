@@ -80,3 +80,16 @@ export {
   type SortCondition,
   type QuerySchemaOptions,
 } from './pagination.js'
+
+export {
+  adminRoleSchema,
+  adminRoleCreateSchema,
+  adminRoleUpdateSchema,
+  adminRoleMoveSchema,
+  adminRoleRemoveSchema,
+  type AdminRole,
+  type AdminRoleCreate,
+  type AdminRoleUpdate,
+  type AdminRoleMove,
+  type AdminRoleRemove,
+} from './roles.js'
