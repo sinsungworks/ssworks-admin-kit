@@ -86,12 +86,15 @@ export const usePermission = createUsePermission<Permission>(
 | `createAdminGuard` · `AdminGuardDeps`                                                                                                                                                           | 전역 `beforeEach`. deps 주입, 기본 fail-closed                                                                   |
 | `createTitleGuard` · `installChunkRecovery` · `safeRedirect`                                                                                                                                    | `afterEach` 문서 제목 · 청크 404 복구(1회 새로고침) · 오픈 리다이렉트 방어                                       |
 | `createApiClient` · `ApiClientOptions` · `ApiClient` · `ApiError`                                                                                                                               | axios 팩토리. 봉투 벗김 · bigint · 401 갱신(공유 Promise) · `onAuthFailure`/`onError` 콜백                       |
-| `createAppStore` · `SessionNotEstablishedError` · `AppStoreOptions` · `AppStoreState` · `AppStoreActions`                                                                                       | 세션 pinia 스토어 팩토리(`initialize` · `login` · `logout` · `clearSession`)                                     |
+| `createAppStore` · `SessionNotEstablishedError` · `AppStoreOptions` · `AppStoreState` · `AppStoreActions`                                                                                       | 세션 pinia 스토어 팩토리(`initialize` · `login` · `logout` · `clearSession` · `refresh`)                         |
 | `useDirtyGuard` · `DirtyGuardOptions` · `useTableSelection`                                                                                                                                     | 이탈 확인 · 대량 표 선택(Set + 반전 선택)                                                                        |
 | `useServerTable` · `ServerTable` · `ServerTableOptions` · `ServerTableParams`                                                                                                                   | 서버 페이징 목록 — 조회 1번 · 늦은 응답 무시 · 필터/쪽 크기 변경 시 1쪽 · 정렬 보정 · bigint `total` · `urlSync` |
 | `useQuerySyncedFilter` · `QuerySyncOptions` · `queryCodec` · `withDefault` · `bindQueryCodecs` · `QueryCodec` · `DefaultedQueryCodec` · `QueryCodecSpec` · `QuerySyncBinding` · `RawQueryValue` | 목록 상태 ↔ URL 쿼리. 타이밍 핵심(`read`·`toQuery`) + 선택형 코덱(기본 6종 · 커스텀)                             |
 | `useWriteFlow` · `WriteFlow` · `WriteRunOptions` · `ConfirmDialogBindings` · `ReauthDialogBindings`                                                                                             | 쓰기 관문(확인 · 재인증) · busy · 오류 분류. 다이얼로그는 `v-bind="confirmDialog"`                               |
 | `toFieldErrors`                                                                                                                                                                                 | `ERR_COMMON_VALIDATION` 의 `details.issues` → 필드 키별 메시지(`'members.0.name'`)                               |
+| `PermissionMatrix` · `assertMatrixCoversPermissions` · `PermissionMatrixCategory` · `PermissionMatrixColumn` · `PermissionMatrixRow`                                                            | 자원 행 × 액션 열 권한 격자(`v-model` = 권한 키 배열) · 카탈로그 누락 검사. 아래 "역할 · 설정"                   |
+| `useRoleEditor` · `RoleEditor` · `RoleEditorApi` · `RoleEditorOptions` · `RoleEditorAction` · `RoleDialogText` · `RoleForm` · `RoleWriteContext` · `PermissionMatrixBindings`                   | 역할 편집 headless 상태 · 규칙(목록 · 선택 · 폼 · 함의 · 권한 상승 방지 · revision 충돌 · 관문)                  |
+| `SettingsShell`                                                                                                                                                                                 | 설정 2단 셸 — 라우트 직속 자식 `meta` 에서 파생한 좌측 메뉴 + `RouterView`. 부모로 들어오면 허용된 첫 자식으로   |
 
 #### `AdminShell` 슬롯
 
@@ -490,6 +493,17 @@ const {
 - `isDirty` 를 `useDirtyGuard` 에 이으면 다른 역할로 옮길 때 경고할 수 있다.
 - 관문 문구의 용어(직책 · 권한 그룹)는 `dialogText` 로 바꾼다.
 
+#### `PermissionMatrix` props · 슬롯
+
+| prop / 슬롯                      | 내용                                                                               |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
+| `v-model`                        | 체크된 권한 키 배열. 칸 키는 `자원:액션`(`'org.users:read'`)                       |
+| `categories`                     | 카테고리마다 열(액션) × 행(자원) 표 하나                                           |
+| `permissions`                    | 유효 권한 목록(카탈로그). 칸 키가 여기 없으면 그 칸은 비활성 · 미체크              |
+| `disabled`                       | 기본 `false`. 칸 전부 비활성                                                       |
+| `canPick`                        | `(permission) => boolean`. false 인 칸은 비활성(권한 상승 방지)                    |
+| `#row-extra="{ row, category }"` | 행 끝 열 — scope 선택 상자 같은 프로젝트 몫. 슬롯을 주지 않으면 열이 생기지 않는다 |
+
 ### 설정 셸
 
 ```ts
@@ -508,7 +522,14 @@ defineAdminRoute<Permission>({
 })
 ```
 
-- 메뉴는 직속 자식의 `meta` 에서 만든다(인덱스 `path: ''` · `:id` 자식 제외, 제목은 `meta.menu.title` → `meta.title`). 부모로 들어오면 권한이 있는 첫 자식으로 보내고, 없으면 `forbiddenPath`(기본 `/403`).
+| prop / 슬롯     | 내용                                                                        |
+| --------------- | --------------------------------------------------------------------------- |
+| `check`         | `PermissionCheck`. 생략하면 `useAdminUi().user()?.permissions`(게터)로 판정 |
+| `forbiddenPath` | 허용된 자식이 없을 때 갈 곳. 기본 `'/403'`(가드 기본값과 같음)              |
+| `menuWidth`     | 메뉴 pane 너비. 기본 `'240px'`                                              |
+| default 슬롯    | 기본 내용 `<RouterView />`. 전환 효과 등으로 감쌀 자리                      |
+
+- 메뉴는 직속 자식의 `meta` 에서 만든다(인덱스 `path: ''` · `:id` 자식 제외, 제목은 `meta.menu.title` → `meta.title`, 순서는 `meta.menu.order` → 선언 순서). 부모로 들어오면 권한이 있는 첫 자식으로 보내고, 없으면 `forbiddenPath`(기본 `/403`).
 - 🔴 부모의 `anyPermissions` 가 자식 권한을 덮지 않으면 가드가 셸을 열기 전에 막는다 — 라우트 테스트에서 `assertParentAnyPermissionsCoverChildren(routes)` 를 부른다.
 - 설정 자식은 사이드바에 올리지 않는다(`buildMenu` 의 `depth: 1` 기본값).
 - 자식 페이지는 자기 루트에서 `ColumnPane` 을 낸다 — 셸의 메뉴 pane 옆에 나란히 붙는다.

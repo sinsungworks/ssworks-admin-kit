@@ -415,6 +415,11 @@ TDD — 실패하는 테스트부터. DOM 이 필요한 파일은 `// @vitest-en
 
 - **R1 — refine 금지의 근거를 고쳤다(§4-1).** zod 4.6.5 에서 refinement 가 있는 객체 스키마의 `.extend()` 는 동작하고, 던지는 것은 `.omit()` · `.pick()` 이다. 결론은 같다 — 프로젝트가 필드를 덜어 내는 길과 §10 의 `revision` 끄는 경로(`.omit({ revision: true })`)를 막지 않는다.
 - **R2 — `joinPath` 를 `menu.ts` 에서 export 한다**(패키지 내부용, index 에는 없음). `SettingsShell` 이 `buildMenu` 와 같은 경로 규칙을 쓴다.
-- **R3 — `refresh()` 는 진행 중인 요청을 기다리기 **전에** 세대 번호를 잡는다(§4-6).** 플랜 코드는 기다린 뒤에 잡아, 기다리는 동안 `clearSession()` 이 불리면 `/me` 를 다시 받아 지운 세션을 되살렸다. 기다리는 동안 세대가 바뀌었으면 받지 않는다(Task 3 리뷰).
+- **R3 — `refresh()` 는 진행 중인 요청을 기다리기 전에 세대 번호를 잡는다(§4-6).** 플랜 코드는 기다린 뒤에 잡아, 기다리는 동안 `clearSession()` 이 불리면 `/me` 를 다시 받아 지운 세션을 되살렸다. 기다리는 동안 세대가 바뀌었으면 받지 않는다(Task 3 리뷰).
 - **R4 — `save()` · `remove()` 는 쓰기 뒤 재조회 동안 사용자가 다른 행을 골랐으면 재선택(수정 · 만들기) · 첫 행 이동(삭제)을 하지 않는다(§4-4-2 #3 보강).** `select()` 는 요청이 나가 있는 동안(`submitting`)만 무시하고, 재조회 중의 선택은 사용자의 선택으로 존중한다. 자기 직책 수정이면 `onSelfRoleSaved` 는 그래도 부른다(Task 7 리뷰).
 - **R5 — `SettingsShell` 의 "RouterView 밖" 테스트는 `expect(() => mount(…)).toThrow(/RouterView/)` 로 잰다.** `@vue/test-utils` 의 `mount()` 는 `config.errorHandler` 와 무관하게 setup 오류를 다시 던져, 플랜의 errorHandler 수집 방식은 통과할 수 없었다(Task 8).
+- **R6 — 저장 검증 오류의 처리됨 키를 `fields` 옵션으로 받는다(§4-4-2 #6 정정, 기본 `['roleName']`).** headless composable 은 템플릿이 무엇을 그리는지 모른다 — 세 키를 박아 두면 `isDefault` · `permissions` 오류를 안 그리는 템플릿에서 오류가 조용히 사라졌다(최종 리뷰).
+- **R7 — `SettingsShell` 은 자기 레코드를 setup 때 고정하고, 같은 페이지 컴포넌트가 다른 레코드를 그릴 때(인스턴스 재사용)만 바꾼다(§4-5 #1 보강).** `matchedRouteKey` 는 부모 RouterView 가 지금 보여 주는 레코드라 KeepAlive 비활성 · out-in 전환 중에 남의 레코드로 바뀌어 `/403` 으로 끌고 갔다(최종 리뷰).
+- **R8 — 쓰기 뒤 재조회가 반영되지 않으면(실패 · 더 새 조회에 밀림) 옛 목록으로 재선택하지 않는다(§4-4-2 #6 · #7 보강).** 수정은 폼을 그대로 두고, 만들기 · 삭제는 선택을 비운다(최종 리뷰).
+- **R9 — 겹친 `refresh()` 는 앞의 요청을 기다린다(§4-6 대로).** 구현이 진행 중인 `refresh()` 를 기다리지 않아 늦게 온 옛 응답이 이겼다(최종 리뷰).
+- **R10 — `SettingsShell` 메뉴는 `meta.menu.order` 로 정렬한다(`buildMenu` 와 같은 규칙).**
