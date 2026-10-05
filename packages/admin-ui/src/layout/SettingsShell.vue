@@ -1,6 +1,12 @@
 <script setup lang="ts">
-  import { computed, inject, watch } from 'vue'
-  import { matchedRouteKey, RouterView, useRoute, useRouter } from 'vue-router'
+  import { computed, inject, shallowRef, watch } from 'vue'
+  import {
+    matchedRouteKey,
+    RouterView,
+    useRoute,
+    useRouter,
+    type RouteRecordNormalized,
+  } from 'vue-router'
   import { VList, VListItem } from 'vuetify/components'
   import { createPermissionCheck, type PermissionCheck } from '@ssworks/admin-shared'
   import ColumnLayout from '../components/ui/ColumnLayout.vue'
@@ -13,6 +19,7 @@
   // 바꾼 점:
   //  ① 라우트 표 직접 import(`routes.find(r => r.path === '/settings')`)를 vue-router 의 `matchedRouteKey` 주입으로.
   //     이 셸(또는 셸을 품은 페이지)을 그린 `RouterView` 의 레코드다 — 패키지는 소비자의 라우트 표를 모른다.
+  //     setup 때 고정하고 인스턴스 재사용일 때만 바꾼다(아래 `own`).
   //  ② `usePermission()` 직접 import 를 `check` prop 으로. 안 주면 `useAdminUi().user()` 의 권한(MainMenu 와 같음).
   //  ③ 판정을 킷 `filterMenu` 로 — 빈 권한은 공개, `permissions` AND, `anyPermissions` OR(가드와 같은 meta).
   //  ④ 인덱스(`path: ''`) · 동적 세그먼트 자식을 뺀다 — 메뉴로 갈 수 있는 자리가 아니다. 제목은 `meta.menu.title` 우선.
@@ -52,7 +59,27 @@
   const trimSlash = (path: string) =>
     path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path
 
-  const basePath = computed(() => matched.value?.path ?? '')
+  /**
+   * 🔴 **자기 레코드는 setup 때 고정한다 — `matched` 를 그대로 읽지 않는다.** `matchedRouteKey` 는 부모 `RouterView` 가
+   *    **지금** 보여 주는 레코드다. `<KeepAlive>` 로 비활성이 된 셸이나 out-in `<Transition>` 으로 떠나는 셸은 인스턴스가
+   *    살아 있는 채 그 값이 남의 레코드(`/users`)로 바뀐다 — 그대로 따르면 `route.path === 그 레코드 경로` 가 되어
+   *    남의 페이지를 그 레코드의 첫 자식이나 `forbiddenPath`(`/403`)로 끌고 간다(최종 리뷰에서 재현).
+   *    받아들이는 변경은 하나 — 같은 페이지 컴포넌트가 다른 레코드를 그려 `RouterView` 가 인스턴스를 재사용할 때다.
+   */
+  const own = shallowRef<RouteRecordNormalized | undefined>(matched.value)
+  watch(
+    matched,
+    (next) => {
+      if (next != null && next.components?.default === own.value?.components?.default) {
+        own.value = next
+      }
+    },
+    // 🔴 sync — 재사용으로 레코드가 바뀐 같은 틱에 아래 리다이렉트 watch 가 옛 레코드를 읽지 않게 한다. 같은
+    //    인스턴스의 pre watch 둘의 순서는 출처가 알림을 받은 순서(스케줄러 세부)라 기대지 않는다.
+    { flush: 'sync' },
+  )
+
+  const basePath = computed(() => own.value?.path ?? '')
 
   watch(
     basePath,
@@ -67,7 +94,7 @@
   )
 
   const items = computed<MenuNode[]>(() => {
-    const record = matched.value
+    const record = own.value
     if (record == null || isDynamic(record.path)) return []
     return (record.children ?? [])
       .filter((child) => child.path !== '' && !isDynamic(child.path))
@@ -95,10 +122,14 @@
    * 🔴 **대상은 고정 자식이 아니라 걸러진 첫 항목이다.** 고정 자식으로 밀면 그 권한 하나만 없는 관리자가 설정 전체를
    *    못 쓴다. 걸러진 목록이 비면 `forbiddenPath` — 빈 화면이 아니라 "접근 권한 없음" 문장을 낸다.
    * 🔴 `replace` 다 — 뒤로 가기가 부모와 첫 자식 사이에 갇히지 않는다.
+   * 🔴 **현재 라우트가 자기 레코드를 품을 때만 돈다.** KeepAlive 로 비활성이거나 전환으로 떠나는 셸도 이 watch 는
+   *    살아 있다 — 그 셸이 남의 내비게이션을 가로채면 안 된다(위 `own` 주석).
    */
   watch(
     () => route.path,
     (path) => {
+      const record = own.value
+      if (record == null || !route.matched.includes(record)) return
       if (isDynamic(basePath.value) || trimSlash(path) !== trimSlash(basePath.value)) return
       const first = visibleItems.value[0]
       void router.replace(first?.to ?? props.forbiddenPath)
