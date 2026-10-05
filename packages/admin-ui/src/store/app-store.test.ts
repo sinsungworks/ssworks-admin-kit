@@ -281,6 +281,29 @@ describe('createAppStore', () => {
       expect(store.userInfo?.userName).toBe('새 이름')
     })
 
+    it('🔴 겹친 refresh() 는 앞의 것을 기다린 뒤 받는다 — 늦게 온 앞의 응답이 이기지 않는다', async () => {
+      const { fetchMe, store } = setup()
+      fetchMe.mockResolvedValueOnce(ME)
+      await store.initialize()
+      let resolveFirst!: (me: AdminUserInfo) => void
+      fetchMe.mockImplementationOnce(
+        () =>
+          new Promise<AdminUserInfo>((resolve) => {
+            resolveFirst = resolve
+          }),
+      )
+      fetchMe.mockResolvedValueOnce({ ...ME, userName: 'B' })
+      const first = store.refresh()
+      const second = store.refresh()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      // 두 번째는 첫 번째가 끝나기 전에 /me 를 부르지 않는다.
+      expect(fetchMe).toHaveBeenCalledTimes(2)
+      resolveFirst({ ...ME, userName: 'A' })
+      await Promise.all([first, second])
+      expect(fetchMe).toHaveBeenCalledTimes(3)
+      expect(store.userInfo?.userName).toBe('B')
+    })
+
     it('🔴 진행 중에 clearSession 이 불리면 늦게 온 응답이 세션을 되살리지 못한다', async () => {
       const { fetchMe, store } = setup()
       fetchMe.mockResolvedValueOnce(ME)

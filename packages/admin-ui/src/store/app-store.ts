@@ -182,8 +182,9 @@ export function createAppStore<TMe extends AdminUserInfo>(
      *    401 은 `createApiClient` 의 `onUnauthorized` 경로가 따로 처리한다.
      * 🔴 진행 중인 요청이 있으면 끝나기를 기다린 뒤 **새로** 받는다 — `login()` 과 같은 이유로 옛 요청의 응답을 믿지 않는다.
      *    세대를 먼저 캡처한다 — 대기 중 `clearSession()` 이 불려도 늦게 온 응답이 세션을 되살리지 못한다.
+     * 🔴 `inFlight` 는 **이 함수가 동기로 읽은 이전 값**이다 — `refresh()` 가 자기 실행을 등록하기 전에 읽는다.
      */
-    async function refresh(): Promise<void> {
+    async function doRefresh(): Promise<void> {
       const started = generation
       if (inFlight) await inFlight
       if (started !== generation) return
@@ -196,6 +197,19 @@ export function createAppStore<TMe extends AdminUserInfo>(
       } catch {
         // 기존 상태를 그대로 둔다.
       }
+    }
+
+    /**
+     * 🔴 **자기 실행을 `inFlight` 로 등록한다(`fetchSession` 과 같게).** 등록하지 않으면 겹친 `refresh()` 둘이 `/me` 를
+     *    동시에 받아 늦게 온 앞의 응답이 이긴다. 등록하면 뒤의 호출이 앞의 것을 기다려 호출 순서대로 받고, 마지막
+     *    호출의 `/me` 가 남는다. 그동안 불린 `initialize()` 는 이 실행을 공유한다(거부하지 않는 것은 그대로다).
+     */
+    function refresh(): Promise<void> {
+      const run = doRefresh().finally(() => {
+        if (inFlight === run) inFlight = null
+      })
+      inFlight = run
+      return run
     }
 
     return {
