@@ -95,11 +95,11 @@ export const usePermission = createUsePermission<Permission>(
 | `PermissionMatrix` · `assertMatrixCoversPermissions` · `PermissionMatrixCategory` · `PermissionMatrixColumn` · `PermissionMatrixRow`                                                            | 자원 행 × 액션 열 권한 격자(`v-model` = 권한 키 배열) · 카탈로그 누락 검사. 아래 "역할 · 설정"                                                                             |
 | `useRoleEditor` · `RoleEditor` · `RoleEditorApi` · `RoleEditorOptions` · `RoleEditorAction` · `RoleDialogText` · `RoleForm` · `RoleWriteContext` · `PermissionMatrixBindings`                   | 역할 편집 headless 상태 · 규칙(목록 · 선택 · 폼 · 함의 · 권한 상승 방지 · revision 충돌 · 관문)                                                                            |
 | `SettingsShell`                                                                                                                                                                                 | 설정 2단 셸 — 라우트 직속 자식 `meta` 에서 파생한 좌측 메뉴 + `RouterView`. 부모로 들어오면 허용된 첫 자식으로                                                             |
-| `SessionTable` · `SessionTableRow`                                                                                                                                                              | 세션 표(기기 · 접속 IP · 최근 활동 · 끝내기). `useSessions().table` 을 `v-bind`. 아래 "세션 · 비밀번호"                                                                    |
+| `SessionTable` · `SessionTableRow`                                                                                                                                                              | 세션 표(기기 · 접속 IP · 최근 활동 · 끝내기, 선택 열 `showUser` · `showIp` · `showLoginAt` · `showExpireAt`). `useSessions().table` 을 `v-bind`. 아래 "세션 · 비밀번호"    |
 | `useSessions` · `Sessions` · `UseSessionsOptions` · `SessionTableBindings` · `SessionMessages` · `SessionDialogText` · `SessionAction` · `SessionRevokedEvent`                                  | 세션 목록 headless — 전량(`list`) · 서버 페이징(`fetch`), 끝내기 · 다른 세션 모두 · 사용자 전체, 확인 관문                                                                 |
 | `TemporaryPasswordDialog`                                                                                                                                                                       | 임시 비밀번호 1회 표시 · 복사. `v-model` 이 곧 값(닫으면 `null`)                                                                                                           |
 | `PasswordChangeForm`                                                                                                                                                                            | 비밀번호 변경 · 강제 변경 폼 — 정책 검증 · 이중 제출 방지 · 서버 필드 오류 포커스                                                                                          |
-| `copyText` · `CopyResult`                                                                                                                                                                       | 클립보드 복사(비보안 컨텍스트 대비 대체 경로). 결과를 돌려준다                                                                                                             |
+| `copyText` · `CopyResult`                                                                                                                                                                       | 클립보드 복사. 결과 3갈래(`done` · `failed` · `unavailable`) — 비보안 컨텍스트 대체 경로는 없다                                                                            |
 
 #### `AdminShell` 슬롯
 
@@ -558,7 +558,9 @@ const mine = useSessions({
 ```
 
 ```vue
-<SessionTable v-bind="mine.table.value" />
+<SessionTable v-bind="mine.table.value">
+  <template #no-data>{{ mine.loadError.value ? '세션을 불러오지 못했습니다.' : '로그인된 세션이 없습니다.' }}</template>
+</SessionTable>
 <VBtn
   :disabled="!mine.canRevokeOthers.value"
   @click="mine.revokeOthers()"
@@ -584,21 +586,25 @@ const all = useSessions({
 ```
 
 ```vue
-<SessionTable v-bind="all.table.value" show-user show-login-at />
+<SessionTable v-bind="all.table.value" show-user show-login-at>
+  <template #no-data>{{ all.loadError.value ? '세션을 불러오지 못했습니다.' : '세션이 없습니다.' }}</template>
+</SessionTable>
 <ConfirmDialog v-bind="all.confirmDialog.value" />
 ```
 
 - 🔴 지금 쓰는 세션 행에는 "끝내기" 가 없다 — 로그아웃 버튼이 정상 경로다. 서버도 거부해야 한다.
 - 내 계정 전체 끊기는 1인칭 경고로 확인받고, 성공하면 재조회 대신 `onSelfSignedOut` 을 부른다.
 - 성공 문구는 `onRevoked` 로 화면이 띄운다. 서버가 `revokedCount` 를 주지 않으면 개수를 지어내지 않는다.
-- 계정별 세션 다이얼로그는 `BaseDialog` 안에 `SessionTable` + `useSessions({ list, immediate: false })` 를 두고 열 때 `reload()` 한다. 내 계정 · 상위 계정 행의 버튼을 막는 판단은 사용자 목록 화면의 몫이다.
+- 계정별 세션 다이얼로그는 대상마다 자식 컴포넌트를 새로 마운트한다 — `<AccountSessions v-if="target" :key="String(target.userNo)" :user="target" />` — 이 컴포넌트의 setup 이 `useSessions({ list: () => …(props.user.userNo), … })` 를 부른다(immediate). 전량 모드는 실패해도 rows 를 두므로 인스턴스를 재사용하면 앞 사람의 세션이 남는다. 내 계정 · 상위 계정 행의 버튼을 막는 판단은 사용자 목록 화면의 몫이다.
 
 ### 임시 비밀번호
 
 ```ts
 const issued = ref<string | null>(null)
+const target = ref<UserRow | null>(null) // 초기화를 시작한 대상 — 다이얼로그 문구에 쓴다
 async function resetPassword(user: UserRow) {
   if (user.userId === me.value?.userId) return // 자기 계정 초기화는 막는다 — 비밀번호 변경 화면이 정규 경로다
+  target.value = user
   await run({
     gate: 'reauth', // 또는 { gate: 'confirm', reversible: false } — 프로젝트 정책
     message: `「${user.userName}」의 비밀번호를 임시 비밀번호로 바꾸고 접속 세션을 모두 끊습니다.`,

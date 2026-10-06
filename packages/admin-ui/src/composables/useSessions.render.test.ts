@@ -303,7 +303,7 @@ describe('useSessions — 사용자 전체', () => {
 
   it('🔴 onRevoked 가 던져도 onSelfSignedOut 은 부른다', async () => {
     const onSelfSignedOut = vi.fn()
-    const sessions = await setup({
+    await setup({
       list: async () => MINE,
       revokeUser: vi.fn(async () => undefined),
       onRevoked: () => {

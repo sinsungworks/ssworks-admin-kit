@@ -292,7 +292,7 @@ export function useSessions<R extends SessionTableRow, F extends object = Record
     const { ok, attempted, result } = await write(messages.revokeOthers, () => fn())
     if (!attempted) return false
     await reload()
-    if (ok) await options.onRevoked?.(revokedEvent('revokeOthers', undefined, result))
+    if (ok) await options.onRevoked?.(revokedEvent<R>('revokeOthers', undefined, result))
     return ok
   }
 

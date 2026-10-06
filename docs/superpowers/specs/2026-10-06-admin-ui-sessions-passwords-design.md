@@ -179,7 +179,7 @@ export type SessionTableRow = AdminSession &
 3. **IP**: 없으면 `-`.
 4. 🔴 **현재 세션 행**: "끝내기" 버튼이 없고 `이 기기는 로그아웃으로 끝냅니다.` 를 보인다(D4). "사용자 전체 끊기" 는 그 행에도 있다(C1 — 경고는 `useSessions` 가 한다).
 5. **버튼**: 텍스트 버튼 `끝내기`(`canRevoke`) · `사용자 전체 끊기`(`canRevokeUser`). 둘 다 `busy` 동안 `:disabled`.
-6. **접근 가능한 이름**: 끝내기 = `"{기기 요약} 세션 끝내기 (마지막 활동 {시각})"`, 사용자 열이 보이면 앞에 `"{이름} · "`. 사용자 전체 끊기 = `"{이름}({아이디}) 의 세션 모두 끊기"`. 테스트는 이 이름으로 찾는다 — `data-testid` 를 심지 않는다.
+6. **접근 가능한 이름**: 끝내기 = `"{기기 요약} 세션 끝내기 (마지막 활동 {시각})"`, 사용자 열이 보이면 앞에 `"{이름} · "`. 사용자 전체 끊기 = `"{이름}({아이디}) 사용자 전체 끊기"`. 테스트는 이 이름으로 찾는다 — `data-testid` 를 심지 않는다.
 7. **표**: 두 모드 모두 `DataTableBody`. 전량 모드는 `items-length = sessions.length` + 쪽 이동 숨김(`VDataTableServer` 는 넘긴 행을 자르지 않는다).
 
 ### 4-6. `useSessions`
@@ -382,7 +382,7 @@ TDD — 실패하는 테스트부터. DOM 이 필요한 파일은 `// @vitest-en
 
 ## 8. 릴리스 · 문서
 
-- changeset **minor**(admin-shared · admin-ui, `fixed` 묶음). 내용: 새 API(§4), `AdminUserInfo.isPasswordChangeRequired?`, 서버 계약(§9). 발행된 동작을 바꾸지 않는다 — Version Packages PR #2 는 3c 와 무관하게 머지해도 된다(먼저 머지되면 3c 는 0.4.0).
+- changeset **minor**(admin-shared · admin-ui, `fixed` 묶음). 내용: 새 API(§4), `AdminUserInfo.isPasswordChangeRequired?`, 서버 계약(§9). 발행된 동작은 §11 R3(`PasswordField` 의 `autocomplete`)만 바뀐다 — Version Packages PR #2 는 3c 와 무관하게 머지해도 된다(먼저 머지되면 3c 는 0.4.0).
 - README: "세션 · 비밀번호" 절(배선 예시 — 내 세션 · 관리자 전체 · 계정별 다이얼로그, 임시 비밀번호 발급 흐름, 비밀번호 변경 페이지 · 강제 변경 가드 연결), API 표에 새 export.
 - `docs/01-phase0.md` §8 · `CLAUDE.md` · `docs/HANDOFF.md` 진행표에 3c 완료를 적는다.
 
@@ -410,3 +410,6 @@ TDD — 실패하는 테스트부터. DOM 이 필요한 파일은 `// @vitest-en
 - **R1 — eslint `vue/valid-v-slot` 에 `allowModifiers: true` 를 켰다(`eslint.config.js`).** Vuetify 표의 셀 슬롯 이름에는 점이 들어간다(`#item.device`). 이 설정 없이는 `SessionTable` 이 lint 를 통과하지 못하고, 앞으로 표마다 비활성화 주석이 반복된다(Task 4).
 - **R2 — `TemporaryPasswordDialog` 의 복사는 순번으로 묶는다(§4-8 #5 보강).** 복사가 끝나기 전에 값이 바뀌면(다른 값 · 닫기) 늦게 끝난 결과를 버리고 복사 버튼 잠금도 바로 푼다. 그렇지 않으면 클립보드에는 이전 값이 있는데 새 값 아래에 "복사했습니다" 가 붙는다(Task 6 리뷰).
 - **R3 — `PasswordField` 의 `autocomplete="off"` 를 `$attrs` 앞으로 옮겼다(PR #1 부터의 결함).** 뒤에 있어서 호출하는 쪽의 값이 늘 덮였다 — `ReauthDialog` 의 `current-password` 도 `off` 가 되어 비밀번호 관리자가 칸을 알아보지 못했다. `vue/attributes-order` 의 자동 수정이 결함을 되살리므로 그 요소만 규칙을 끈다(Task 7).
+- **R4 — 계정별 다이얼로그는 대상마다 인스턴스를 새로 만든다(`:key`). (2026-10-06)** 전량 모드 rows 보존(§4-6-2 #1)은 같은 목록의 재조회를 위한 것이라, 대상이 바뀌는 재사용은 앞 사람의 세션을 남기고 실패 시 그 행에 쓰기를 허용한다. `immediate` 주석 · README 를 고쳤다.
+- **R5 — `사용자 전체 끊기` 의 접근 이름을 `"{이름}({아이디}) 사용자 전체 끊기"` 로. (2026-10-06)** 보이는 글자를 이름에 담는다(WCAG 2.5.3, 음성 조작).
+- **R6 — `useSessions` 견고성. (2026-10-06)** 내 계정 전체 끊기 성공 뒤 `onSelfSignedOut` 은 `onRevoked` 가 던져도 부른다(finally), 받는 쪽이 없으면 재조회한다. `revokeOthers()` 는 `canWrite()` 를 호출 시점에 다시 읽는다. `revokedCount` 는 숫자일 때만 키째 싣는다. 세션 스키마는 `z.iso.datetime()`.
