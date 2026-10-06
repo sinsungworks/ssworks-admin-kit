@@ -61,6 +61,8 @@ export default tseslint.config(
     },
     rules: {
       // 컴포넌트 이름은 패키지 export 이름과 같다 (CardLayout 등). 한 단어 이름은 없다.
+      // Vuetify 표의 셀 슬롯 이름이 점을 품는다(`#item.device`). 점 뒤를 수식어로 읽는 규칙을 푼다.
+      'vue/valid-v-slot': ['error', { allowModifiers: true }],
     },
   },
 
