@@ -104,3 +104,11 @@ export {
 } from './sessions.js'
 
 export { describeUserAgent } from './user-agent.js'
+
+export {
+  definePasswordPolicy,
+  adminTemporaryPasswordSchema,
+  type PasswordPolicy,
+  type PasswordPolicyOptions,
+  type AdminTemporaryPassword,
+} from './passwords.js'
