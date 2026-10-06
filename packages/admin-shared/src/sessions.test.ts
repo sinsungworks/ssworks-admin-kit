@@ -39,6 +39,12 @@ describe('adminSessionSchema', () => {
     expect(adminSessionSchema.safeParse({ ...SESSION, loginAt: new Date() }).success).toBe(false)
   })
 
+  it('🔴 UTC 가 아닌 오프셋(+09:00)은 거부한다', () => {
+    expect(
+      adminSessionSchema.safeParse({ ...SESSION, loginAt: '2026-10-06T09:00:00+09:00' }).success,
+    ).toBe(false)
+  })
+
   it('sessionNo 는 bigint 다', () => {
     expect(adminSessionSchema.safeParse({ ...SESSION, sessionNo: 1 }).success).toBe(false)
   })

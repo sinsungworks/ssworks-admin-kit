@@ -18,9 +18,9 @@ export const adminSessionSchema = z.object({
   /** 브라우저 원문. 화면이 `describeUserAgent()` 로 해석한다. 없으면 null */
   userAgent: z.string().nullable(),
   ipAddress: z.string().nullable(),
-  loginAt: z.string().datetime(),
-  lastAccessAt: z.string().datetime(),
-  expireAt: z.string().datetime(),
+  loginAt: z.iso.datetime(),
+  lastAccessAt: z.iso.datetime(),
+  expireAt: z.iso.datetime(),
   /** 🔴 요청한 사람이 지금 쓰는 세션인가 — 목록에서 끊지 못하게 막는 근거다(3c 스펙 D4) */
   isCurrent: z.boolean(),
 })
