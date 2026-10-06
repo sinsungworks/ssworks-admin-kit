@@ -12,12 +12,15 @@
 </script>
 
 <template>
+  <!-- 🔴 기본값은 $attrs 앞에 둔다 — 호출하는 쪽의 autocomplete(current-password · new-password)가 이겨야 비밀번호 관리자가 칸을 알아본다 -->
+  <!-- eslint-disable vue/attributes-order -->
   <VTextField
+    autocomplete="off"
     v-bind="$attrs"
     v-model="modelValue"
     :append-inner-icon="visible ? 'mdi-eye' : 'mdi-eye-off'"
-    autocomplete="off"
     :type="visible ? 'text' : 'password'"
     @click:append-inner="visible = !visible"
   />
+  <!-- eslint-enable vue/attributes-order -->
 </template>

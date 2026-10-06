@@ -24,4 +24,13 @@ describe('PasswordField', () => {
     await w.get('input').setValue('pw')
     expect(w.emitted('update:modelValue')?.at(-1)).toEqual(['pw'])
   })
+
+  it('🔴 호출하는 쪽의 autocomplete 가 기본값 off 를 이긴다', () => {
+    const w = mount(PasswordField, {
+      props: { modelValue: '' },
+      attrs: { autocomplete: 'current-password' },
+      global: { plugins: [vuetify] },
+    })
+    expect(w.get('input').attributes('autocomplete')).toBe('current-password')
+  })
 })
