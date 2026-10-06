@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { createApp, defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { VDataTableServer } from 'vuetify/components'
@@ -107,5 +107,11 @@ describe('DataTablePanel — prop → 컨텍스트 → 상수', () => {
 
   it('컨텍스트가 없으면 상수 그대로', () => {
     expect(optionsOf(mountPanel([]))).toEqual([...DEFAULT_ITEMS_PER_PAGE_OPTIONS])
+  })
+})
+
+describe('AdminUserInfo', () => {
+  it('isPasswordChangeRequired 는 선택 boolean 이다 — createAdminGuard 의 강제 변경 게터에 잇는다', () => {
+    expectTypeOf<AdminUserInfo['isPasswordChangeRequired']>().toEqualTypeOf<boolean | undefined>()
   })
 })

@@ -158,3 +158,6 @@ export {
   type ConfirmDialogBindings,
   type ReauthDialogBindings,
 } from './composables/useWriteFlow.js'
+
+// ── 세션 · 비밀번호 ───────────────────────────────────────────────────
+export { copyText, type CopyResult } from './utils/copy-text.js'

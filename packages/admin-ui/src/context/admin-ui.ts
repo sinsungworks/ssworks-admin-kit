@@ -21,6 +21,11 @@ export interface AdminUserInfo {
   permissions: readonly string[]
   teamName?: string
   roleName?: string
+  /**
+   * 임시 비밀번호로 로그인해 새 비밀번호를 정해야 하는가. `/me` 응답에서 온다.
+   * `createAdminGuard({ isPasswordChangeRequired: () => store.userInfo?.isPasswordChangeRequired === true })` 로 잇는다.
+   */
+  isPasswordChangeRequired?: boolean
 }
 
 export interface AdminUiOptions<TUser extends AdminUserInfo = AdminUserInfo> {
