@@ -163,3 +163,13 @@ export {
 export { copyText, type CopyResult } from './utils/copy-text.js'
 export { default as SessionTable } from './components/session/SessionTable.vue'
 export { type SessionTableRow } from './components/session/session-table.js'
+export {
+  useSessions,
+  type Sessions,
+  type UseSessionsOptions,
+  type SessionTableBindings,
+  type SessionMessages,
+  type SessionDialogText,
+  type SessionAction,
+  type SessionRevokedEvent,
+} from './composables/useSessions.js'
