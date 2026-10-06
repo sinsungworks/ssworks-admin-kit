@@ -151,6 +151,19 @@ describe('TemporaryPasswordDialog — 복사', () => {
     expect(buttonByText('복사', dialog()!)?.disabled).toBe(false)
   })
 
+  it('🔴 복사 중에 값이 바뀌면 옛 결과를 새 값에 붙이지 않고, 버튼 잠금도 바로 풀린다', async () => {
+    let release!: () => void
+    setClipboard({ writeText: vi.fn(() => new Promise<void>((resolve) => (release = resolve))) })
+    const value = await setup()
+    await click('복사')
+    value.value = 'Zz9yXw8vUt7sRq6p'
+    await flushPromises()
+    expect(buttonByText('복사', dialog()!)?.disabled).toBe(false)
+    release()
+    await flushPromises()
+    expect(dialog()?.querySelector('[aria-live="polite"]')?.textContent?.trim()).toBe('')
+  })
+
   it('값이 바뀌면 이전 복사 결과 문구를 지운다', async () => {
     setClipboard({ writeText: vi.fn().mockResolvedValue(undefined) })
     const value = await setup()

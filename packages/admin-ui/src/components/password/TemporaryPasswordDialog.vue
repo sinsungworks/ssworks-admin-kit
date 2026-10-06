@@ -49,19 +49,28 @@
   const copying = ref(false)
   const copyResult = ref<CopyResult | null>(null)
 
-  // 값이 바뀌거나 닫히면 이전 복사 결과를 지운다 — 다른 사람 값에 "복사했습니다" 가 남지 않게.
+  /** 값이 바뀔 때마다 올린다 — 늦게 끝난 옛 복사의 결과를 새 값에 붙이지 않는다 */
+  let copySeq = 0
+
+  // 🔴 값이 바뀌거나 닫히면 이전 복사 결과를 지우고 잠금도 푼다 — 다른 사람 값에 "복사했습니다" 가 남지 않게.
+  //    복사 중에 값이 바뀌어도, 늦게 끝난 옛 복사는 새 값에 결과를 쓰지 못하고(copySeq) 새 값의 복사 버튼을
+  //    잠가 두지도 못한다.
   watch(value, () => {
+    copySeq++
     copyResult.value = null
+    copying.value = false
   })
 
   async function copy(): Promise<void> {
     const text = value.value
     if (text == null || copying.value) return
+    const seq = ++copySeq
     copying.value = true
     try {
-      copyResult.value = await copyText(text)
+      const result = await copyText(text)
+      if (seq === copySeq) copyResult.value = result
     } finally {
-      copying.value = false
+      if (seq === copySeq) copying.value = false
     }
   }
 
