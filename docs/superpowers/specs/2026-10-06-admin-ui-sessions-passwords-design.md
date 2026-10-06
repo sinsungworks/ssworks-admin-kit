@@ -404,3 +404,9 @@ TDD — 실패하는 테스트부터. DOM 이 필요한 파일은 `// @vitest-en
 - axion 의 소셜 · 이메일 비밀번호 설정 흐름 → X.
 - 비밀번호 복잡도 규칙 — 네 곳 모두 없음.
 - 세션 목록 50개 상한 안내(gise) — 전량 계약이라 필요 없음.
+
+## 11. 구현 중 정정 (2026-10-06)
+
+- **R1 — eslint `vue/valid-v-slot` 에 `allowModifiers: true` 를 켰다(`eslint.config.js`).** Vuetify 표의 셀 슬롯 이름에는 점이 들어간다(`#item.device`). 이 설정 없이는 `SessionTable` 이 lint 를 통과하지 못하고, 앞으로 표마다 비활성화 주석이 반복된다(Task 4).
+- **R2 — `TemporaryPasswordDialog` 의 복사는 순번으로 묶는다(§4-8 #5 보강).** 복사가 끝나기 전에 값이 바뀌면(다른 값 · 닫기) 늦게 끝난 결과를 버리고 복사 버튼 잠금도 바로 푼다. 그렇지 않으면 클립보드에는 이전 값이 있는데 새 값 아래에 "복사했습니다" 가 붙는다(Task 6 리뷰).
+- **R3 — `PasswordField` 의 `autocomplete="off"` 를 `$attrs` 앞으로 옮겼다(PR #1 부터의 결함).** 뒤에 있어서 호출하는 쪽의 값이 늘 덮였다 — `ReauthDialog` 의 `current-password` 도 `off` 가 되어 비밀번호 관리자가 칸을 알아보지 못했다. `vue/attributes-order` 의 자동 수정이 결함을 되살리므로 그 요소만 규칙을 끈다(Task 7).
