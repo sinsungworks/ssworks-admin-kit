@@ -48,7 +48,7 @@ interface SessionsCommonOptions<R extends SessionTableRow> {
   /** 내 계정 전체를 끊은 뒤 — 템플릿이 세션을 비우고 로그인으로 보낸다 */
   onSelfSignedOut?: () => void | Promise<void>
   messages?: Partial<SessionMessages<R>>
-  /** 기본 true. 다이얼로그 안처럼 열 때 불러야 하면 false + `reload()` */
+  /** 기본 true. 대상이 정해진 다이얼로그처럼 열 때 불러야 하면 false + `reload()`. 대상이 바뀌면(계정별) 인스턴스를 새로 만든다 — 전량 모드는 실패해도 rows 를 둔다 */
   immediate?: boolean
 }
 
@@ -127,6 +127,20 @@ function countOf(result: unknown): number | undefined {
   if (result == null || typeof result !== 'object' || !('revokedCount' in result)) return undefined
   const count = (result as { revokedCount?: unknown }).revokedCount
   return typeof count === 'number' && Number.isInteger(count) && count >= 0 ? count : undefined
+}
+
+/** `revokedCount` 는 응답에 숫자가 있을 때만 싣는다 — 키째 뺀다 */
+function revokedEvent<R>(
+  action: SessionAction,
+  row: R | undefined,
+  result?: unknown,
+): SessionRevokedEvent<R> {
+  const count = countOf(result)
+  return {
+    action,
+    ...(row !== undefined ? { row } : {}),
+    ...(count !== undefined ? { revokedCount: count } : {}),
+  }
 }
 
 /** setup 안에서 부른다. 확인 다이얼로그는 반환된 `confirmDialog` 를 `<ConfirmDialog v-bind>` 로 붙인다. */
@@ -235,7 +249,7 @@ export function useSessions<R extends SessionTableRow, F extends object = Record
     const { ok, attempted } = await write(messages.revoke, () => revoke(row))
     if (!attempted) return false
     await reload()
-    if (ok) await options.onRevoked?.({ action: 'revoke', row })
+    if (ok) await options.onRevoked?.(revokedEvent('revoke', row))
     return ok
   }
 
@@ -248,12 +262,17 @@ export function useSessions<R extends SessionTableRow, F extends object = Record
     if (!attempted) return false
     if (ok && self) {
       // 🔴 서버가 지금 세션까지 끊었다 — 재조회는 401 로 실패할 뿐이다. 화면이 세션을 비우고 로그인으로 보낸다.
-      await options.onRevoked?.({ action: 'revokeUser', row, revokedCount: countOf(result) })
-      await options.onSelfSignedOut?.()
+      try {
+        await options.onRevoked?.(revokedEvent('revokeUser', row, result))
+      } finally {
+        // 받는 쪽이 없으면 재조회한다 — 401 이 onAuthFailure 로 로그인에 보낸다. 끊긴 세션을 산 버튼과 함께 두지 않는다.
+        if (options.onSelfSignedOut != null) await options.onSelfSignedOut()
+        else await reload()
+      }
       return true
     }
     await reload()
-    if (ok) await options.onRevoked?.({ action: 'revokeUser', row, revokedCount: countOf(result) })
+    if (ok) await options.onRevoked?.(revokedEvent('revokeUser', row, result))
     return ok
   }
 
@@ -269,11 +288,11 @@ export function useSessions<R extends SessionTableRow, F extends object = Record
 
   async function revokeOthers(): Promise<boolean> {
     const fn = options.revokeOthers
-    if (fn == null || !canRevokeOthers.value) return false
+    if (fn == null || !canWrite() || !canRevokeOthers.value) return false
     const { ok, attempted, result } = await write(messages.revokeOthers, () => fn())
     if (!attempted) return false
     await reload()
-    if (ok) await options.onRevoked?.({ action: 'revokeOthers', revokedCount: countOf(result) })
+    if (ok) await options.onRevoked?.(revokedEvent('revokeOthers', undefined, result))
     return ok
   }
 

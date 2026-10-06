@@ -133,7 +133,7 @@ describe('useSessions — 전량 모드 · 하나 끝내기', () => {
     await clickInDialog('끝내기')
     expect(revoke).toHaveBeenCalledWith(MINE[1])
     expect(list).toHaveBeenCalledTimes(2)
-    expect(onRevoked).toHaveBeenCalledWith({ action: 'revoke', row: MINE[1] })
+    expect(onRevoked.mock.calls[0]![0]).toStrictEqual({ action: 'revoke', row: MINE[1] })
   })
 
   it('🔴 확인을 취소하면 요청도 재조회도 없다', async () => {
@@ -233,8 +233,24 @@ describe('useSessions — 다른 세션 모두', () => {
     await flushPromises()
     await clickInDialog('모두 끝내기')
     await pending
-    expect(onRevoked.mock.calls[0]![0]).toEqual({ action: 'revokeOthers' })
-    expect(onRevoked.mock.calls[0]![0].revokedCount).toBeUndefined()
+    // toStrictEqual — `revokedCount: undefined` 키가 실려도 실패한다
+    expect(onRevoked.mock.calls[0]![0]).toStrictEqual({ action: 'revokeOthers' })
+  })
+
+  it('🔴 revokeOthers() 는 canWrite() 를 호출 시점에 다시 읽는다', async () => {
+    let allowed = true
+    const revokeOthers = vi.fn(async () => undefined)
+    const sessions = await setup({
+      list: async () => MINE,
+      revokeOthers,
+      canWrite: () => allowed,
+    })
+    // 화면이 이미 읽어 computed 가 캐시된 상태 — 비반응 게터가 바뀌어도 캐시는 그대로다
+    expect(sessions.canRevokeOthers.value).toBe(true)
+    allowed = false
+    expect(await sessions.revokeOthers()).toBe(false)
+    expect(sessions.confirmDialog.value.modelValue).toBe(false)
+    expect(revokeOthers).not.toHaveBeenCalled()
   })
 
   it('현재 세션뿐이면 꺼지고, 불러도 확인 없이 false', async () => {
@@ -251,7 +267,7 @@ describe('useSessions — 사용자 전체', () => {
     const revokeUser = vi.fn(async () => ({ revokedCount: 3 }))
     const onRevoked = vi.fn()
     await setup({ list, revokeUser, onRevoked }, { showUser: true })
-    await clickLabel('이(lee) 의 세션 모두 끊기')
+    await clickLabel('이(lee) 사용자 전체 끊기')
     expect(document.body.textContent).toContain('「이(lee)」의 모든 세션이 즉시 로그아웃됩니다.')
     await clickInDialog('모두 끊기')
     expect(revokeUser).toHaveBeenCalledWith(OTHERS[0])
@@ -277,7 +293,7 @@ describe('useSessions — 사용자 전체', () => {
         order.push('signedOut')
       },
     })
-    await clickLabel('김(kim) 의 세션 모두 끊기')
+    await clickLabel('김(kim) 사용자 전체 끊기')
     expect(document.body.textContent).toContain('이 계정은 지금 로그인한 당신 자신입니다.')
     await clickInDialog('모두 끊기')
     expect(revokeUser).toHaveBeenCalledTimes(1)
@@ -285,9 +301,44 @@ describe('useSessions — 사용자 전체', () => {
     expect(order).toEqual(['revoked', 'signedOut'])
   })
 
+  it('🔴 onRevoked 가 던져도 onSelfSignedOut 은 부른다', async () => {
+    const onSelfSignedOut = vi.fn()
+    const sessions = await setup({
+      list: async () => MINE,
+      revokeUser: vi.fn(async () => undefined),
+      onRevoked: () => {
+        throw new Error('toast failed')
+      },
+      onSelfSignedOut,
+    })
+    // 바인딩은 `void` 로 부르므로 던진 거절이 미처리로 새어 나온다 — 이 테스트에서만 받아 둔다.
+    const saved = process.listeners('unhandledRejection')
+    process.removeAllListeners('unhandledRejection')
+    const rejections: unknown[] = []
+    process.on('unhandledRejection', (reason) => rejections.push(reason))
+    try {
+      await clickLabel('김(kim) 사용자 전체 끊기')
+      await clickInDialog('모두 끊기')
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    } finally {
+      process.removeAllListeners('unhandledRejection')
+      for (const listener of saved) process.on('unhandledRejection', listener)
+    }
+    expect(onSelfSignedOut).toHaveBeenCalledTimes(1)
+    expect(rejections).toHaveLength(1)
+  })
+
+  it('🔴 내 계정을 끊었는데 onSelfSignedOut 이 없으면 재조회한다', async () => {
+    const list = vi.fn(async () => MINE)
+    await setup({ list, revokeUser: vi.fn(async () => undefined) })
+    await clickLabel('김(kim) 사용자 전체 끊기')
+    await clickInDialog('모두 끊기')
+    expect(list).toHaveBeenCalledTimes(2)
+  })
+
   it('isSelf 를 주면 그것으로 판정한다(useAdminUi 를 보지 않는다)', async () => {
     await setup({ list: async () => OTHERS, revokeUser: vi.fn(), isSelf: () => true })
-    await clickLabel('이(lee) 의 세션 모두 끊기')
+    await clickLabel('이(lee) 사용자 전체 끊기')
     expect(document.body.textContent).toContain('이 계정은 지금 로그인한 당신 자신입니다.')
   })
 })
