@@ -93,3 +93,14 @@ export {
   type AdminRoleMove,
   type AdminRoleRemove,
 } from './roles.js'
+
+export {
+  adminSessionSchema,
+  adminSessionListItemSchema,
+  adminSessionRevokeResultSchema,
+  type AdminSession,
+  type AdminSessionListItem,
+  type AdminSessionRevokeResult,
+} from './sessions.js'
+
+export { describeUserAgent } from './user-agent.js'
