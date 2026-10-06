@@ -144,7 +144,7 @@ describe('SessionTable — 동작', () => {
   it('canRevokeUser 면 현재 행을 포함해 모든 행에 "사용자 전체 끊기" 가 있고 revokeUser 를 낸다', async () => {
     const w = await mountTable({ canRevokeUser: true })
     expect(buttonsByText('사용자 전체 끊기')).toHaveLength(3)
-    buttonByLabel('김(kim) 의 세션 모두 끊기')!.click()
+    buttonByLabel('김(kim) 사용자 전체 끊기')!.click()
     await flushPromises()
     expect(w.emitted('revokeUser')).toEqual([[ROWS[0]]])
   })

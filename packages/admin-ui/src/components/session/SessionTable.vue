@@ -87,7 +87,7 @@
   }
 
   function revokeUserLabel(row: TRow): string {
-    return `${row.userName ?? ''}(${row.userId ?? ''}) 의 세션 모두 끊기`
+    return `${row.userName ?? ''}(${row.userId ?? ''}) 사용자 전체 끊기`
   }
 </script>
 
