@@ -173,3 +173,4 @@ export {
   type SessionAction,
   type SessionRevokedEvent,
 } from './composables/useSessions.js'
+export { default as TemporaryPasswordDialog } from './components/password/TemporaryPasswordDialog.vue'
