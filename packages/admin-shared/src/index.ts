@@ -131,3 +131,19 @@ export {
   type AdminTeamMove,
   type AdminTeamMoveBody,
 } from './teams.js'
+
+export {
+  sortTeamTree,
+  flattenTeamTree,
+  filterTeamTree,
+  findTeamPlacement,
+  siblingMove,
+  moveTargets,
+  toDisplayOrderMove,
+  indentTeamName,
+  TEAM_INDENT_UNIT,
+  TEAM_BRANCH_MARK,
+  type TeamTreeRow,
+  type TeamMoveTarget,
+  type TeamPlacement,
+} from './team-tree.js'
