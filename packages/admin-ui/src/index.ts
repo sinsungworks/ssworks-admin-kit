@@ -198,3 +198,10 @@ export {
   type TeamDoneEvent,
   type TeamDoneAction,
 } from './composables/useTeamTree.js'
+export { default as TeamUserList } from './components/team/TeamUserList.vue'
+export {
+  type TeamUserRow,
+  type TeamUserQuery,
+  type TeamUserPage,
+  type TeamUserListMessages,
+} from './components/team/team-user-list.js'

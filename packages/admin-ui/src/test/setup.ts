@@ -24,3 +24,63 @@ export function buttonByText(text: string, root: ParentNode = document.body) {
   return [...root.querySelectorAll('button')].find((b) => (b.textContent ?? '').trim() === text) as
     HTMLButtonElement | undefined
 }
+
+/**
+ * 가짜 IntersectionObserver — happy-dom 은 교차를 계산하지 않는다. `reveal()` 이 관찰 중인 요소를 "화면에 들어왔다"고
+ * 알린다(`TeamUserList` 의 스크롤하면 더 — 3d 스펙 D16). `beforeEach` 에서 깔고 `afterEach` 에서 `restore()`.
+ * 🔴 `globalThis` 에 심는다 — vitest happy-dom 환경은 window 의 값을 전역에 복사해 두므로 window 에만 심으면 안 보인다.
+ */
+export function installIntersectionObserver(): { reveal(): void; restore(): void } {
+  const observers = new Set<FakeIntersectionObserver>()
+
+  class FakeIntersectionObserver {
+    readonly targets = new Set<Element>()
+    readonly callback: IntersectionObserverCallback
+
+    constructor(callback: IntersectionObserverCallback) {
+      this.callback = callback
+      observers.add(this)
+    }
+
+    observe(target: Element): void {
+      this.targets.add(target)
+    }
+
+    unobserve(target: Element): void {
+      this.targets.delete(target)
+    }
+
+    disconnect(): void {
+      this.targets.clear()
+      observers.delete(this)
+    }
+
+    takeRecords(): IntersectionObserverEntry[] {
+      return []
+    }
+  }
+
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'IntersectionObserver')
+  Object.defineProperty(globalThis, 'IntersectionObserver', {
+    configurable: true,
+    writable: true,
+    value: FakeIntersectionObserver,
+  })
+
+  return {
+    reveal() {
+      for (const observer of [...observers]) {
+        const entries = [...observer.targets].map(
+          (target) => ({ target, isIntersecting: true }) as unknown as IntersectionObserverEntry,
+        )
+        if (entries.length > 0) {
+          observer.callback(entries, observer as unknown as IntersectionObserver)
+        }
+      }
+    },
+    restore() {
+      if (original) Object.defineProperty(globalThis, 'IntersectionObserver', original)
+      else Reflect.deleteProperty(globalThis, 'IntersectionObserver')
+    },
+  }
+}
