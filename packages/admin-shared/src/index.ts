@@ -112,3 +112,22 @@ export {
   type PasswordPolicyOptions,
   type AdminTemporaryPassword,
 } from './passwords.js'
+
+export {
+  TEAM_NAME_MAX_LENGTH,
+  teamNameSchema,
+  adminTeamNodeSchema,
+  adminTeamTreeSchema,
+  adminTeamCreateSchema,
+  adminTeamCreateResultSchema,
+  adminTeamRenameSchema,
+  adminTeamMoveSchema,
+  adminTeamMoveBodySchema,
+  type AdminTeamNode,
+  type AdminTeamTree,
+  type AdminTeamCreate,
+  type AdminTeamCreateResult,
+  type AdminTeamRename,
+  type AdminTeamMove,
+  type AdminTeamMoveBody,
+} from './teams.js'
