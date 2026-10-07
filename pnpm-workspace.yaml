@@ -5,3 +5,7 @@ packages:
 # pnpm 12 는 모르는 키가 있으면 ERR_PNPM_UNRECOGNIZED_WORKSPACE_SETTINGS 로 멈춘다.
 autoInstallPeers: false
 strictPeerDependencies: false
+
+# vue-demi(@he-tree/vue 의 하위 의존)의 postinstall 은 돌리지 않는다 — Vue 3 기본 파일로 동작한다(3d Task 1).
+allowBuilds:
+  vue-demi: false
