@@ -175,3 +175,14 @@ export {
 } from './composables/useSessions.js'
 export { default as TemporaryPasswordDialog } from './components/password/TemporaryPasswordDialog.vue'
 export { default as PasswordChangeForm } from './components/password/PasswordChangeForm.vue'
+
+// ── 조직 ──────────────────────────────────────────────────────────────
+export { default as TeamTree } from './components/team/TeamTree.vue'
+export {
+  type TeamAction,
+  type TeamEdit,
+  type TeamEditTarget,
+  type TeamCommitSource,
+  type TeamMoveSource,
+  type TeamTreeMessages,
+} from './components/team/team-tree.js'
