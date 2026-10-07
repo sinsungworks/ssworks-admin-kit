@@ -1,4 +1,12 @@
-import { computed, ref, shallowRef, type ComputedRef, type Ref } from 'vue'
+import {
+  computed,
+  getCurrentScope,
+  onScopeDispose,
+  ref,
+  shallowRef,
+  type ComputedRef,
+  type Ref,
+} from 'vue'
 import {
   TEAM_NAME_MAX_LENGTH,
   flattenTeamTree,
@@ -186,6 +194,13 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
   const resetKey = ref(0)
   /** 🔴 응답 경합 — 쓰기 뒤 재조회와 첫 조회가 겹치면 먼저 보낸 느린 응답이 나중에 와서 이긴다(gise · hangang). */
   let loadSeq = 0
+  /** 화면이 사라졌다 — 이후엔 요청도 입력칸 손질도 하지 않는다(`useWriteFlow` 와 같은 규칙) */
+  let disposed = false
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      disposed = true
+    })
+  }
 
   const rows = computed(() => flattenTeamTree(nodes.value))
   const rowByNo = computed(() => new Map(rows.value.map((row) => [row.teamNo, row])))
@@ -206,6 +221,11 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
   /** 조회 뒤 정리 — 사라진 팀을 가리키는 선택 · 입력칸을 걷는다(스펙 §4-4-2 #2) */
   function tidy(): void {
     if (selected.value != null && !rowByNo.value.has(selected.value)) selected.value = null
+    // 옮기던 팀이 사라졌으면 대화상자를 닫는다 — 요청이 진행 중이면 그 쪽이 닫는다
+    if (moving.value != null && !rowByNo.value.has(moving.value) && !flow.submitting.value) {
+      moveOpen.value = false
+      moving.value = null
+    }
     const current = edit.value
     if (current == null) return
     const target = current.kind === 'rename' ? current.teamNo : current.parentTeamNo
@@ -214,6 +234,7 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
 
   /** 이 호출의 결과가 적용됐을 때만 true — 늦은 응답으로 버려졌거나 실패면 false */
   async function load(): Promise<boolean> {
+    if (disposed) return false
     const seq = ++loadSeq
     loading.value = true
     loadError.value = null
@@ -317,7 +338,15 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
             text: messages.moveConfirm(node.teamName, parentName),
           }
         : { gate: 'none' }
-    const { ok, attempted } = await write(gate, () => doMove(move))
+    let outcome: Awaited<ReturnType<typeof write>>
+    try {
+      outcome = await write(gate, () => doMove(move))
+    } catch (error) {
+      // ApiError 가 아닌 오류도 놓은 모양을 되돌린다
+      rollback()
+      throw error
+    }
+    const { ok, attempted } = outcome
     if (!attempted) return rollback()
     if (!ok) rollback()
     if (source === 'drag' && ok) {
@@ -485,13 +514,16 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
         } catch (error) {
           // 🔴 입력칸 아래에 보인다 — 지연 전역 토스트보다 먼저(동기 구간에서) 처리됨으로 표시한다(3a 규약 · 스펙 D11)
           if (error instanceof ApiError) {
-            error.handled = true
+            // 🔴 처리됨은 보일 자리가 있을 때만 — 화면이 사라졌거나(이동 중 바깥 누르기 저장) 입력칸이 닫히면 전역 토스트가
+            //    알려야 한다. 404(없는 팀)는 뒤이은 재조회가 입력칸을 닫으므로 토스트에 맡긴다.
+            if (!disposed && edit.value === current && error.status !== 404) error.handled = true
             failure = toFieldErrors(error).teamName?.[0] ?? (error.message || messages.saveFailed)
           }
           throw error
         }
       })
       current.pending = false
+      if (disposed) return
       // 다른 쓰기가 진행 중이었다 — 요청이 안 나갔으니 입력칸을 그대로 둔다
       if (!attempted) return
       if (!ok) {

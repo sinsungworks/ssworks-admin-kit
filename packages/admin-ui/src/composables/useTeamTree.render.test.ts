@@ -307,6 +307,16 @@ describe('useTeamTree — 옮기기 대화상자', () => {
     expect(teams.moveDialog.value.targets.map((t) => t.parentTeamNo)).toEqual([1n, 4n, 6n, 3n, 7n])
   })
 
+  it('🔴 옮기던 팀이 재조회로 사라지면 대화상자가 닫힌다', async () => {
+    const load = vi.fn().mockResolvedValueOnce(TREE()).mockResolvedValueOnce(WITHOUT_SALES())
+    const teams = await setup({ load, move: vi.fn(), create: vi.fn() })
+    teams.tree.value.onReparent(5n)
+    expect(teams.moveDialog.value.modelValue).toBe(true)
+    await teams.reload()
+    await flushPromises()
+    expect(teams.moveDialog.value.modelValue).toBe(false)
+  })
+
   it('고르면 맨 끝으로 요청 → 닫기 → 재조회 → onDone(reparent)', async () => {
     const load = vi.fn(async () => TREE())
     const move = vi.fn(async () => {})
@@ -606,6 +616,40 @@ describe('useTeamTree — 노드 안 입력칸', () => {
   it('잠겨 있으면 입력칸을 열지 않는다', async () => {
     const teams = await setup({ rename: vi.fn(), canWrite: () => false })
     teams.tree.value.onEditStart({ kind: 'rename', teamNo: 5n })
+    expect(teams.tree.value.edit).toBeNull()
+  })
+})
+
+describe('useTeamTree — 저장 실패의 처리됨 표시', () => {
+  it('🔴 저장 중에 화면이 사라지면 실패를 처리됨으로 표시하지 않는다 — 전역 토스트가 알린다', async () => {
+    const error = apiError('이미 같은 이름의 팀이 있습니다.', 'ERR_DUPLICATE_TEAM_NAME', 409)
+    const pending = deferred<void>()
+    const teams = await setup({ rename: vi.fn(() => pending.promise) })
+    teams.tree.value.onEditStart({ kind: 'rename', teamNo: 5n })
+    teams.tree.value.onEditInput('판교센터')
+    teams.tree.value.onEditCommit('blur')
+    await flushPromises()
+    wrapper!.unmount()
+    wrapper = null
+    pending.reject(error)
+    await flushPromises()
+    expect(error.handled).toBe(false)
+  })
+
+  it('없는 팀(404)이면 처리됨으로 표시하지 않고, 재조회가 입력칸을 닫는다', async () => {
+    const error = apiError('이미 지워진 팀입니다.', 'ERR_NO_TEAM', 404)
+    const load = vi.fn().mockResolvedValueOnce(TREE()).mockResolvedValueOnce(WITHOUT_SALES())
+    const teams = await setup({
+      load,
+      rename: vi.fn(async () => {
+        throw error
+      }),
+    })
+    teams.tree.value.onEditStart({ kind: 'rename', teamNo: 5n })
+    teams.tree.value.onEditInput('판교센터')
+    teams.tree.value.onEditCommit('enter')
+    await flushPromises()
+    expect(error.handled).toBe(false)
     expect(teams.tree.value.edit).toBeNull()
   })
 })
