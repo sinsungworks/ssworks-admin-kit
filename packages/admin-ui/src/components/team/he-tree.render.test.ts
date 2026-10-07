@@ -100,6 +100,7 @@ function setup(options: { closed?: number[]; blockAlt?: boolean } = {}) {
   )
   return {
     data,
+    closed,
     onChange,
     tree: () => tree!,
     names: () => wrapper!.findAll('.name').map((n) => n.text()),
@@ -121,13 +122,15 @@ describe('he-tree 계약', () => {
   })
 
   it('statHandler 가 펼침을 정하고, 새 배열이 오면 다시 불린다(D3)', async () => {
-    const { data, names } = setup({ closed: [2] })
+    const { data, names, closed } = setup({ closed: [2] })
     await nextTick()
     expect(names()).toEqual(['root', 'a', 'b'])
+    // 상태가 바뀐 채 새 배열이 오면 statHandler 가 다시 불려 펼침이 달라진다
+    closed.delete(2)
     data.value = TREE()
     await nextTick()
     await nextTick()
-    expect(names()).toEqual(['root', 'a', 'b'])
+    expect(names()).toEqual(['root', 'a', 'a1', 'b'])
   })
 
   it('인스턴스 move() 는 데이터를 바꾸지만 change 를 내지 않는다(TeamTree 테스트가 change 를 직접 내보내는 이유)', async () => {
@@ -139,7 +142,11 @@ describe('he-tree 계약', () => {
     await nextTick()
     expect(data.value[0]!.children.map((c) => c.name)).toEqual(['b', 'a'])
     expect(onChange).not.toHaveBeenCalled()
-    expect(tree().statsFlat.map((s) => s.data.name)).toContain('b')
+    expect(
+      tree()
+        .statsFlat.map((s) => s.data.name)
+        .sort(),
+    ).toEqual(['a', 'a1', 'b', 'root'])
   })
 
   it('🔴 Alt+↑ 는 막지 않으면 형제 순서를 바꾸고 change 를 낸다(D7 의 이유)', async () => {
