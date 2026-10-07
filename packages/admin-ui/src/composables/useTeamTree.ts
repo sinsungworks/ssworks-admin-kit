@@ -519,8 +519,7 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
           ? []
           : moveTargets(nodes.value, teamNo, {
               topLevel,
-              // 받는 팀의 'addChild' 는 소비자 판정만 본다 — create 어댑터가 없어도(옮기기만 쓰는 화면) 받을 수 있다
-              canReceive: (target) => options.canAct?.(target, 'addChild') ?? true,
+              canReceive: (target) => canAct(target, 'addChild'),
             }),
       submitting: flow.submitting.value,
       onConfirm: (parentTeamNo) => {

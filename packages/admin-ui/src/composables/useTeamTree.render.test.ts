@@ -287,7 +287,7 @@ describe('useTeamTree — ↑↓ · 드래그', () => {
 
 describe('useTeamTree — 옮기기 대화상자', () => {
   it('메뉴의 옮기기가 대화상자를 열고 선택지를 낸다', async () => {
-    const teams = await setup({ move: vi.fn() })
+    const teams = await setup({ move: vi.fn(), create: vi.fn() })
     teams.tree.value.onReparent(5n)
     expect(teams.moveDialog.value.modelValue).toBe(true)
     expect(teams.moveDialog.value.teamName).toBe('판교지점')
@@ -313,7 +313,7 @@ describe('useTeamTree — 옮기기 대화상자', () => {
   it('topLevel 이면 최상위가 맨 앞이고, 고르면 최상위로 옮겼다고 알린다', async () => {
     const move = vi.fn(async () => {})
     const onDone = vi.fn()
-    const teams = await setup({ move, onDone, topLevel: true })
+    const teams = await setup({ move, onDone, topLevel: true, create: vi.fn(async () => {}) })
     teams.tree.value.onReparent(5n)
     expect(teams.moveDialog.value.targets[0]!.parentTeamNo).toBeNull()
     teams.moveDialog.value.onConfirm(null)
@@ -327,10 +327,17 @@ describe('useTeamTree — 옮기기 대화상자', () => {
   it('canAct(…, addChild) 가 거짓인 팀은 선택지에서 빠진다', async () => {
     const teams = await setup({
       move: vi.fn(),
+      create: vi.fn(),
       canAct: (team, action) => !(team.teamNo === 3n && action === 'addChild'),
     })
     teams.tree.value.onReparent(5n)
     expect(teams.moveDialog.value.targets.map((t) => t.parentTeamNo)).not.toContain(3n)
+  })
+
+  it('만들기 어댑터가 없으면 옮겨 받을 팀이 없다 — 받기도 하위 팀 추가(addChild ↔ create)다', async () => {
+    const teams = await setup({ move: vi.fn() })
+    teams.tree.value.onReparent(5n)
+    expect(teams.moveDialog.value.targets).toEqual([])
   })
 })
 
