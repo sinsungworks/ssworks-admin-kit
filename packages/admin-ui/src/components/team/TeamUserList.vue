@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="R extends TeamUserRow">
-  import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+  import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
   import {
     VAlert,
     VBtn,
@@ -132,6 +132,8 @@
       const result = await props.load(query(1, teamNo))
       if (mine !== seq) return
       settle(result, append([], result.items), 1)
+      // 관찰은 교차가 바뀔 때만 알린다 — 다시 불러온 뒤 끝 버튼이 그대로 보이면 이어서 부르도록
+      void nextTick(rearm)
     } catch (error) {
       if (mine !== seq) return
       items.value = []
