@@ -181,6 +181,21 @@ describe('TeamUserList — 고르기 · 슬롯', () => {
     expect(wrapper!.emitted('update:modelValue')).toEqual([[null]])
   })
 
+  it('🔴 팀이 바뀌면 새 목록이 오기 전에 앞 팀의 행을 치운다 — 다른 팀 사람을 고를 수 없게', async () => {
+    const next = deferred<TeamUserPage<Member>>()
+    const load = vi.fn((q: TeamUserQuery) =>
+      q.teamNo === 2n ? Promise.resolve(page([member(1, '김민준')], 1)) : next.promise,
+    )
+    await setup({ load })
+    expect(rowNames()).toEqual(['김민준'])
+    await wrapper!.setProps({ teamNo: 3n })
+    await flushPromises()
+    expect(rowNames()).toEqual([])
+    next.resolve(page([member(9, '다른팀')], 1))
+    await flushPromises()
+    expect(rowNames()).toEqual(['다른팀'])
+  })
+
   it('행을 누르면 고르고, 고른 행이 표시된다', async () => {
     const load = vi.fn(async () => page([member(1, '김민준'), member(2, '이서연')], 2))
     await setup({ load })
@@ -283,8 +298,9 @@ describe('TeamUserList — 쪽 나눔(스크롤하면 더)', () => {
 
   it('다음 쪽이 실패하면 받은 사람은 두고 다시 시도 — 그때까지 자동 불러오기는 멈춘다', async () => {
     let fail = true
+    const failure = apiError(500)
     const load = vi.fn(async (q: TeamUserQuery) => {
-      if (q.page === 2 && fail) throw apiError(500)
+      if (q.page === 2 && fail) throw failure
       const all = many(1, 5)
       const start = (q.page - 1) * q.itemsPerPage
       return page(all.slice(start, start + q.itemsPerPage), 5)
@@ -292,6 +308,7 @@ describe('TeamUserList — 쪽 나눔(스크롤하면 더)', () => {
     await setup({ load, pageSize: 2 })
     io.reveal()
     await flushPromises()
+    expect(failure.handled).toBe(true)
     expect(text()).toContain('더 불러오지 못했습니다.')
     expect(rowNames()).toHaveLength(2)
     io.reveal()

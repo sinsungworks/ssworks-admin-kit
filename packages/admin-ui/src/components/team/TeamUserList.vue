@@ -183,8 +183,14 @@
     () => props.teamNo,
     (next, previous) => {
       // 팀이 실제로 바뀌면 고른 사람을 걷는다 — 다른 팀 사람을 3열에 남기지 않는다(첫 마운트는 제외 — hangang)
-      if (previous !== undefined && next !== previous && selected.value != null)
-        selected.value = null
+      const changed = previous !== undefined && next !== previous
+      if (changed && selected.value != null) selected.value = null
+      // 앞 팀의 행을 남기면 새 목록이 오기 전에 다른 팀 사람을 고를 수 있다
+      if (changed) {
+        items.value = []
+        total.value = 0
+        page.value = 0
+      }
       void loadFirst()
     },
     { immediate: true },
