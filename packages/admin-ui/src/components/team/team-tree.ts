@@ -1,5 +1,3 @@
-import type { AdminTeamNode } from '@ssworks/admin-shared'
-
 // TeamTree 의 타입 · 기본 문구 — 컴포넌트와 `useTeamTree` 가 같이 쓴다.
 
 /** 노드별 허용 판정의 동작 — `canAct(node, action)` */
@@ -24,8 +22,6 @@ export type TeamEditTarget =
 export type TeamCommitSource = 'enter' | 'button' | 'blur'
 
 export type TeamMoveSource = 'button' | 'drag'
-
-export type CanActTeam = (node: AdminTeamNode, action: TeamAction) => boolean
 
 export interface TeamTreeMessages {
   treeLabel: string

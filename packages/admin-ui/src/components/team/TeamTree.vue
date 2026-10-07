@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, ref, shallowRef, watch } from 'vue'
+  import { computed, nextTick, ref, shallowRef, watch } from 'vue'
   import {
     VAlert,
     VBtn,
@@ -113,8 +113,19 @@
 
   // ── 판정 ──────────────────────────────────────────────────────────
 
+  /** 검색으로 가지가 잘린 사본이 아니라 원래 팀을 `canAct` 에 넘기려고 — 번호로 되짚는다 */
+  const nodeByNo = computed(() => {
+    const map = new Map<bigint, AdminTeamNode>()
+    const walk = (list: readonly AdminTeamNode[]): void =>
+      list.forEach((node) => {
+        map.set(node.teamNo, node)
+        walk(node.children)
+      })
+    walk(props.nodes)
+    return map
+  })
   const allowed = (node: AdminTeamNode, action: TeamAction): boolean =>
-    props.canAct?.(node, action) ?? true
+    props.canAct?.(nodeByNo.value.get(node.teamNo) ?? node, action) ?? true
   /** 🔴 쓰기 잠금 — 버튼의 `:disabled` 와 핸들러 첫 줄이 같이 본다(hangang 두 겹 방어 — `:disabled` 는 마우스만 막는다) */
   const locked = computed(() => !props.canWrite || props.busy || props.edit != null)
   const query = ref<string | null>('')
@@ -196,7 +207,12 @@
   function rebuild(): void {
     const edit = props.edit
     const draftParent = edit?.kind === 'create' ? edit.parentTeamNo : undefined
-    if (draftParent != null) closed.delete(draftParent)
+    // 초안 행이 접힌 가지에 숨지 않게 — 상위 팀부터 맨 위 조상까지 모두 펼친다
+    let at: bigint | null = draftParent ?? null
+    while (at != null) {
+      closed.delete(at)
+      at = rowByNo.value.get(at)?.parentTeamNo ?? null
+    }
     const base =
       searchText.value === ''
         ? sortTeamTree(props.nodes)
@@ -206,10 +222,38 @@
     items.value = next
   }
 
+  /** ↑↓ 로 옮긴 직후 — 재조회가 오면 포커스를 그 팀의 버튼으로 돌려준다 */
+  let pendingFocus: { teamNo: bigint; direction: 'up' | 'down' } | null = null
+
+  /** ↑↓ 뒤 재조회가 오면 옮긴 팀의 같은 방향 버튼으로(가장자리라 꺼졌으면 반대 방향, 그것도 꺼졌으면 그 팀의 행으로) */
+  function restoreFocus(): void {
+    const target = pendingFocus
+    pendingFocus = null
+    const root = body.value
+    const name = target == null ? undefined : rowByNo.value.get(target.teamNo)?.teamName
+    if (target == null || root == null || name == null) return
+    const labelOf = (direction: 'up' | 'down') =>
+      direction === 'up' ? text.value.up(name) : text.value.down(name)
+    const find = (label: string) =>
+      [...root.querySelectorAll<HTMLButtonElement>('button')].find(
+        (button) => button.getAttribute('aria-label') === label,
+      )
+    const other = target.direction === 'up' ? 'down' : 'up'
+    for (const direction of [target.direction, other] as const) {
+      const button = find(labelOf(direction))
+      if (button != null && !button.disabled) {
+        button.focus()
+        return
+      }
+    }
+    find(labelOf(target.direction))?.closest<HTMLElement>('[role="treeitem"]')?.focus()
+  }
+
   watch(
     () => [props.nodes, searchText.value, props.resetKey, editKey.value] as const,
     (current, previous) => {
       const key = current[3]
+      if (pendingFocus != null && current[0] !== previous?.[0]) void nextTick(restoreFocus)
       if (key !== '' && key !== previous?.[3]) {
         focusInput.value = props.edit?.kind === 'rename' ? 'select' : 'end'
       } else if (
@@ -223,6 +267,10 @@
     },
     { immediate: true },
   )
+
+  /** 🔴 행이 순서 번호가 아니라 팀을 따라가야 재조회 뒤 포커스 · 열린 메뉴가 옆 팀으로 넘어가지 않는다 */
+  const nodeKeyOf = (stat: HeStat): string =>
+    isDraft(stat.data) ? 'draft' : String(stat.data.team.teamNo)
 
   function statHandler<S extends HeStat>(stat: S): S {
     const item = stat.data
@@ -255,7 +303,11 @@
   function onMove(node: AdminTeamNode, direction: 'up' | 'down'): void {
     if (moveLocked.value || !allowed(node, 'move')) return
     const move = siblingMove(props.nodes, node.teamNo, direction)
-    if (move != null) emit('move', move, 'button')
+    if (move == null) return
+    const active = document.activeElement
+    pendingFocus =
+      active?.closest('.team-tree__acts') != null ? { teamNo: node.teamNo, direction } : null
+    emit('move', move, 'button')
   }
 
   function onAddChild(node: AdminTeamNode): void {
@@ -312,8 +364,12 @@
     emit('move', { teamNo: from.teamNo, ...to }, 'drag')
   }
 
-  /** 🔴 he-tree 의 Alt+화살표 이동은 확인과 "못 옮기는 팀" 잠금을 건너뛴다 — 캡처 단계에서 가로챈다(스펙 D7) */
+  /**
+   * 🔴 he-tree 의 Alt+화살표 이동은 확인과 "못 옮기는 팀" 잠금을 건너뛴다 — 캡처 단계에서 가로챈다(스펙 D7).
+   *    he-tree 의 Alt+화살표 이동은 드래그가 켜졌을 때만 동작한다 — 꺼져 있으면 브라우저의 Alt+←/→(뒤로 · 앞으로)를 막지 않는다.
+   */
   function onKeydownCapture(event: KeyboardEvent): void {
+    if (!dragOn.value) return
     if (!event.altKey || !event.key.startsWith('Arrow')) return
     if ((event.target as HTMLElement | null)?.closest('input') != null) return
     event.preventDefault()
@@ -330,6 +386,7 @@
           autocomplete="off"
           clearable
           density="compact"
+          :disabled="edit != null"
           hide-details
           :label="text.searchLabel"
           name="teamSearch"
@@ -370,6 +427,7 @@
         :i18n="HE_TREE_I18N"
         :indent="20"
         :model-value="items"
+        :node-key="nodeKeyOf"
         :root-droppable="rootDroppable"
         :stat-handler="statHandler"
         tree-line

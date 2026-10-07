@@ -217,6 +217,34 @@ describe('TeamTree — 잠금 · 버튼 · 메뉴', () => {
     expect(menuItem('이름 바꾸기')!.classList.contains('v-list-item--disabled')).toBe(false)
   })
 
+  it('🔴 ↑↓ 뒤 재조회가 와도 포커스는 옮긴 팀의 버튼에 남는다 — 옆 팀 버튼이 되지 않는다', async () => {
+    await setup()
+    const up = button('「판교지점」 위로')!
+    up.focus()
+    up.click()
+    const moved: AdminTeamNode[] = [
+      n(1, '한강투자그룹', 0, [
+        n(3, '관리본부', 5, [n(7, '인사팀', 0)]),
+        n(2, '영업본부', 0, [n(6, '분당지점', 9), n(4, '강남지점', 1), n(5, '판교지점', 0)]),
+      ]),
+    ]
+    await wrapper!.setProps({ nodes: moved })
+    await flushPromises()
+    // 판교지점이 맨 위가 되어 ↑ 는 꺼졌다 — 같은 팀의 ↓ 로
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('「판교지점」 아래로')
+  })
+
+  it('canAct 는 검색으로 가지가 잘린 사본이 아니라 원래 팀을 받는다', async () => {
+    await setup({
+      canAct: (node: AdminTeamNode, action: string) =>
+        !(action === 'remove' && node.children.length > 0),
+    })
+    await wrapper!.find('input[name="teamSearch"]').setValue('영업')
+    await flushPromises()
+    await openMenu('영업본부')
+    expect(menuItem('삭제')!.classList.contains('v-list-item--disabled')).toBe(true)
+  })
+
   it('옮겨 갈 상위 팀이 없으면 옮기기가 비활성이다', async () => {
     await setup({ nodes: [n(1, '본사', 0)] })
     await openMenu('본사')
@@ -366,17 +394,16 @@ describe('TeamTree — 노드 안 입력칸', () => {
     expect(wrapper!.emitted('edit-commit')).toBeUndefined()
   })
 
-  it('🔴 재조회로 입력칸이 새로 생겨도 — 옛 칸의 포커스 빠짐은 저장이 아니고, 글자 · 오류 · 포커스가 남는다', async () => {
+  it('🔴 재조회로 형제가 끼어들어도 입력칸은 그대로 — 글자 · 오류 · 포커스가 남고 저장이 새로 나가지 않는다', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     await setup({ edit: renaming({ name: '판교2', error: '이미 같은 이름의 팀이 있습니다.' }) })
     const old = input()!
-    // 판교지점 앞에 형제가 생기면 행 번호가 밀려 입력칸이 새로 만들어진다
+    // 판교지점 앞에 형제가 생겨도 행이 팀을 따라가므로 입력칸은 제자리에서 고쳐진다
     const shifted = TREE()
     shifted[0]!.children[1]!.children.push(n(8, '가산지점', 3))
     await wrapper!.setProps({ nodes: shifted })
     await flushPromises()
-    expect(old.isConnected, '가드 — 입력칸이 실제로 새로 생겼다').toBe(false)
-    old.dispatchEvent(new FocusEvent('blur'))
+    expect(input()).toBe(old)
     expect(wrapper!.emitted('edit-commit')).toBeUndefined()
     expect(input()!.value).toBe('판교2')
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(
@@ -425,6 +452,22 @@ describe('TeamTree — 노드 안 입력칸', () => {
     await setup({ edit: renaming() })
     expect(button('「강남지점」 아래로')!.disabled).toBe(true)
     expect(button('「강남지점」 메뉴')!.disabled).toBe(true)
+  })
+
+  it('입력칸이 열려 있으면 검색이 잠긴다 — 걸러진 화면이 열린 입력칸을 가리지 않게', async () => {
+    await setup({ edit: renaming() })
+    expect(document.querySelector<HTMLInputElement>('input[name="teamSearch"]')!.disabled).toBe(
+      true,
+    )
+  })
+
+  it('🔴 하위 팀 추가는 접힌 조상까지 모두 펼친다 — 초안 행이 접힌 가지에 숨지 않는다', async () => {
+    await setup()
+    button('「한강투자그룹」 접기')!.click()
+    await flushPromises()
+    await wrapper!.setProps({ edit: creating(2n) })
+    await flushPromises()
+    expect(input()).not.toBeNull()
   })
 })
 
@@ -494,5 +537,11 @@ describe('TeamTree — 드래그', () => {
     await flushPromises()
     expect(names()).toEqual(ALL)
     expect(wrapper!.emitted('move')).toBeUndefined()
+  })
+
+  it('드래그가 꺼져 있으면 Alt+화살표를 막지 않는다 — 브라우저의 뒤로 · 앞으로', async () => {
+    await setup()
+    const event = key(treeItemOf('분당지점'), { key: 'ArrowLeft', altKey: true })
+    expect(event.defaultPrevented).toBe(false)
   })
 })
