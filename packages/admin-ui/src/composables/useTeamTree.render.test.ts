@@ -240,7 +240,7 @@ describe('useTeamTree — ↑↓ · 드래그', () => {
   it('드래그 · 다른 상위 팀 — 확인 문구 → 확인하면 요청 → onDone(reparent)', async () => {
     const move = vi.fn(async () => {})
     const onDone = vi.fn()
-    const teams = await setup({ move, onDone })
+    const teams = await setup({ move, onDone, create: vi.fn() })
     teams.tree.value.onMove({ teamNo: 5n, parentTeamNo: 3n, beforeTeamNo: null }, 'drag')
     await flushPromises()
     expect(activeDialog().textContent).toContain(
@@ -261,13 +261,26 @@ describe('useTeamTree — ↑↓ · 드래그', () => {
   it('🔴 확인을 취소하면 요청 · 재조회 없이 resetKey 만 오른다(원위치)', async () => {
     const load = vi.fn(async () => TREE())
     const move = vi.fn(async () => {})
-    const teams = await setup({ load, move })
+    const teams = await setup({ load, move, create: vi.fn() })
     const before = teams.tree.value.resetKey
     teams.tree.value.onMove({ teamNo: 5n, parentTeamNo: 3n, beforeTeamNo: null }, 'drag')
     await flushPromises()
     await clickInDialog('취소')
     expect(move).not.toHaveBeenCalled()
     expect(load).toHaveBeenCalledTimes(1)
+    expect(teams.tree.value.resetKey).toBe(before + 1)
+  })
+
+  it('🔴 드래그가 성공했는데 재조회가 실패하면 resetKey 를 올려 트리를 판정 기준에 맞춘다', async () => {
+    const load = vi.fn().mockResolvedValueOnce(TREE()).mockRejectedValueOnce(new Error('네트워크'))
+    const move = vi.fn(async () => {})
+    const teams = await setup({ load, move, create: vi.fn() })
+    const before = teams.tree.value.resetKey
+    teams.tree.value.onMove({ teamNo: 5n, parentTeamNo: 3n, beforeTeamNo: null }, 'drag')
+    await flushPromises()
+    await clickInDialog('옮기기')
+    expect(move).toHaveBeenCalledTimes(1)
+    expect(teams.tree.value.loadFailed).toBe(true)
     expect(teams.tree.value.resetKey).toBe(before + 1)
   })
 
@@ -298,7 +311,7 @@ describe('useTeamTree — 옮기기 대화상자', () => {
     const load = vi.fn(async () => TREE())
     const move = vi.fn(async () => {})
     const onDone = vi.fn()
-    const teams = await setup({ load, move, onDone })
+    const teams = await setup({ load, move, onDone, create: vi.fn() })
     teams.tree.value.onReparent(5n)
     teams.moveDialog.value.onConfirm(3n)
     await flushPromises()
@@ -332,6 +345,17 @@ describe('useTeamTree — 옮기기 대화상자', () => {
     })
     teams.tree.value.onReparent(5n)
     expect(teams.moveDialog.value.targets.map((t) => t.parentTeamNo)).not.toContain(3n)
+  })
+
+  it('선택지에 없는 상위 팀이 오면 요청하지 않는다 — 지금 상위 팀 · topLevel 없는 최상위', async () => {
+    const move = vi.fn(async () => {})
+    const teams = await setup({ move, create: vi.fn() })
+    teams.tree.value.onReparent(5n)
+    teams.moveDialog.value.onConfirm(2n)
+    teams.moveDialog.value.onConfirm(null)
+    await flushPromises()
+    expect(move).not.toHaveBeenCalled()
+    expect(teams.moveDialog.value.modelValue).toBe(true)
   })
 
   it('만들기 어댑터가 없으면 옮겨 받을 팀이 없다 — 받기도 하위 팀 추가(addChild ↔ create)다', async () => {
@@ -561,6 +585,22 @@ describe('useTeamTree — 노드 안 입력칸', () => {
     teams = await setup({ create, topLevel: true })
     teams.startCreate(null)
     expect(teams.tree.value.edit).toMatchObject({ kind: 'create', parentTeamNo: null })
+  })
+
+  it('저장 순간에 판정이 바뀌었으면 요청 없이 닫는다', async () => {
+    let renamable = true
+    const rename = vi.fn(async () => {})
+    const teams = await setup({
+      rename,
+      canAct: (_node, action) => action !== 'rename' || renamable,
+    })
+    teams.tree.value.onEditStart({ kind: 'rename', teamNo: 5n })
+    teams.tree.value.onEditInput('판교센터')
+    renamable = false
+    teams.tree.value.onEditCommit('enter')
+    await flushPromises()
+    expect(rename).not.toHaveBeenCalled()
+    expect(teams.tree.value.edit).toBeNull()
   })
 
   it('잠겨 있으면 입력칸을 열지 않는다', async () => {

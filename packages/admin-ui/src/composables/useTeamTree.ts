@@ -212,22 +212,29 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
     if (target != null && !rowByNo.value.has(target)) edit.value = null
   }
 
-  async function reload(): Promise<void> {
+  /** 이 호출의 결과가 적용됐을 때만 true — 늦은 응답으로 버려졌거나 실패면 false */
+  async function load(): Promise<boolean> {
     const seq = ++loadSeq
     loading.value = true
     loadError.value = null
     try {
       const result = await options.load()
-      if (seq !== loadSeq) return
+      if (seq !== loadSeq) return false
       nodes.value = result
       tidy()
+      return true
     } catch (error) {
-      if (seq !== loadSeq) return
+      if (seq !== loadSeq) return false
       // 트리는 그대로 둔다 — 화면이 마지막 성공 결과를 보인 채 위에 한 줄로 알린다
       loadError.value = error
+      return false
     } finally {
       if (seq === loadSeq) loading.value = false
     }
+  }
+
+  async function reload(): Promise<void> {
+    await load()
   }
 
   const busy = computed(() => loading.value || flow.submitting.value)
@@ -293,6 +300,13 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
     }
     if (doMove == null || node == null || !canWrite() || !canAct(node, 'move')) return rollback()
     const reparent = (rowByNo.value.get(move.teamNo)?.parentTeamNo ?? null) !== move.parentTeamNo
+    if (reparent) {
+      // 받는 쪽도 다시 본다 — 하위 팀 추가와 같은 판정(addChild ↔ create)
+      const parentNode = move.parentTeamNo == null ? null : nodeByNo.value.get(move.parentTeamNo)
+      const receivable =
+        move.parentTeamNo == null ? topLevel : parentNode != null && canAct(parentNode, 'addChild')
+      if (!receivable) return rollback()
+    }
     const parentName = parentNameOf(move.parentTeamNo)
     // 🔴 확인은 상위 팀이 바뀌는 드래그에만 — 하위 팀과 소속 인원이 통째로 다른 팀 밑으로 간다(3d ③)
     const gate: Gate =
@@ -306,7 +320,13 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
     const { ok, attempted } = await write(gate, () => doMove(move))
     if (!attempted) return rollback()
     if (!ok) rollback()
-    await reload()
+    if (source === 'drag' && ok) {
+      // 🔴 성공한 드래그 뒤 재조회가 실패하면 트리는 놓은 모양 그대로인데 판정 기준(nodes)은 옛 모양이다 — 맞춰 다시 그린다
+      const applied = await load()
+      if (!applied) resetKey.value += 1
+    } else {
+      await reload()
+    }
     if (!ok) return
     await done(
       reparent ? 'reparent' : 'move',
@@ -347,6 +367,12 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
     const doMove = options.move
     const node = teamNo == null ? undefined : nodeByNo.value.get(teamNo)
     if (teamNo == null || node == null || doMove == null || !canWrite()) return
+    if (!canAct(node, 'move')) return
+    const allowed = moveTargets(nodes.value, teamNo, {
+      topLevel,
+      canReceive: (target) => canAct(target, 'addChild'),
+    }).map((target) => target.parentTeamNo)
+    if (!allowed.includes(parentTeamNo)) return
     const move: AdminTeamMove = { teamNo, parentTeamNo, beforeTeamNo: null }
     const parentName = parentNameOf(parentTeamNo)
     const { ok, attempted } = await write({ gate: 'none' }, () => doMove(move))
@@ -415,6 +441,21 @@ export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
       return
     }
     if (!canWrite()) {
+      edit.value = null
+      return
+    }
+    // 열 때와 같은 판정을 저장 순간에 다시 본다
+    let allowed: boolean
+    if (current.kind === 'rename') {
+      const node = nodeByNo.value.get(current.teamNo)
+      allowed = node != null && canAct(node, 'rename')
+    } else if (current.parentTeamNo == null) {
+      allowed = topLevel && options.create != null
+    } else {
+      const parent = nodeByNo.value.get(current.parentTeamNo)
+      allowed = parent != null && canAct(parent, 'addChild')
+    }
+    if (!allowed) {
       edit.value = null
       return
     }
