@@ -70,7 +70,7 @@ export const usePermission = createUsePermission<Permission>(
 
 🔴 `pinia`·`axios`·`@he-tree/vue` 도 **필수**다. 엔트리가 하나(`dist/index.js`)라 두 패키지를 최상단에서 import 한다 — `safeRedirect` 하나만 써도 번들러가 `axios` 를 해석하지 못하면 빌드가 깨진다. 서브패스 export 로 가르지 않는 대가다. he-tree CSS 는 import 하지 않아도 된다 — `TeamTree` 가 필요한 규칙을 `style.css` 에 담는다.
 
-pnpm 10 이상은 의존 패키지의 설치 스크립트를 막는다. he-tree 의 하위 의존 `vue-demi` 의 postinstall 이 걸려 pnpm 12 는 `pnpm install` 이 `ERR_PNPM_IGNORED_BUILDS` 로 멈춘다. 소비자가 명시로 정한다 — 이 저장소는 거부한다(Vue 3 에서는 그 스크립트가 Vue 2 용 파일 전환뿐이라 필요 없다):
+pnpm 10 이상은 의존 패키지의 설치 스크립트를 막는다. he-tree 의 하위 의존 `vue-demi` 의 postinstall 이 걸려 pnpm 12 는 `pnpm install` 이 `ERR_PNPM_IGNORED_BUILDS` 로 멈춘다. 소비자 앱의 `pnpm-workspace.yaml` 에 `allowBuilds:` / `vue-demi: false` 를 두면 된다 — Vue 3 에서는 그 스크립트가 할 일이 없다:
 
 ```yaml
 # pnpm-workspace.yaml
@@ -724,6 +724,8 @@ const loadMembers = (q: TeamUserQuery) =>
       itemsPerPage: q.itemsPerPage,
     },
   })
+// 제네릭 SFC 의 ref 는 노출한 모양으로 적는다
+const userList = useTemplateRef<{ reload(): Promise<void> }>('userList')
 // 3열에서 사용자를 저장한 뒤 — 같은 조건으로 다시
 userList.value?.reload()
 ```
