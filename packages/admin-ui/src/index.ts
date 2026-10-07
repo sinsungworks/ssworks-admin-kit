@@ -187,3 +187,14 @@ export {
   type TeamMoveSource,
   type TeamTreeMessages,
 } from './components/team/team-tree.js'
+export {
+  useTeamTree,
+  type UseTeamTreeOptions,
+  type TeamTreeController,
+  type TeamTreeBindings,
+  type TeamMoveDialogBindings,
+  type TeamMessages,
+  type TeamDialogText,
+  type TeamDoneEvent,
+  type TeamDoneAction,
+} from './composables/useTeamTree.js'
