@@ -48,6 +48,7 @@
   )
 
   function cancel(): void {
+    if (props.pending) return
     cancelled = true
     emit('cancel')
   }
@@ -58,6 +59,7 @@
     event.stopPropagation()
     // 🔴 한글 조합 중 Enter 는 조합 확정이다 — 저장으로 받으면 마지막 글자가 빠진 이름이 나간다
     if (event.isComposing) return
+    if (props.pending) return
     if (event.key === 'Enter') {
       event.preventDefault()
       emit('commit', 'enter')
@@ -71,14 +73,22 @@
     if (cancelled || props.pending) return
     // 🔴 창 자체가 포커스를 잃은 것(Alt+Tab)은 저장이 아니다
     if (!document.hasFocus()) return
-    // 다시 그리느라 입력칸이 문서에서 떨어지는 중이면 저장이 아니다
+    // Vue 는 요소를 떼기 전에 템플릿 ref 를 비운다 — 다시 그리느라 입력칸이 떼어지는 중에 난 blur 는 저장이 아니다
     if (field.value == null || !field.value.isConnected) return
     emit('commit', 'blur')
+  }
+
+  /**
+   * 🔴 입력칸 말고 묶음 안(✓ · ✕ · 글자 수 · 오류 문구)을 눌러도 입력칸 포커스를 빼앗지 않는다 — 빼앗으면 ✕ 를 누르는
+   *    순간 바깥 누르기 저장이 먼저 돌고, 글자 수 · 오류 문구는 he-tree 의 포커스 가능한 노드로 포커스가 옮겨 저장된다
+   */
+  function onMousedown(event: MouseEvent): void {
+    if (event.target !== field.value) event.preventDefault()
   }
 </script>
 
 <template>
-  <span class="team-name-input" @click.stop>
+  <span class="team-name-input" @click.stop @keydown.stop @mousedown="onMousedown">
     <input
       ref="field"
       autocomplete="off"
@@ -94,25 +104,25 @@
       @keydown="onKeydown"
     />
     <span class="team-name-input__count">{{ name.length }}/{{ TEAM_NAME_MAX_LENGTH }}</span>
-    <!-- 🔴 ✓ · ✕ 는 누를 때 입력칸 포커스를 빼앗지 않는다 — 빼앗으면 ✕ 를 누르는 순간 바깥 누르기 저장이 먼저 돈다 -->
+    <!-- ✓ · ✕ 는 포인터 전용 — 키보드는 Enter · Esc, Tab 으로 나가면 바깥 누르기 저장 -->
     <VBtn
       :aria-label="labels.save"
       :disabled="pending"
       icon="mdi-check"
       :loading="pending"
       size="x-small"
+      tabindex="-1"
       variant="text"
       @click="emit('commit', 'button')"
-      @mousedown.prevent
     />
     <VBtn
       :aria-label="labels.cancel"
       :disabled="pending"
       icon="mdi-close"
       size="x-small"
+      tabindex="-1"
       variant="text"
       @click="cancel"
-      @mousedown.prevent
     />
     <span v-if="error" class="team-name-input__error" role="alert">{{ error }}</span>
   </span>

@@ -366,20 +366,52 @@ describe('TeamTree — 노드 안 입력칸', () => {
     expect(wrapper!.emitted('edit-commit')).toBeUndefined()
   })
 
-  it('🔴 실패 문구를 보이고, nodes 가 바뀌어도 글자 · 오류 · 포커스가 남고 저장이 새로 나가지 않는다', async () => {
+  it('🔴 재조회로 입력칸이 새로 생겨도 — 옛 칸의 포커스 빠짐은 저장이 아니고, 글자 · 오류 · 포커스가 남는다', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     await setup({ edit: renaming({ name: '판교2', error: '이미 같은 이름의 팀이 있습니다.' }) })
-    expect(document.querySelector('[role="alert"]')?.textContent).toBe(
-      '이미 같은 이름의 팀이 있습니다.',
-    )
-    await wrapper!.setProps({ nodes: TREE() })
+    const old = input()!
+    // 판교지점 앞에 형제가 생기면 행 번호가 밀려 입력칸이 새로 만들어진다
+    const shifted = TREE()
+    shifted[0]!.children[1]!.children.push(n(8, '가산지점', 3))
+    await wrapper!.setProps({ nodes: shifted })
     await flushPromises()
+    expect(old.isConnected, '가드 — 입력칸이 실제로 새로 생겼다').toBe(false)
+    old.dispatchEvent(new FocusEvent('blur'))
+    expect(wrapper!.emitted('edit-commit')).toBeUndefined()
     expect(input()!.value).toBe('판교2')
     expect(document.querySelector('[role="alert"]')?.textContent).toBe(
       '이미 같은 이름의 팀이 있습니다.',
     )
     expect(document.activeElement).toBe(input())
+  })
+
+  it('🔴 저장 중에는 Esc · Enter 를 받지 않는다 — 실패 뒤 바깥 누르기는 다시 저장한다', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    await setup({ edit: renaming({ pending: true }) })
+    key(input()!, { key: 'Escape' })
+    key(input()!, { key: 'Enter' })
+    expect(wrapper!.emitted('edit-cancel')).toBeUndefined()
     expect(wrapper!.emitted('edit-commit')).toBeUndefined()
+    await wrapper!.setProps({
+      edit: renaming({ pending: false, error: '이미 같은 이름의 팀이 있습니다.' }),
+    })
+    input()!.dispatchEvent(new FocusEvent('blur'))
+    expect(wrapper!.emitted('edit-commit')).toEqual([['blur']])
+  })
+
+  it('✓ · ✕ 는 Tab 순서에 없고, 입력칸 묶음 안을 눌러도 포커스가 입력칸에 남으며 키는 트리로 가지 않는다', async () => {
+    await setup({ edit: renaming() })
+    expect(button('저장')!.getAttribute('tabindex')).toBe('-1')
+    expect(button('취소')!.getAttribute('tabindex')).toBe('-1')
+    const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    document.querySelector('.team-name-input__count')!.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+    const onInput = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    input()!.dispatchEvent(onInput)
+    expect(onInput.defaultPrevented).toBe(false)
+    const space = key(button('저장')!, { key: ' ' })
+    expect(space.defaultPrevented).toBe(false)
+    expect(wrapper!.emitted('update:modelValue')).toBeUndefined()
   })
 
   it('🔴 입력칸의 Space 는 트리로 올라가지 않는다 — he-tree 가 가로채면 공백이 안 먹는다(D6)', async () => {

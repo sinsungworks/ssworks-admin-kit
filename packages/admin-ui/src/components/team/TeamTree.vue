@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, nextTick, ref, shallowRef, watch } from 'vue'
+  import { computed, ref, shallowRef, watch } from 'vue'
   import {
     VAlert,
     VBtn,
@@ -193,14 +193,7 @@
     return edit.kind === 'rename' ? `rename:${edit.teamNo}` : `create:${edit.parentTeamNo ?? 'top'}`
   })
 
-  /**
-   * 🔴 다시 그리는 동안의 포커스 빠짐은 바깥 누르기가 아니다 — 재조회로 입력칸이 새로 생기며 옛 칸이 문서에서 빠질 때
-   *    blur 를 내는 환경이 있다. 그것을 저장으로 받으면 실패 문구를 보던 사람의 이름이 한 번 더 나간다.
-   */
-  let rebuilding = false
-
   function rebuild(): void {
-    rebuilding = true
     const edit = props.edit
     const draftParent = edit?.kind === 'create' ? edit.parentTeamNo : undefined
     if (draftParent != null) closed.delete(draftParent)
@@ -211,14 +204,6 @@
     const next = buildItems(base, draftParent)
     if (draftParent === null) next.push({ draft: true, children: [] })
     items.value = next
-    void nextTick(() => {
-      rebuilding = false
-    })
-  }
-
-  function onCommit(source: TeamCommitSource): void {
-    if (source === 'blur' && rebuilding) return
-    emit('edit-commit', source)
   }
 
   watch(
@@ -406,7 +391,7 @@
               :name="edit.name"
               :pending="edit.pending"
               @cancel="emit('edit-cancel')"
-              @commit="onCommit"
+              @commit="emit('edit-commit', $event)"
               @focused="focusInput = false"
               @input="emit('edit-input', $event)"
             />
@@ -436,7 +421,7 @@
               :name="edit.name"
               :pending="edit.pending"
               @cancel="emit('edit-cancel')"
-              @commit="onCommit"
+              @commit="emit('edit-commit', $event)"
               @focused="focusInput = false"
               @input="emit('edit-input', $event)"
             />
