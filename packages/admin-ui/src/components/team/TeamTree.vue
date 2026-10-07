@@ -77,6 +77,7 @@
       loadFailed: false,
       draggable: false,
       topLevel: false,
+      canAct: undefined,
       edit: null,
       resetKey: 0,
       messages: () => ({}),

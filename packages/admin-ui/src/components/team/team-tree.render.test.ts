@@ -193,23 +193,17 @@ describe('TeamTree — 잠금 · 버튼 · 메뉴', () => {
     expect(button('「판교지점」 메뉴')!.disabled).toBe(true)
   })
 
-  it('메뉴 — 하위 팀 추가 · 이름 바꾸기 · 옮기기 · 삭제가 이벤트를 낸다', async () => {
+  it.each([
+    ['하위 팀 추가', 'edit-start', [{ kind: 'create', parentTeamNo: 5n }]],
+    ['이름 바꾸기', 'edit-start', [{ kind: 'rename', teamNo: 5n }]],
+    ['옮기기', 'reparent', [5n]],
+    ['삭제', 'remove', [5n]],
+  ] as const)('메뉴 「%s」 가 %s 를 낸다', async (title, event, payload) => {
     await setup()
     await openMenu('판교지점')
-    menuItem('하위 팀 추가')!.click()
-    await openMenu('판교지점')
-    menuItem('이름 바꾸기')!.click()
-    await openMenu('판교지점')
-    menuItem('옮기기')!.click()
-    await openMenu('판교지점')
-    menuItem('삭제')!.click()
+    menuItem(title)!.click()
     await flushPromises()
-    expect(wrapper!.emitted('edit-start')).toEqual([
-      [{ kind: 'create', parentTeamNo: 5n }],
-      [{ kind: 'rename', teamNo: 5n }],
-    ])
-    expect(wrapper!.emitted('reparent')).toEqual([[5n]])
-    expect(wrapper!.emitted('remove')).toEqual([[5n]])
+    expect(wrapper!.emitted(event)).toEqual([payload])
   })
 
   it('canAct 가 거짓인 동작은 비활성이다', async () => {
