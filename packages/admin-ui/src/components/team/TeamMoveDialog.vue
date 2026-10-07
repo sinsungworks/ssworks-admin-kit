@@ -12,7 +12,7 @@
   //  - 팀이 많아도 고르게 이름 검색(VAutocomplete). 들여쓴 제목으로 보이고 원래 이름으로 찾는다.
   //
   // 🔴 최상위 선택지는 `null` 대신 내부 키로 구분한다 — Vuetify 선택 상자는 `null` 을 "고르지 않음"으로 본다.
-  // 🔴 열릴 때마다 고른 값을 비운다 — VDialog 는 지연 마운트라 setup 상태가 다음 열림에 남는다(hangang).
+  // 🔴 열릴 때마다 고른 값과 검색어를 비운다 — VDialog 는 지연 마운트라 setup 상태가 다음 열림에 남는다(hangang).
 
   const props = withDefaults(
     defineProps<{
@@ -50,8 +50,12 @@
   const choice = ref<string | null>(null)
   const chosen = computed(() => options.value.find((option) => option.key === choice.value) ?? null)
 
+  const search = ref('')
+
   watch(open, (value) => {
-    if (value) choice.value = null
+    if (!value) return
+    choice.value = null
+    search.value = ''
   })
 
   /** 들여쓴 제목(U+3000 · └)이 아니라 원래 이름으로 찾는다 */
@@ -86,6 +90,7 @@
     </p>
     <VAutocomplete
       v-model="choice"
+      v-model:search="search"
       autocomplete="off"
       :custom-filter="filter"
       density="compact"

@@ -102,13 +102,25 @@ describe('TeamMoveDialog', () => {
     expect(filter('', '최상', { raw: items[0]! })).toBe(true)
   })
 
-  it('🔴 다시 열면 고른 값이 비워진다(지연 마운트)', async () => {
+  it('🔴 다시 열면 고른 값 · 검색어가 비워진다(지연 마운트)', async () => {
     await setup()
+    // 고른 값 없이 검색어만 — Vuetify 는 선택이 바뀔 때 검색어를 스스로 비우므로 이 경우만 우리 초기화를 잰다
+    autocomplete().vm.$emit('update:search', '인사')
+    await flushPromises()
+    expect(autocomplete().props('search')).toBe('인사')
+    await wrapper!.setProps({ modelValue: false })
+    await wrapper!.setProps({ modelValue: true })
+    await flushPromises()
+    expect(autocomplete().props('search')).toBe('')
+
     await choose('3')
+    autocomplete().vm.$emit('update:search', '인사')
+    await flushPromises()
     await wrapper!.setProps({ modelValue: false })
     await wrapper!.setProps({ modelValue: true })
     await flushPromises()
     expect(autocomplete().props('modelValue')).toBeNull()
+    expect(autocomplete().props('search')).toBe('')
   })
 
   it('제출 중엔 취소 · 옮기기 · 선택 상자가 잠긴다', async () => {
