@@ -256,7 +256,7 @@ export interface TeamTreeMessages {
 6. **펼침.** 접은 팀 번호를 기억해 `nodes` · `resetKey` 가 바뀌어도 유지(D3).
 7. **조회 상태.** `loading` 이면 위에 진행 막대. `loadFailed` 이고 트리가 비었으면 그 자리에 `loadFailed` 문구 + 다시 시도(`@reload`), 트리가 있으면 위에 한 줄.
 8. **노드 안 입력칸.** `edit` 가 있으면 — `rename` 은 그 행 이름 자리, `create` 는 상위 팀을 펼친 뒤 맨 끝의 **초안 행**(최상위면 루트 목록 맨 끝). 입력칸(`name="teamName"`, 글자 수 표시) + ✓ + ✕, 오류는 그 아래. 열릴 때 포커스(이름 바꾸기는 전체 선택). 저장 중이면 입력칸 `readonly` · ✓ `:loading` + `:disabled` · ✕ `:disabled`. 키: Enter → `edit-commit('enter')`, Esc → `edit-cancel`, ✓ → `edit-commit('button')`, 바깥 누르기 → `edit-commit('blur')`(D5 의 네 함정 제외). 입력칸 · 버튼 묶음의 키는 트리로 안 올린다(D6). 입력칸이 열려 있으면 드래그 꺼짐.
-9. **드래그.** `draggable && !locked && 검색어 없음` 일 때 켜진다. `eachDraggable` = `canAct(node, 'move')`. `eachDroppable`(그 팀 아래로 넣을 수 있는가) = 그 팀이 끄는 팀의 지금 상위 팀이거나(같은 상위 팀 안 순서 바꾸기) `canAct(그 팀, 'addChild')`. `rootDroppable` = `topLevel`. `change` 에서 끈 팀의 `findTeamPlacement` 를 읽어 지금 자리와 다르면 `@move({ teamNo, parentTeamNo, beforeTeamNo }, 'drag')`, 같으면 아무것도 안 낸다(D8).
+9. **드래그.** `draggable && !locked && 검색어 없음` 일 때 켜진다. `eachDraggable` = `canAct(node, 'move')`. `eachDroppable`(그 팀 아래로 넣을 수 있는가) = 그 팀이 끄는 팀의 지금 상위 팀이거나(같은 상위 팀 안 순서 바꾸기) `canAct(그 팀, 'addChild')`. `rootDroppable` = `topLevel` 이거나 끄는 팀이 최상위 팀(최상위 형제끼리 순서 바꾸기, R4). `change` 에서 끈 팀의 `findTeamPlacement` 를 읽어 지금 자리와 다르면 `@move({ teamNo, parentTeamNo, beforeTeamNo }, 'drag')`, 같으면 아무것도 안 낸다(D8).
 10. 🔴 **Alt+화살표.** 감싸개의 `keydown` 캡처에서 `altKey` + 화살표면 `preventDefault` · `stopPropagation`(D7).
 
 ### 4-4. `useTeamTree`
@@ -559,3 +559,13 @@ export interface TeamUserListMessages {
 - 체크박스 다중 선택 트리(crm `checkable`, 미완성).
 - 열린 입력칸이 있을 때 페이지 이탈 경고 — 바깥 누르기가 저장이라 두지 않는다.
 - 약관 편집기 — PR #3e.
+
+## 11. 구현 중 정정 (2026-10-07)
+
+- **R1 — vue-demi 빌드 스크립트를 `pnpm-workspace.yaml` 의 `allowBuilds: { vue-demi: false }` 로 거부했다.** he-tree 의 하위 의존 `vue-demi` 의 postinstall 을 pnpm 이 막고, pnpm 12 는 `install --frozen-lockfile` 이 종료 코드 1 로 끝난다. Vue 3 에서는 그 스크립트가 Vue 2 용 파일 전환뿐이라 거부해도 된다. 소비자도 같은 안내를 본다(README · changeset)(Task 1).
+- **R2 — admin-shared 테스트는 `structuredClone` 을 쓰지 않는다.** admin-shared 의 tsconfig 는 `types: []` 와 ES 전용 lib 을 일부러 유지한다(프레임워크 무의존 가드). 불변성 시험은 새로 만든 트리와 비교한다(Task 3).
+- **R3 — `TeamNameInput` (D5 · §4-3-1 #8).** ✓/✕ 는 포인터 전용(`tabindex="-1"`)이다. 키보드는 Enter 저장 · Esc 취소 · Tab 으로 나가면 blur 저장. 래퍼의 `mousedown` 하나가 입력칸 자신 외의 곳을 눌러도 포커스를 입력칸에 두고, 래퍼의 `keydown.stop` 이 편집 키를 he-tree 로 보내지 않는다. 저장 중에는 Esc · Enter 를 무시한다(묵은 "취소됨" 표시가 남아 뒤의 blur 가 저장하지 않던 문제). 계획했던 `rebuilding` 플래그는 뺐다 — Vue 는 요소를 지우기 전에 템플릿 ref 를 null 로 만들어, 다시 그리는 중의 blur 는 이미 `field == null || !isConnected` 가드에 걸린다(Task 4).
+- **R4 — `rootDroppable` 은 `topLevel` 만이 아니라 `topLevel || (끄는 팀이 최상위)` 다(§4-3-1 #9).** `topLevel` 없이도 최상위 형제끼리 순서 바꾸기가 되어야 한다(Task 4).
+- **R5 — `TeamMoveDialog` 는 열 때마다 선택과 함께 검색어도 Vuetify 의 `v-model:search` 로 비운다(§4-5 #3).** VAutocomplete 는 선택이 바뀔 때만 검색어를 비우고 그 밖에는 두기 때문이다(Task 5).
+- **R6 — 옮겨 받기는 `addChild` 로 센다(§4-4 #4/#7), 곧 `create` 어댑터가 있어야 한다.** 대화상자의 대상 · ⋮ 옮기기 · 드래그가 같은 규칙을 쓴다. `move` 만 주고 `create` 를 안 준 소비자는 순서 바꾸기만 되고 상위 팀 변경은 안 된다(`최상위` 는 `topLevel` 만 따른다). 핸들러는 확정 · 확인 시점에 규칙을 다시 본다 — `confirmReparent` 는 제시된 대상일 것, `commitEdit` 은 rename/addChild 를 다시 확인, 상위 팀이 바뀌는 드래그는 받는 쪽을 다시 확인. 드래그 성공 뒤 이어지는 재조회가 적용되지 않으면 `resetKey` 를 올려, 트리가 컴포저블이 판정하는 `nodes` 와 같아지게 한다(Task 6).
+- **R7 — `TeamUserList` 의 첫 쪽 불러오기 내부 함수는 `loadFirst` 다.** 지역 `load` 가 `load` prop 과 이름이 겹쳤다. 팀이 바뀌면 새 팀을 부르기 전에 앞 팀의 행을 치워, 불러오는 동안 다른 팀의 사용자를 고를 수 없다(Task 7).
