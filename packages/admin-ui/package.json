@@ -37,6 +37,7 @@
     "test": "vitest run"
   },
   "peerDependencies": {
+    "@he-tree/vue": "^2.10.5",
     "@ssworks/admin-shared": "workspace:^0",
     "axios": "^1.7",
     "pinia": "^3.0.0",
@@ -45,6 +46,7 @@
     "vuetify": "^4.0.0"
   },
   "devDependencies": {
+    "@he-tree/vue": "^2.10.5",
     "@mdi/font": "^7.4.47",
     "@ssworks/admin-shared": "workspace:*",
     "@vitejs/plugin-vue": "^6.0.1",

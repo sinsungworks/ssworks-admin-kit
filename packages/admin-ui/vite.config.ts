@@ -32,6 +32,7 @@ export default defineConfig({
         'axios',
         'pinia',
         /^vue-router(\/.*)?$/,
+        /^@he-tree\/vue(\/.*)?$/,
       ],
       output: {
         // 소비 프로젝트의 tree-shaking 을 위해 모듈 구조를 유지하지 않고 한 파일로 — 이 패키지는
