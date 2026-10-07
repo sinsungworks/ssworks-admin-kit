@@ -178,6 +178,7 @@ export { default as PasswordChangeForm } from './components/password/PasswordCha
 
 // ── 조직 ──────────────────────────────────────────────────────────────
 export { default as TeamTree } from './components/team/TeamTree.vue'
+export { default as TeamMoveDialog } from './components/team/TeamMoveDialog.vue'
 export {
   type TeamAction,
   type TeamEdit,
