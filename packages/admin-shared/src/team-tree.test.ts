@@ -1,4 +1,3 @@
-/// <reference types="vitest" />
 import { describe, expect, it } from 'vitest'
 import type { AdminTeamNode } from './teams.js'
 import {
@@ -56,7 +55,7 @@ describe('sortTeamTree', () => {
 
   it('🔴 입력을 바꾸지 않는다 — 결과는 사본이다(D1)', () => {
     const input = TREE()
-    const before = structuredClone(input)
+    const before = TREE()
     const sorted = sortTeamTree(input)
     expect(input).toEqual(before)
     expect(sorted[0]).not.toBe(input[0])
