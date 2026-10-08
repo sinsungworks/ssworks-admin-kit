@@ -79,6 +79,17 @@ function expressClientErrorStatus(exception: unknown): number | undefined {
     : undefined
 }
 
+/**
+ * 오류 응답의 상태를 400~599 정수로 고정한다. 그 밖(undefined · NaN · 함수 · 2xx)은 500.
+ * 🔴 마스킹 판정(`>= 500`) **전에** 부른다 — 뒤에 하면 비정상 값이 4xx 경로를 타 원문 · details 를 싣고 나간 뒤에야
+ *    500 으로 바뀐다. `httpStatusFor('constructor')` 처럼 코드표가 프로토타입 값을 돌려주는 경우가 실제로 있다.
+ */
+function errorStatus(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 400 && value <= 599
+    ? value
+    : 500
+}
+
 /** Express 5 의 `res.status()` 는 정수가 아니거나 범위 밖이면 던진다(gise). */
 function normalizeStatus(status: number): number {
   return Number.isInteger(status) && status >= 100 && status <= 599 ? status : 500
@@ -160,10 +171,12 @@ export class AdminExceptionFilter implements ExceptionFilter {
   }
 
   private statusOf(code: string): number {
-    if (this.options?.errorCodes) return this.options.errorCodes.httpStatusFor(code)
-    return Object.hasOwn(COMMON_ERROR_STATUS, code)
-      ? (COMMON_ERROR_STATUS as Readonly<Record<string, number>>)[code]!
-      : 500
+    if (this.options?.errorCodes) return errorStatus(this.options.errorCodes.httpStatusFor(code))
+    return errorStatus(
+      Object.hasOwn(COMMON_ERROR_STATUS, code)
+        ? (COMMON_ERROR_STATUS as Readonly<Record<string, number>>)[code]
+        : 500,
+    )
   }
 
   private toBody(
@@ -192,7 +205,7 @@ export class AdminExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof HttpException) {
-      const status = exception.getStatus()
+      const status = errorStatus(exception.getStatus())
       if (status >= 500) {
         this.log(request, messageOfHttpException(exception), exception)
         const masked = serverStatus(status)

@@ -161,6 +161,38 @@ describe('오류 봉투', () => {
     })
   })
 
+  it('🔴 Object.prototype 이름 코드(constructor)는 500 · 고정 문구 · details 없음', async () => {
+    silenceErrors()
+    const res = await request(server).get('/probe/business/constructor').expect(500)
+    expect(res.body).toEqual({
+      success: false,
+      code: 'constructor',
+      message: '서버 내부 오류가 발생했습니다.',
+    })
+  })
+
+  it('🔴 httpStatusFor 가 undefined 를 돌려줘도 500 · 고정 문구 · details 없음', async () => {
+    const stub = await createHttpApp(
+      wiring({
+        db: options.db,
+        errorCodes: { httpStatusFor: () => undefined as unknown as number },
+      }),
+    )
+    try {
+      silenceErrors()
+      const res = await request(stub.getHttpServer())
+        .get('/probe/business/ERR_COMMON_NOT_FOUND')
+        .expect(500)
+      expect(res.body).toEqual({
+        success: false,
+        code: 'ERR_COMMON_NOT_FOUND',
+        message: '서버 내부 오류가 발생했습니다.',
+      })
+    } finally {
+      await stub.close()
+    }
+  })
+
   it('HttpException 4xx 는 상태에 맞는 코어 코드와 그 메시지', async () => {
     const res = await request(server).get('/probe/http-forbidden').expect(403)
     expect(res.body).toEqual({
