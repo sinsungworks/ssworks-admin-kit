@@ -238,6 +238,8 @@
         </MarkdownView>
       </VCard>
     </div>
+    <!-- 인용 다음 줄이 빈 줄 없이 오면 인용에 붙는다(마크다운 표준) — 관리자가 브라우저 확인에서 실제로 걸렸다(3e §12 R7) -->
+    <p class="legal-document-editor__guide">{{ text.editorHint }}</p>
 
     <div class="legal-document-editor__publish">
       <span v-if="blockedText" class="legal-document-editor__hint">{{ blockedText }}</span>
@@ -364,7 +366,12 @@
     gap: 8px 16px;
   }
 
+  .legal-document-editor__guide {
+    margin: -8px 0 0;
+  }
+
   .legal-document-editor__hint,
+  .legal-document-editor__guide,
   .legal-document-editor__meta {
     font-size: 0.875rem;
     color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));

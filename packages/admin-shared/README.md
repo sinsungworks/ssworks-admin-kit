@@ -17,7 +17,7 @@ pnpm add @ssworks/admin-shared zod
 | `validationDetailsSchema`                                                                                                                                                                                                      | `ERR_COMMON_VALIDATION` 의 `details.issues` 계약                                                                                                                                                        |
 | `createQuerySchema` · `createPaginatedRespSchema` · `toListQuery`                                                                                                                                                              | 목록 조회 규약 — 페이지·다중 정렬·필터, `total: bigint`                                                                                                                                                 |
 | `parseJSON` · `stringifyJSON` · `bigintJsonReviver` · `bigintJsonReplacer` · `toWireSafe`                                                                                                                                      | `"BigInt(n)"` 와이어 표기 코덱 (B9 이스케이프)                                                                                                                                                          |
-| `renderMarkdown(source)`                                                                                                                                                                                                       | 마크다운 → 안전한 HTML(markdown-it `html: false` · `linkify`). 관리자 미리보기 · 서버 공개 렌더 · 공개 웹이 **같은 함수**를 쓴다                                                                        |
+| `renderMarkdown(source)`                                                                                                                                                                                                       | 마크다운 → 안전한 HTML(markdown-it `html: false` · `linkify` · `breaks`). 관리자 미리보기 · 서버 공개 렌더 · 공개 웹이 **같은 함수**를 쓴다                                                             |
 | `adminLegalDocumentSchema` · `adminLegalHistoryItemSchema` · `adminLegalCurrentSchema` · `adminLegalHistorySchema` · `adminLegalPublishSchema` · `adminLegalPublishResultSchema` · `legalBodySchema` · `LEGAL_BODY_MAX_LENGTH` | 약관 계약 — 현재본 `{ item \| null }`(null = 미발행), 이력 `{ items }`(본문 없음), 발행 `{ kind, body, baseLegalDocNo }`(해시는 서버만 계산)                                                            |
 
 ```ts
@@ -33,6 +33,8 @@ export type Permission = PermissionOf<typeof permissions> // 'org.users:read' | 
 ## 마크다운 렌더
 
 `renderMarkdown` 은 약관처럼 관리자가 쓰고 사용자가 동의하는 본문을 그린다. 🔴 관리자 미리보기(admin-ui `MarkdownView`)와 공개 쪽(서버가 내는 `bodyHtml` · 공개 웹)이 이 함수 하나를 써야 "관리자가 본 미리보기" 와 "사용자가 동의한 원문" 이 갈리지 않는다. `html: false` 가 저장형 XSS 방어의 전부다 — 옵션을 바꾸지 않는다. `markdown-it` 은 이 패키지의 의존으로 함께 설치된다.
+
+Enter 한 번은 줄바꿈(`<br>`)이고 빈 줄이 문단을 나눈다(`breaks: true`). 인용(`>`) · 목록 바로 다음 줄은 빈 줄이 없으면 인용 · 목록에 이어 붙는다(마크다운 표준). axion · gise 렌더러는 `breaks: false` 였으므로, 그 본문을 옮겨 오면 문단 안의 줄 하나 바꿈이 줄바꿈으로 보인다.
 
 ```ts
 import { renderMarkdown } from '@ssworks/admin-shared'

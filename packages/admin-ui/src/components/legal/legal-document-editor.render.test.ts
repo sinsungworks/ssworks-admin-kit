@@ -232,6 +232,15 @@ describe('LegalDocumentEditor — 편집기 · 미리보기', () => {
     expect(preview().textContent).toContain('미리 볼 내용이 없습니다.')
   })
 
+  it('편집기 아래에 작성 도움말(줄바꿈 · 문단 · 인용 끝내기)이 보이고, messages 로 바꿀 수 있다', async () => {
+    const w = mountEditor()
+    expect(w.find('.legal-document-editor__guide').text()).toBe(
+      'Enter 한 번은 줄바꿈, 빈 줄은 문단 나눔입니다. 인용(>)과 목록은 빈 줄을 넣어야 끝납니다.',
+    )
+    await w.setProps({ messages: { editorHint: '사내 작성 규칙을 따르세요.' } })
+    expect(w.find('.legal-document-editor__guide').text()).toBe('사내 작성 규칙을 따르세요.')
+  })
+
   it('미리보기의 링크는 새 탭으로 연다(D18)', () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null)
     mountEditor({ modelValue: '[도움말](https://example.com/help)' })

@@ -8,6 +8,8 @@ import MarkdownItConstructor from 'markdown-it'
 // 바꾼 점:
 //  - 인스턴스를 처음 부를 때 만든다 — import 만으로는 아무 일도 일어나지 않게(3e 스펙 D2). markdown-it 이
 //    `sideEffects` 를 선언하지 않아, 안 쓰는 소비자 번들에서 실제로 빠지는지는 번들러가 판단한다.
+//  - `breaks: true` — Enter 한 번이 줄바꿈(`<br>`)이다. 두 정본은 `false`(줄 하나 바꿈 = 공백)였는데, 약관을 쓰는
+//    관리자는 친 그대로 줄이 나뉘기를 기대한다(3e 브라우저 확인, 스펙 §12 R7). 문단은 빈 줄로 나눈다.
 //
 // 🔴 이 파일이 admin-shared 에 있는 이유: 관리자 미리보기와 공개 렌더가 **같은 함수**를 써야 "관리자가 본 미리보기" 와
 //    "사용자가 동의한 원문" 이 갈리지 않는다(gise). 렌더러가 두 벌이면 한쪽만 고쳐진다.
@@ -22,6 +24,6 @@ let md: ReturnType<typeof MarkdownItConstructor> | undefined
 /** 마크다운 원문 → 안전한 HTML. null · undefined · '' 은 '' */
 export function renderMarkdown(source: string | null | undefined): string {
   if (!source) return ''
-  md ??= new MarkdownItConstructor({ html: false, linkify: true, breaks: false })
+  md ??= new MarkdownItConstructor({ html: false, linkify: true, breaks: true })
   return md.render(source)
 }

@@ -6,7 +6,7 @@
 PR #3e — 약관(법적 문서 편집 · 발행 · 이력).
 
 - **소비자가 할 일: `pnpm add codemirror @codemirror/state`** — admin-ui 의 새 필수 peer 다. 엔트리가 하나라 약관 화면을 안 써도 번들러가 해석해야 한다. CodeMirror 테마 패키지는 필요 없다(편집기 색은 Vuetify 테마).
-- admin-shared 새 API: `renderMarkdown`(markdown-it `html: false`, 새 의존 `markdown-it`). 약관 스키마 — `adminLegalDocumentSchema` · `adminLegalHistoryItemSchema` · `adminLegalCurrentSchema` · `adminLegalHistorySchema` · `adminLegalPublishSchema` · `adminLegalPublishResultSchema` · `legalBodySchema` · `LEGAL_BODY_MAX_LENGTH`.
+- admin-shared 새 API: `renderMarkdown`(markdown-it `html: false` · `breaks: true` — Enter 한 번이 줄바꿈, 새 의존 `markdown-it`). axion · gise 의 렌더러는 `breaks: false` 였으므로, 그 본문을 옮겨 오면 문단 안의 줄 하나 바꿈이 줄바꿈으로 보인다. 약관 스키마 — `adminLegalDocumentSchema` · `adminLegalHistoryItemSchema` · `adminLegalCurrentSchema` · `adminLegalHistorySchema` · `adminLegalPublishSchema` · `adminLegalPublishResultSchema` · `legalBodySchema` · `LEGAL_BODY_MAX_LENGTH`.
 - admin-ui 새 API: `MarkdownView` · `MarkdownEditor`(CodeMirror) · `useLegalDocuments` · `LegalDocumentEditor`.
 - 서버 계약:
   - 현재본 `{ item | null }`(미발행 = null), 이력 `{ items }`(최신순 전량).
