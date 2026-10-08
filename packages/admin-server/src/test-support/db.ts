@@ -34,23 +34,29 @@ export async function createTestDatabase(
     db,
     provider: { getMigrations: async () => adminMigrationRecord() },
   })
-  if (options.migrate !== false) {
-    const { error } = await migrator.migrateToLatest()
-    if (error) throw error
-  }
-
-  return {
-    name,
-    db,
-    migrator,
-    async drop() {
+  async function drop(): Promise<void> {
+    try {
       await db.destroy()
+    } finally {
       const connection = await createConnection(server)
       try {
         await connection.query(`drop database if exists \`${name}\``)
       } finally {
         await connection.end()
       }
-    },
+    }
   }
+
+  if (options.migrate !== false) {
+    // 실패하면 beforeAll 이 t 를 못 받아 afterAll 이 지울 수 없다 — 여기서 정리하고 던진다.
+    try {
+      const { error } = await migrator.migrateToLatest()
+      if (error) throw error
+    } catch (error) {
+      await drop()
+      throw error
+    }
+  }
+
+  return { name, db, migrator, drop }
 }

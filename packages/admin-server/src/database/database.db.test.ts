@@ -56,11 +56,20 @@ describe('왕복', () => {
     expect(readJsonColumn(role.permissions)).toEqual(['*'])
   })
 
-  it('🔴 Date 가 같은 순간으로 돌아온다(timezone Z)', async () => {
+  it('🔴 풀이 세션 time_zone 을 +00:00 으로 맞추고 저장 바이트는 UTC 다(timezone Z)', async () => {
+    // 드라이버 timezone 옵션은 Date 직렬화가 아니라 세션 time_zone 만 바꾼다 — 직렬화는 프로세스 TZ 몫이라
+    // assertUtcTimezone 이 따로 막는다. 그래서 옵션 자체는 세션 값으로 잰다('local' 이면 SYSTEM 이 된다).
+    const session = await sql<{ tz: string }>`select @@session.time_zone as tz`.execute(t.db)
+    expect(session.rows[0]?.tz).toBe('+00:00')
+
     const roleNo = await insertRole('시각 확인')
     const userNo = await insertUser(roleNo, 'time-check')
     const lockUntil = new Date('2026-03-04T05:06:07.000Z')
     await t.db.updateTable('users').set({ lockUntil }).where('userNo', '=', userNo).execute()
+    const stored = await sql<{ raw: string }>`
+      select cast(lock_until as char) as raw from users where user_no = ${userNo}
+    `.execute(t.db)
+    expect(stored.rows[0]?.raw).toBe('2026-03-04 05:06:07')
     const user = await t.db
       .selectFrom('users')
       .select(['lockUntil'])
