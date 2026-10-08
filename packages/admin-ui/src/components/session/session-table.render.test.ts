@@ -5,7 +5,8 @@ import { h, type Component } from 'vue'
 import { VDataTableServer } from 'vuetify/components'
 import { vuetify } from '../../test/setup.js'
 import SessionTable from './SessionTable.vue'
-import { formatDateTime, type SessionTableRow } from './session-table.js'
+import { type SessionTableRow } from './session-table.js'
+import { formatDateTime } from '../../utils/format-date-time.js'
 
 // 정본: ssworks-gise-home apps/admin/test/me-page.test.ts 의 세션 표 규칙(현재 행에 버튼 없음 · 같은 요약 행을
 //       접근 이름으로 구분 · busy 잠금)을 킷 DataTableBody 위에서 다시 잰다.

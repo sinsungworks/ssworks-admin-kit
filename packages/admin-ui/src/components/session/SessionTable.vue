@@ -4,7 +4,8 @@
   import { describeUserAgent } from '@ssworks/admin-shared'
   import DataTableBody from '../table/DataTableBody.vue'
   import type { AdminTableHeader } from '../table/data-table.js'
-  import { formatDateTime, type SessionTableRow } from './session-table.js'
+  import { type SessionTableRow } from './session-table.js'
+  import { formatDateTime } from '../../utils/format-date-time.js'
 
   // 정본: ssworks-gise-home apps/admin/src/components/SessionTable.vue
   //       + kim5257-crm-v5 packages/frontend-core/src/components/sessions/SessionsAdminPanel.vue(사용자 열 · 서버 페이징)
