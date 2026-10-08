@@ -3,6 +3,7 @@ import { CamelCasePlugin, Kysely, type KyselyPlugin } from 'kysely'
 import { createPool } from 'mariadb'
 import { BooleanTransformPlugin } from './boolean-transform.plugin.js'
 import { adminPoolConfig, type AdminDbConnection } from './connection.js'
+import type { AdminDatabase } from './types.js'
 
 // 정본: hangang-home apps/api/src/core/database/database.module.ts(createDb) · gise database.module.ts(플러그인 순서 주석)
 //       + crm kysely-plugins.ts(maintainNestedObjectKeys)
@@ -24,7 +25,7 @@ export function adminKyselyPlugins(): KyselyPlugin[] {
  *    두 벌이 되면 갈리고, 갈린 쪽이 조용히 틀린 바이트를 쓴다.
  * 🔴 풀은 만들자마자 백그라운드로 연결을 시도한다(gise). 다 쓰면 `destroy()` 로 닫는다.
  */
-export function createAdminKysely<DB>(connection: AdminDbConnection): Kysely<DB> {
+export function createAdminKysely<DB = AdminDatabase>(connection: AdminDbConnection): Kysely<DB> {
   return new Kysely<DB>({
     dialect: new MariadbDialect({ pool: createPool(adminPoolConfig(connection)) }),
     plugins: adminKyselyPlugins(),
