@@ -205,3 +205,23 @@ export {
   type TeamUserPage,
   type TeamUserListMessages,
 } from './components/team/team-user-list.js'
+
+// ── 마크다운 · 약관 ───────────────────────────────────────────────────
+export { default as MarkdownView } from './components/markdown/MarkdownView.vue'
+export { default as MarkdownEditor } from './components/markdown/MarkdownEditor.vue'
+export { default as LegalDocumentEditor } from './components/legal/LegalDocumentEditor.vue'
+export {
+  type LegalKindOption,
+  type LegalPublishBlock,
+  type LegalDialogText,
+  type LegalMessages,
+  type LegalDocumentEditorMessages,
+} from './components/legal/legal-document.js'
+export {
+  useLegalDocuments,
+  type UseLegalDocumentsOptions,
+  type LegalDocumentsController,
+  type LegalDocumentEditorBindings,
+  type LegalDetailDialogBindings,
+  type LegalDoneEvent,
+} from './composables/useLegalDocuments.js'
