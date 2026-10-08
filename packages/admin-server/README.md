@@ -10,6 +10,7 @@
 pnpm add @ssworks/admin-server @ssworks/admin-shared zod \
   @nestjs/common@^12 @nestjs/core@^12 @nestjs/platform-express@^12 \
   kysely@^0.29 mariadb @kim5257/kysely-mariadb-dialect@^0.2 reflect-metadata rxjs
+pnpm add -D kysely-ctl@^0.21   # 마이그레이션 러너(kysely.config.ts) — 쓰는 쪽 개발 도구
 ```
 
 - Node 22 이상, ESM 전용. tsconfig 는 `module` · `moduleResolution` `NodeNext`, `experimentalDecorators` · `emitDecoratorMetadata` 를 켠다.
