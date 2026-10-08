@@ -43,6 +43,19 @@ toast.error('실패했습니다')
 
 `App.vue` 에 `<AdminToast />` 한 번. 플러그인 객체 자체도 API 다(`const toast = createToast(); toast.error(...)`) — API 클라이언트의 onError 처럼 컴포넌트 밖에서 쓸 때.
 
+## 확인 창
+
+```ts
+app.use(createConfirm()) // main.ts
+const ok = await useConfirm().ask({
+  title: '내보내기',
+  message: '목록을 내려받습니다.',
+  reversible: true,
+})
+```
+
+`App.vue` 에 `<AdminConfirm />` 한 번. 그러면 `useDirtyGuard` 의 이탈 확인이 브라우저 기본 창 대신 킷 `ConfirmDialog`("머물기" · 빨간 "떠나기")로 뜬다. 🔴 플러그인이 없거나 `<AdminConfirm />` 을 두지 않은 앱은 브라우저 기본 창 그대로다 — 답할 창이 없는데 이동이 멈추지 않게. 새로고침 · 탭 닫기 경고는 브라우저가 바꾸지 못하게 막아 늘 기본 창이다. 한 번에 하나만 묻는다 — 열린 채 또 물으면 앞의 물음은 `false` 로 끝난다.
+
 ## Vuetify 프리셋
 
 `createAdminVuetify({ theme, defaults })` — ko 로케일, `density: compact`, `hideDetails: 'auto'`, 필드 10종 outlined, `VBtn` flat primary. 테마 색은 프로젝트가 넘긴다. `vuetify/styles` 와 `@mdi/font` CSS 는 프로젝트의 `plugins/vuetify.ts` 가 import 한다.
@@ -98,7 +111,8 @@ allowBuilds:
 | `createTitleGuard` · `installChunkRecovery` · `safeRedirect`                                                                                                                                                                                   | `afterEach` 문서 제목 · 청크 404 복구(1회 새로고침) · 오픈 리다이렉트 방어                                                                                                                                              |
 | `createApiClient` · `ApiClientOptions` · `ApiClient` · `ApiError`                                                                                                                                                                              | axios 팩토리. 봉투 벗김 · bigint · 401 갱신(공유 Promise) · `onAuthFailure`/`onError` 콜백                                                                                                                              |
 | `createAppStore` · `SessionNotEstablishedError` · `AppStoreOptions` · `AppStoreState` · `AppStoreActions`                                                                                                                                      | 세션 pinia 스토어 팩토리(`initialize` · `login` · `logout` · `clearSession` · `refresh`)                                                                                                                                |
-| `useDirtyGuard` · `DirtyGuardOptions` · `useTableSelection`                                                                                                                                                                                    | 이탈 확인 · 대량 표 선택(Set + 반전 선택)                                                                                                                                                                               |
+| `useDirtyGuard` · `DirtyGuardOptions` · `useTableSelection`                                                                                                                                                                                    | 이탈 확인(킷 확인 창이 있으면 그것으로, 아니면 브라우저 기본 창) · 대량 표 선택(Set + 반전 선택)                                                                                                                        |
+| `AdminConfirm` · `createConfirm` · `useConfirm` · `CONFIRM_KEY` · `ConfirmApi` · `ConfirmPlugin` · `ConfirmRequest` · `ConfirmState`                                                                                                           | 앱 하나의 확인 창. `App.vue` 에 `<AdminConfirm />` 한 번 — `useDirtyGuard` 가 이것으로 묻는다. 위 "확인 창"                                                                                                             |
 | `useServerTable` · `ServerTable` · `ServerTableOptions` · `ServerTableParams`                                                                                                                                                                  | 서버 페이징 목록 — 조회 1번 · 늦은 응답 무시 · 필터/쪽 크기 변경 시 1쪽 · 정렬 보정 · bigint `total` · `urlSync`                                                                                                        |
 | `useQuerySyncedFilter` · `QuerySyncOptions` · `queryCodec` · `withDefault` · `bindQueryCodecs` · `QueryCodec` · `DefaultedQueryCodec` · `QueryCodecSpec` · `QuerySyncBinding` · `RawQueryValue`                                                | 목록 상태 ↔ URL 쿼리. 타이밍 핵심(`read`·`toQuery`) + 선택형 코덱(기본 6종 · 커스텀)                                                                                                                                    |
 | `useWriteFlow` · `WriteFlow` · `WriteRunOptions` · `ConfirmDialogBindings` · `ReauthDialogBindings`                                                                                                                                            | 쓰기 관문(확인 · 재인증) · busy · 오류 분류. 다이얼로그는 `v-bind="confirmDialog"`                                                                                                                                      |
@@ -150,6 +164,13 @@ import 방향은 `main.ts → router → stores → api → (plugins/toast · st
 import { createToast } from '@ssworks/admin-ui'
 
 export const toast = createToast()
+```
+
+```ts
+// plugins/confirm.ts — 이탈 확인을 킷 확인 창으로(App.vue 의 <AdminConfirm /> 와 한 벌)
+import { createConfirm } from '@ssworks/admin-ui'
+
+export const confirm = createConfirm()
 ```
 
 ```ts
@@ -289,6 +310,7 @@ import { createAdminUi } from '@ssworks/admin-ui'
 import '@ssworks/admin-ui/style.css'
 import App from './App.vue'
 import { client } from './api/client'
+import { confirm } from './plugins/confirm'
 import { toast } from './plugins/toast'
 import { vuetify } from './plugins/vuetify'
 import { router } from './router'
@@ -300,6 +322,7 @@ app.use(createPinia())
 app.use(router)
 app.use(vuetify)
 app.use(toast)
+app.use(confirm)
 app.use(
   createAdminUi({
     siteName: 'My Admin',
@@ -333,7 +356,7 @@ app.mount('#app')
   import { computed } from 'vue'
   import { useRoute } from 'vue-router'
   import { VApp } from 'vuetify/components'
-  import { AdminToast, IpBlockedDialog } from '@ssworks/admin-ui'
+  import { AdminConfirm, AdminToast, IpBlockedDialog } from '@ssworks/admin-ui'
   import AuthLayout from './layouts/auth.vue'
   import DefaultLayout from './layouts/default.vue'
 
@@ -345,6 +368,7 @@ app.mount('#app')
   <VApp>
     <component :is="layout" />
     <AdminToast />
+    <AdminConfirm />
     <IpBlockedDialog />
   </VApp>
 </template>
