@@ -49,6 +49,13 @@ function outsideQuotes(statement: string): string {
   return statement.replace(/'(?:[^']|'')*'/g, "''").replace(/`[^`]*`/g, '``')
 }
 
+describe('0002_users', () => {
+  it('🔴 resignAt 은 timestamp NULL 을 명시한다 — explicit_defaults_for_timestamp=OFF 에서 NOT NULL 이 되지 않게', async () => {
+    const [statement] = await capture((db) => users.up(db))
+    expect(statement).toContain('`resign_at` timestamp null')
+  })
+})
+
 describe.each(CHAPTERS)('%s', (_id, chapter) => {
   it('up — 백틱 식별자는 전부 snake_case', async () => {
     const statements = await capture((db) => chapter.up(db))

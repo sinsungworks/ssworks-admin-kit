@@ -7,6 +7,8 @@ import { TABLE_OPTIONS, UTF8_CI, comment } from './_shared.js'
 //    이름은 hangang · crm · axion 의 `password` — 기본 AUTH_REPOSITORY(2b)가 기대는 이름이다.
 //  - `revision` 을 더했다(Phase 0 §4 #4). 쓰는 법은 2d 가 정한다.
 // 🔴 roleNo 는 NOT NULL + FK restrict(스펙 F15) — 직책 없는 계정이 생기지 않고, 쓰는 중인 역할 삭제는 DB 가 막는다.
+// 🔴 `resignAt` 은 `timestamp NULL` 을 명시한다 — `explicit_defaults_for_timestamp=OFF`(MariaDB 10.9 이하 기본)에서는 수식어 없는 `timestamp` 가
+//    NOT NULL DEFAULT '0000-00-00 00:00:00' 이 되어 `resign_at IS NULL` 이 거짓이고 NULL 대입이 현재 시각을 쓴다. hangang 002 에도 같은 잠복 버그가 있다.
 // 🔴 관리자 계정은 `users` 를 그대로 쓴다(hangang §7-1) — 인증 가드 · 감사가 users/userNo 를 전제한다.
 
 export async function up(db: Kysely<unknown>): Promise<void> {
@@ -29,7 +31,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
         .defaultTo(sql`CURRENT_TIMESTAMP`)
         .modifyEnd(comment('현재 활성 재직 사이클의 캐시. 원천은 userEmploymentPeriods')),
     )
-    .addColumn('resignAt', 'timestamp', (col) => col.modifyEnd(comment('NULL 이 아니면 퇴사')))
+    .addColumn('resignAt', 'timestamp', (col) =>
+      col.modifyFront(sql`null`).modifyEnd(comment('NULL 이 아니면 퇴사')),
+    )
     .addColumn('isPasswordChangeRequired', sql`tinyint(1)`, (col) =>
       col
         .notNull()

@@ -34,6 +34,13 @@ async function coreTables(): Promise<string[]> {
     .sort()
 }
 
+async function migrationRows(): Promise<number> {
+  const rows = await sql<{ n: string | number | bigint }>`
+    select count(*) as n from kysely_migration
+  `.execute(t.db)
+  return Number(rows.rows[0]?.n)
+}
+
 describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
   it('up → down → up', async () => {
     const first = await t.migrator.migrateToLatest()
@@ -42,14 +49,17 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
       ADMIN_MIGRATIONS.map((id) => [id, 'Success']),
     )
     expect(await coreTables()).toEqual(CORE_TABLES)
+    expect(await migrationRows()).toBe(ADMIN_MIGRATIONS.length)
 
     const down = await t.migrator.migrateTo(NO_MIGRATIONS)
     expect(down.error).toBeUndefined()
     expect(await coreTables()).toEqual([])
+    expect(await migrationRows()).toBe(0)
 
     const again = await t.migrator.migrateToLatest()
     expect(again.error).toBeUndefined()
     expect(await coreTables()).toEqual(CORE_TABLES)
+    expect(await migrationRows()).toBe(ADMIN_MIGRATIONS.length)
   })
 
   it('collation · NULL · ON UPDATE · 타입을 스키마에서 잰다', async () => {
@@ -76,6 +86,8 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
     expect(column('sessions', 'refresh_token_hash').collationName).toBe('ascii_bin')
     expect(column('users', 'password').collationName).toBe('utf8mb4_bin')
     expect(column('users', 'role_no').isNullable).toBe('NO')
+    // 🔴 explicit_defaults_for_timestamp=OFF 에서도 NULL 허용(R10)
+    expect(column('users', 'resign_at').isNullable).toBe('YES')
     expect(column('roles', 'update_at').extra.toLowerCase()).toContain('on update')
     // 🔴 폐기 UPDATE 가 마지막 활동 시각을 바꾸지 않는다
     expect(column('sessions', 'last_access_at').extra.toLowerCase()).not.toContain('on update')
