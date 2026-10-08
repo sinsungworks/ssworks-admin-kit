@@ -12,7 +12,7 @@
 | ----------------------- | ----------------------- | ------------------------------------------------------------------ |
 | `packages/admin-shared` | `@ssworks/admin-shared` | 프레임워크 무의존. 브라우저·NestJS 양쪽이 import 한다              |
 | `packages/admin-ui`     | `@ssworks/admin-ui`     | Vue 3 + Vuetify 4 컴포넌트·composable. vue·vuetify 는 peer         |
-| `packages/admin-server` | `@ssworks/admin-server` | NestJS 11 모듈 (Phase 2 — 골격만)                                  |
+| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 진행 — 2a 기반 · 코어 스키마 완료)         |
 | `docs/`                 | —                       | 검토·Phase 0 대조 보고. **설계 근거는 코드 주석과 이 폴더에 있다** |
 
 ## 명령어
@@ -86,6 +86,10 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 - ESM 전용, `module: NodeNext`, 데코레이터 메타데이터 켬.
 - 코어 테이블 타입은 `AdminDatabase` 로 export 하고 소비자가 `interface Database extends AdminDatabase` 로 확장한다.
 - 사용자 테이블 컬럼 차이는 `AUTH_REPOSITORY` 교체로 흡수한다. 컬럼 매핑 옵션을 만들지 않는다.
+- 진입점 셋: `.`(전부) · `./runner`(Nest 무의존 — `runner-graph.test.ts` 가 지킨다) · `./migrations/<id>`(코어 장, 쓰는 쪽 스텁이 가리킨다). 장 파일 이름 = 장 ID.
+- 데코레이터가 붙은 시그니처의 인터페이스 · 타입 별칭은 `import type`(TS1272), DI 로 받는 클래스는 일반 import.
+- 장은 `Kysely<unknown>` 을 받는다. 제약 · 인덱스 이름은 DB 에서 snake_case(`CamelCasePlugin`).
+- 테스트 세 층: 단위 · DB 없는 HTTP(프로브 모듈, `src/test-support/`)는 `pnpm check`, 실 MariaDB(`*.db.test.ts`)는 `pnpm db:test:up` 뒤 `pnpm test:db`(CI `db` 잡 필수).
 
 ## 변경 흐름
 
@@ -105,7 +109,8 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 | Phase 1 PR #3c — `SessionTable` · `useSessions` · `TemporaryPasswordDialog` · `PasswordChangeForm` · 세션 스키마 · 비밀번호 정책       | 완료                      | 스펙 `docs/superpowers/specs/2026-10-06-admin-ui-sessions-passwords-design.md` · 플랜 `docs/superpowers/plans/2026-10-06-admin-ui-sessions-passwords.md` |
 | Phase 1 PR #3d — `TeamTree`(he-tree) · `useTeamTree` · `TeamMoveDialog` · `TeamUserList` · 팀 스키마 · 트리 함수                       | 완료                      | 스펙 `docs/superpowers/specs/2026-10-07-admin-ui-teams-design.md` · 플랜 `docs/superpowers/plans/2026-10-07-admin-ui-teams.md`                           |
 | Phase 1 PR #3e — `MarkdownView`·`MarkdownEditor`(CodeMirror) · `useLegalDocuments`·`LegalDocumentEditor`·`renderMarkdown`· 약관 스키마 | 완료                      | 스펙 `docs/superpowers/specs/2026-10-07-admin-ui-legal-design.md` · 플랜 `docs/superpowers/plans/2026-10-08-admin-ui-legal.md`                           |
-| **Phase 2 — admin-server**                                                                                                             | **다음**                  | `docs/01-phase0.md` §2-3 · §3-2, `docs/phase0-reports/be-*.md`                                                                                           |
+| Phase 2 PR 2a — 기반 · 코어 스키마(`AdminServerModule` · 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 7장 · runner)                 | 완료                      | 스펙 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` · 플랜 `docs/superpowers/plans/2026-10-08-admin-server-foundation.md`         |
+| **Phase 2 PR 2b — 인증**                                                                                                               | **다음**                  | 2a 스펙 §1-3                                                                                                                                             |
 | 템플릿 `kim5257-project-template` `preset/admin` + `.claude/skills/admin-scaffold`                                                     | 대기                      | `docs/00-admin-common-review.md` §3                                                                                                                      |
 
 `docs/01-phase0.md` §8 표를 단계가 끝날 때마다 갱신한다.
