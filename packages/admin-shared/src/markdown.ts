@@ -16,6 +16,7 @@ import MarkdownItConstructor from 'markdown-it'
 //    - `javascript:` · `vbscript:` · `file:` · `data:`(이미지 제외) 링크는 markdown-it 기본 `validateLink` 가 막는다.
 //    그래서 `markdown.test.ts` 가 곧 계약이다.
 
+// markdown-it 15 의 default export 는 값이라 타입으로 못 쓴다 — 생성자에서 인스턴스 타입을 뽑는다(3e 스펙 §12 R1). 되돌리지 않는다.
 let md: ReturnType<typeof MarkdownItConstructor> | undefined
 
 /** 마크다운 원문 → 안전한 HTML. null · undefined · '' 은 '' */
