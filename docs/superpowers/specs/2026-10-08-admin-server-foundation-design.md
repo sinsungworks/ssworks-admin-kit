@@ -383,3 +383,15 @@ hangang `tables/*.table.ts` 표기를 따른다. 자동 값은 `Generated<…>`,
 4. **vitest 의 DB 설정 경로.** `vitest run --config packages/admin-server/vitest.db.config.ts` 를 루트에서 부를 때 `include` 기준 경로.
 5. **kysely-ctl 0.21 의 `kysely: () => Kysely` 설정 · 스텁 재export** 를 소비 스모크에서 실제로 돌린다(`jiti` 가 패키지 ESM 을 읽는가).
 6. **Windows 긴 경로.** 스모크 앱은 `%TEMP%\akss` 처럼 짧은 경로에서.
+
+플랜을 쓰며 1 · 3 · 4 를 스크래치(`%TEMP%\ak12`, Nest 12.1.2 · kysely 0.29.6 · vitest 4.1.11)와 실 MariaDB 11.4 에서 먼저 확인했다 — 결과는 §13.
+
+## 13. 구현 중 정정 (2026-10-08)
+
+- **R1 — 위험 1 · 3 · 4 해소(플랜 전 실측).** vitest 4.1.11 은 이 저장소와 같은 tsconfig(`verbatimModuleSyntax` · `isolatedModules` · `emitDecoratorMetadata`)에서 클래스 생성자 주입을 돌린다. `useBodyParser('json', { reviver })` 뒤 Nest 는 JSON 파서를 다시 붙이지 않는다(라우터 스택에 `jsonParser` 하나). DB 테스트는 `pnpm --filter @ssworks/admin-server test:db` 로 패키지 폴더에서 돌아 설정 경로 문제가 없다.
+- **R2 — 장의 인자 타입은 `Kysely<unknown>` 이다(§6-1 "`Kysely<any>`" 정정).** 뜻은 같다 — 현재 스키마 타입에 묶지 않는다. `any` 는 eslint `no-explicit-any` 가 막고, `Kysely<unknown>` 을 받는 함수는 `Migration.up(db: Kysely<any>)` 자리에 그대로 들어간다.
+- **R3 — 제약 · 인덱스 이름은 DB 에서 snake_case 다.** `CamelCasePlugin` 이 `addUniqueConstraint('uqUsersUserId')` 의 이름도 바꿔 `uq_users_user_id` 가 된다. 드라이버의 `ER_DUP_ENTRY` 메시지도 그 이름을 싣는다(`… for key 'uq_users_user_id'`, `logParam: false` 에서도). 2e 의 UNIQUE → 도메인 코드 판정은 snake 이름을 본다. 소스의 이름은 camelCase 그대로 둔다. `information_schema` 조회 결과의 키도 camelCase 로 바뀐다(`constraintName`).
+- **R4 — `.env` 머리의 BOM 을 벗긴다(§5-3 · F11 보강).** 메모장이 저장한 UTF-8 BOM 이 첫 키에 붙으면 `DB_HOST` 가 "없다" 로 보인다.
+- **R5 — 헤더가 이미 나간 뒤의 예외는 응답을 닫고 로그만 남긴다(F6 보강).** 다시 보내지 않되, 열린 응답을 그대로 두면 요청이 끝나지 않는다.
+- **R6 — DB 테스트 기본 주소.** `ADMIN_TEST_DB_URL` 이 없으면 `pnpm db:test:up` 컨테이너(`mariadb://root:admin-kit-test@127.0.0.1:33306`)를 쓴다 — Windows 셸마다 env 설정법이 달라 기본값을 둔다. 붙지 못하면 60초 기다린 뒤 "`pnpm db:test:up` 을 먼저" 로 실패한다(§9 그대로). CI 는 값을 준다.
+- **R7 — 실 MariaDB 11.4 실측(플랜 전).** `insertId` · BIGINT 는 bigint, JSON 컬럼은 드라이버가 파싱한 값을 주고 `maintainNestedObjectKeys` 가 안쪽 키를 지킨다, `ER_DUP_ENTRY` 의 `code` · `errno` 1062. Express 5 extended 쿼리 파서는 `__proto__` 키를 버린다. 닿지 않는 주소로 만든 풀을 곧바로 `destroy()` 해도 처리되지 않은 오류가 없다.
