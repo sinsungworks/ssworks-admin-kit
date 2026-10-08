@@ -268,6 +268,28 @@ describe('TeamTree — 잠금 · 버튼 · 메뉴', () => {
     await openMenu('본사')
     expect(menuItem('옮기기')!.classList.contains('v-list-item--disabled')).toBe(true)
   })
+
+  it('showOrderButtons 가 거짓이면 ↑↓ 만 사라지고 ⋮ 메뉴는 그대로다', async () => {
+    await setup()
+    expect(button('「판교지점」 위로')).not.toBeNull()
+    await wrapper!.setProps({ showOrderButtons: false })
+    expect(document.querySelectorAll('button[aria-label$=" 위로"]')).toHaveLength(0)
+    expect(document.querySelectorAll('button[aria-label$=" 아래로"]')).toHaveLength(0)
+    await openMenu('판교지점')
+    expect(
+      [...document.querySelectorAll('.v-overlay--active .v-list-item')].map((e) =>
+        (e.textContent ?? '').trim(),
+      ),
+    ).toEqual(['하위 팀 추가', '이름 바꾸기', '옮기기', '삭제'])
+  })
+
+  it('↑↓ 를 숨겨도 드래그로 순서를 바꾼다', async () => {
+    await setup({ showOrderButtons: false, draggable: true })
+    await dragTo('분당지점', '영업본부', 0)
+    expect(wrapper!.emitted('move')).toEqual([
+      [{ teamNo: 6n, parentTeamNo: 2n, beforeTeamNo: 4n }, 'drag'],
+    ])
+  })
 })
 
 describe('TeamTree — 검색 · 펼침', () => {

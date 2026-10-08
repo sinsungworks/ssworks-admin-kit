@@ -60,6 +60,11 @@
       loading?: boolean
       loadFailed?: boolean
       draggable?: boolean
+      /**
+       * 행의 ↑↓(형제 순서) 버튼. 기본 true. 끄면 형제 순서는 드래그로만 바뀐다 — 🔴 키보드로는 바꿀 길이 없어진다
+       * (Alt+화살표는 막혀 있고 옮기기는 상위 팀 아래 맨 끝으로만 보낸다, 3d R13).
+       */
+      showOrderButtons?: boolean
       /** 최상위 사이에 놓기 · 최상위 초안 행 */
       topLevel?: boolean
       /** 메서드 꼴(bivariant). 기본은 모두 허용 */
@@ -76,6 +81,7 @@
       loading: false,
       loadFailed: false,
       draggable: false,
+      showOrderButtons: true,
       topLevel: false,
       canAct: undefined,
       edit: null,
@@ -512,26 +518,28 @@
               <!-- 🔴 버튼의 클릭 · 키는 트리로 올리지 않는다 — 누른 버튼이 선택까지 바꾸면 두 가지 일을 한 것으로 읽히고(hangang),
                    he-tree 루트가 Enter · Space 를 가로채면 버튼이 키보드로 안 눌린다(스펙 D6) -->
               <span class="team-tree__acts" @click.stop @keydown.stop>
-                <VBtn
-                  :aria-label="text.up(item.team.teamName)"
-                  :disabled="
-                    moveLocked || !allowed(item.team, 'move') || !hasSibling(item.team, 'up')
-                  "
-                  icon="mdi-arrow-up"
-                  size="x-small"
-                  variant="text"
-                  @click="onMove(item.team, 'up')"
-                />
-                <VBtn
-                  :aria-label="text.down(item.team.teamName)"
-                  :disabled="
-                    moveLocked || !allowed(item.team, 'move') || !hasSibling(item.team, 'down')
-                  "
-                  icon="mdi-arrow-down"
-                  size="x-small"
-                  variant="text"
-                  @click="onMove(item.team, 'down')"
-                />
+                <template v-if="showOrderButtons">
+                  <VBtn
+                    :aria-label="text.up(item.team.teamName)"
+                    :disabled="
+                      moveLocked || !allowed(item.team, 'move') || !hasSibling(item.team, 'up')
+                    "
+                    icon="mdi-arrow-up"
+                    size="x-small"
+                    variant="text"
+                    @click="onMove(item.team, 'up')"
+                  />
+                  <VBtn
+                    :aria-label="text.down(item.team.teamName)"
+                    :disabled="
+                      moveLocked || !allowed(item.team, 'move') || !hasSibling(item.team, 'down')
+                    "
+                    icon="mdi-arrow-down"
+                    size="x-small"
+                    variant="text"
+                    @click="onMove(item.team, 'down')"
+                  />
+                </template>
                 <VMenu location="bottom end">
                   <template #activator="{ props: activator }">
                     <VBtn
