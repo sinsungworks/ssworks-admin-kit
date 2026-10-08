@@ -8,6 +8,8 @@
   // 🔴 닫기 버튼 색은 `secondary` 다. crm 원본의 `third` 는 어느 테마에도 정의되지 않은 색이었다.
   //
   // 🔴 `:loading` 은 클릭을 안 막는다(vuetify VBtn) — 확인 버튼은 `:disabled` 와 한 벌이다.
+  //
+  // 🔴 닫히면 연 곳으로 포커스를 돌려준다(`useDialogFocus` — 브라우저 확인 G4).
   import {
     VBtn,
     VCard,
@@ -17,6 +19,7 @@
     VDialog,
     VSpacer,
   } from 'vuetify/components'
+  import { useDialogFocus } from './dialog-focus.js'
 
   const props = withDefaults(
     defineProps<{
@@ -60,6 +63,7 @@
   )
 
   const open = defineModel<boolean>({ default: false })
+  useDialogFocus(open)
 
   const emit = defineEmits<{
     confirm: []

@@ -16,7 +16,10 @@
   //    다음에 연 사람에게 앞사람이 친 비밀번호가 평문으로 남는다.
   //
   // 🔴 `:loading` 은 클릭을 안 막는다 — 확인 버튼은 `:disabled` 와 한 벌이다.
-  import { ref, watch } from 'vue'
+  //
+  // 🔴 열면 비밀번호 칸에 포커스를 둔다 — `VDialog` 는 카드 자체에 포커스를 둬 칸을 누르거나 Tab 해야 칠 수 있었다
+  //    (브라우저 확인 P6). 닫히면 연 곳으로 포커스를 돌려준다(G4). 둘 다 `useDialogFocus`.
+  import { ref, watch, type ComponentPublicInstance } from 'vue'
   import {
     VAlert,
     VBtn,
@@ -27,6 +30,7 @@
     VDialog,
     VSpacer,
   } from 'vuetify/components'
+  import { useDialogFocus } from './dialog-focus.js'
   import PasswordField from './PasswordField.vue'
 
   const props = withDefaults(
@@ -61,6 +65,11 @@
   }>()
 
   const password = ref('')
+  const field = ref<ComponentPublicInstance | null>(null)
+
+  useDialogFocus(open, () =>
+    (field.value?.$el as HTMLElement | undefined)?.querySelector<HTMLInputElement>('input'),
+  )
 
   /** 🔴 열릴 때마다, 닫힐 때도 비운다. 보관 시간을 최소로 줄인다. */
   watch(open, () => {
@@ -87,6 +96,7 @@
           {{ error }}
         </VAlert>
         <PasswordField
+          ref="field"
           v-model="password"
           autocomplete="current-password"
           :label="label"

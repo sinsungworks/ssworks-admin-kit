@@ -14,6 +14,8 @@
   //
   // ⚠️ 색은 렌더 테스트가 원리적으로 못 잰다(happy-dom 에 Vuetify 스타일시트가 없다). 그래서 위험
   //    신호를 색에만 걸지 않고 **문장으로** 낸다 — 색은 그 위에 덧붙이는 것이다.
+  //
+  // 🔴 닫히면 연 곳으로 포커스를 돌려준다(`useDialogFocus` — 브라우저 확인 G4).
   import { computed } from 'vue'
   import {
     VAlert,
@@ -25,6 +27,7 @@
     VDialog,
     VSpacer,
   } from 'vuetify/components'
+  import { useDialogFocus } from './dialog-focus.js'
 
   const props = withDefaults(
     defineProps<{
@@ -52,6 +55,7 @@
   )
 
   const open = defineModel<boolean>({ default: false })
+  useDialogFocus(open)
 
   const emit = defineEmits<{
     confirm: []
