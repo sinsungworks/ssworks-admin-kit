@@ -42,6 +42,18 @@ export {
   type CreateToastOptions,
 } from './toast/toast.js'
 
+// ── 확인 창(이탈 확인 등) ─────────────────────────────────────────────
+export { default as AdminConfirm } from './confirm/AdminConfirm.vue'
+export {
+  createConfirm,
+  useConfirm,
+  CONFIRM_KEY,
+  type ConfirmApi,
+  type ConfirmPlugin,
+  type ConfirmRequest,
+  type ConfirmState,
+} from './confirm/confirm.js'
+
 // ── Vuetify 프리셋 ────────────────────────────────────────────────────
 export {
   createAdminVuetify,

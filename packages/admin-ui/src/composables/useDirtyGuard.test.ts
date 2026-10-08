@@ -1,11 +1,47 @@
 // @vitest-environment happy-dom
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h, ref } from 'vue'
+import { defineComponent, h, ref, type Component } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
+import AdminConfirm from '../confirm/AdminConfirm.vue'
+import { createConfirm } from '../confirm/confirm.js'
+import { buttonByText, installVisualViewport, vuetify } from '../test/setup.js'
 import { useDirtyGuard } from './useDirtyGuard.js'
 
+installVisualViewport()
+
 const mounted: { unmount: () => void }[] = []
+
+/** README 최소 배선처럼 App 에 RouterView 와 `<AdminConfirm />` 을 함께 둔다 */
+async function setupWithKitDialog(options?: { message?: string }) {
+  const dirty = ref(false)
+  const Form = defineComponent({
+    setup() {
+      useDirtyGuard(() => dirty.value, options)
+      return () => h('div', 'form')
+    },
+  })
+  const Other = defineComponent({ render: () => h('div', 'other') })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/form', component: Form },
+      { path: '/other', component: Other },
+    ],
+  })
+  await router.push('/form')
+  await router.isReady()
+  const confirm = createConfirm()
+  const wrapper = mount(
+    defineComponent({ render: () => h('div', [h(RouterView), h(AdminConfirm as Component)]) }),
+    { attachTo: document.body, global: { plugins: [router, vuetify, confirm] } },
+  )
+  await flushPromises()
+  mounted.push(wrapper)
+  return { dirty, router }
+}
+
+const dialog = () => document.querySelector<HTMLElement>('.v-overlay--active')
 
 async function setup(options?: { message?: string }) {
   const dirty = ref(false)
@@ -47,8 +83,35 @@ describe('useDirtyGuard', () => {
   afterEach(() => {
     // 이전 테스트의 beforeunload 리스너가 남으면 다음 테스트를 오염시킨다.
     mounted.splice(0).forEach((w) => w.unmount())
+    document.body.innerHTML = ''
     vi.restoreAllMocks()
     window.confirm = original
+  })
+
+  it('🔴 킷 확인 창이 있으면 그것으로 묻는다 — 머물기면 그대로, 브라우저 기본 창은 쓰지 않는다', async () => {
+    const native = vi.spyOn(window, 'confirm')
+    const { dirty, router } = await setupWithKitDialog()
+    dirty.value = true
+    const navigation = router.push('/other')
+    await flushPromises()
+    const text = dialog()?.textContent ?? ''
+    expect(text).toContain('화면 떠나기')
+    expect(text).toContain('저장하지 않은 변경 사항이 있습니다. 이 화면을 벗어나시겠습니까?')
+    buttonByText('머물기', dialog()!)!.click()
+    await navigation
+    expect(router.currentRoute.value.path).toBe('/form')
+    expect(native).not.toHaveBeenCalled()
+  })
+
+  it('킷 확인 창에서 떠나기면 이동한다 — 문구는 옵션 그대로', async () => {
+    const { dirty, router } = await setupWithKitDialog({ message: '고친 역할이 있습니다.' })
+    dirty.value = true
+    const navigation = router.push('/other')
+    await flushPromises()
+    expect(dialog()?.textContent).toContain('고친 역할이 있습니다.')
+    buttonByText('떠나기', dialog()!)!.click()
+    await navigation
+    expect(router.currentRoute.value.path).toBe('/other')
   })
 
   it('dirty + confirm false 면 이동을 막는다', async () => {
