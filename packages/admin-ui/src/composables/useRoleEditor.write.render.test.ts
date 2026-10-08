@@ -169,6 +169,19 @@ describe('save — 수정', () => {
     expect(editor.loadError.value).toBeInstanceOf(Error)
   })
 
+  it('🔴 저장 뒤 재조회가 실패해도 "변경 있음" 으로 남지 않는다 — 방금 저장한 값이 기준이다(이탈 확인 오탐)', async () => {
+    const { editor, fake } = await mountRoleEditor()
+    editor.select(editor.roles.value[1]!)
+    editor.form.value.roleName = '운영팀'
+    await clickCell('log:read')
+    fake.api.list.mockRejectedValueOnce(new Error('network'))
+    expect(await editor.save()).toBe(true)
+    expect(editor.isDirty.value).toBe(false)
+    expect(editor.canSave.value).toBe(false)
+    // revision 은 옛 값 그대로 — 다시 고쳐 저장하면 409 가 정직한 결과다(스펙 §11 R8)
+    expect(editor.selected.value?.revision).toBe(4)
+  })
+
   it('서버 검증 오류는 fieldErrors.roleName 에 — 폼이 그리는 키라 처리됨이다', async () => {
     const { editor, fake } = await mountRoleEditor()
     const failure = apiError('ERR_COMMON_VALIDATION', 400, {
@@ -484,6 +497,31 @@ describe('자기 직책', () => {
     editor.form.value.roleName = '운영자 2'
     await editor.save()
     expect(onSelfRoleSaved).not.toHaveBeenCalled()
+  })
+
+  it('🔴 자기 직책 저장으로 읽기 권한을 잃어 재조회가 403 이면 그 오류는 처리됨이다 — 곧 이동하는 정상 경로다', async () => {
+    const onSelfRoleSaved = vi.fn()
+    const { editor, fake, me } = await mountRoleEditor({ onSelfRoleSaved })
+    me.value = '운영자'
+    editor.select(editor.roles.value[1]!)
+    editor.form.value.roleName = '운영팀'
+    const forbidden = apiError('ERR_COMMON_FORBIDDEN', 403)
+    fake.api.list.mockRejectedValueOnce(forbidden)
+    expect(await editor.save()).toBe(true)
+    expect(forbidden.handled).toBe(true)
+    expect(editor.isDirty.value).toBe(false)
+    expect(onSelfRoleSaved).toHaveBeenCalledTimes(1)
+  })
+
+  it('다른 역할을 저장한 뒤의 재조회 403 은 처리됨이 아니다 — 전역 토스트가 알린다', async () => {
+    const { editor, fake, me } = await mountRoleEditor()
+    me.value = '운영자'
+    editor.select(editor.roles.value[2]!)
+    editor.form.value.roleName = '감사팀'
+    const forbidden = apiError('ERR_COMMON_FORBIDDEN', 403)
+    fake.api.list.mockRejectedValueOnce(forbidden)
+    expect(await editor.save()).toBe(true)
+    expect(forbidden.handled).toBe(false)
   })
 
   it('onSelfRoleSaved 가 던지면 save() 가 reject 한다', async () => {

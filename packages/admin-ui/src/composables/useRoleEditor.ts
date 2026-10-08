@@ -8,6 +8,7 @@ import {
   type AdminRoleRemove,
   type AdminRoleUpdate,
 } from '@ssworks/admin-shared'
+import { ApiError } from '../api/error.js'
 import { useAdminUi } from '../context/admin-ui.js'
 import {
   impliedClosure,
@@ -439,6 +440,13 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
     const applied = await load()
     // 🔴 실패면 선택 · 폼을 그대로 둔다 — 관리자가 고친 값을 잃지 않는다.
     if (!ok) return false
+    // 🔴 자기 직책을 저장해 그 역할의 읽기 권한을 잃으면 재조회가 403 이다. 곧 `onSelfRoleSaved` 가 화면을 옮기는 정상
+    //    경로라 처리됨으로 표시한다 — 안 하면 "권한 없음" 오류 토스트가 저장 성공 직후 깜빡인다(스펙 §11 R11).
+    //    `catch` 와 같은 마이크로태스크 사슬 안이라 지연 전역 토스트보다 먼저다(3a D3).
+    if (!applied && role != null && wasSelf) {
+      const error = loadError.value
+      if (error instanceof ApiError && error.status === 403) error.handled = true
+    }
     // 🔴 재조회 중에 사용자가 다른 행을 골랐으면 아무것도 하지 않는다 — 재조회 중의 클릭은 사용자의 선택이고, 쓰기가
     //    그것을 되돌려서는 안 된다(스펙 §4-4-2 #3). 저장은 성공했으니 아래 훅은 어디에 있든 부른다.
     if (selected.value === role) {
@@ -452,10 +460,14 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
         //    남기면 한 번 더 눌러 같은 역할을 또 만든다. 선택을 비운다(스펙 §11 R8).
         clearSelection()
         resetFeedback()
+      } else {
+        // 🔴 수정인데 재조회가 반영되지 않았으면 폼을 그대로 둔다 — 옛 목록으로 재선택하면 방금 저장한 값이 화면에서
+        //    되돌아간다(스펙 §11 R8). 다만 비교 기준은 방금 저장한 값으로 맞춘다 — 안 맞추면 저장한 화면이 "변경 있음"
+        //    으로 남아 이탈 확인이 오탐한다(§11 R11). revision 은 옛 값 그대로 둔다 — 다시 고쳐 저장하면 409 와
+        //    conflicted 배너가 뜬다. 재조회가 들어올 때까지는 그것이 정직한 결과다(R8).
+        selected.value = { ...role, roleName, isDefault, permissions } as R
+        snapshot.value = permissions
       }
-      // 🔴 수정인데 재조회가 반영되지 않았으면 선택 · 폼을 그대로 둔다 — 옛 목록으로 재선택하면 방금 저장한 값이
-      //    화면에서 되돌아간다. 옛 revision 으로 다시 저장하면 409 와 conflicted 배너가 뜬다 — 재조회가 들어올
-      //    때까지는 그것이 정직한 결과다(스펙 §11 R8).
     }
     if (role != null && wasSelf) await options.onSelfRoleSaved?.()
     return true
