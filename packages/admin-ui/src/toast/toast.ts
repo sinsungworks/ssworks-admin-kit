@@ -1,4 +1,4 @@
-import { inject, reactive, type App, type InjectionKey } from 'vue'
+import { inject, nextTick, reactive, type App, type InjectionKey } from 'vue'
 
 /**
  * 앱 전체에 하나뿐인 토스트.
@@ -63,13 +63,29 @@ export function createToast(options: CreateToastOptions = {}): ToastPlugin {
     timeout: timeouts.info,
   })
 
+  /** 다시 열기를 기다리는 표 — 그사이 다른 show · dismiss 가 오면 앞의 다시 열기는 버린다 */
+  let reopenSeq = 0
+  let reopening = false
+
   function show(message: string, color: ToastColor) {
-    // 같은 메시지를 연달아 내도 스낵바가 다시 뜨도록 먼저 닫는다.
-    state.show = false
     state.message = message
     state.color = color
     state.timeout = timeouts[color]
-    state.show = true
+    if (!state.show && !reopening) {
+      state.show = true
+      return
+    }
+    // 🔴 이미 떠 있으면 한 틱 닫았다가 다시 연다. `false → true` 를 같은 틱에 바꾸면 VSnackbar 는 열림이 그대로라
+    //    타이머를 다시 걸지 않는다 — 떠 있던 토스트의 남은 시간만큼만 새 문구가 보였다(브라우저 확인 P9: 오류를 띄우고
+    //    4초 뒤 다른 오류를 띄우면 2초만 보임). 셸 스펙 §8 R16.
+    state.show = false
+    const seq = ++reopenSeq
+    reopening = true
+    void nextTick(() => {
+      if (seq !== reopenSeq) return
+      reopening = false
+      state.show = true
+    })
   }
 
   const plugin: ToastPlugin = {
@@ -80,6 +96,8 @@ export function createToast(options: CreateToastOptions = {}): ToastPlugin {
     warning: (message) => show(message, 'warning'),
     info: (message) => show(message, 'info'),
     dismiss: () => {
+      reopenSeq++
+      reopening = false
       state.show = false
     },
     install(app) {
