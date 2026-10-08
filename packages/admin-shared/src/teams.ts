@@ -27,8 +27,14 @@ export interface AdminTeamNode {
   children: AdminTeamNode[]
 }
 
-/** 재귀 — zod 4 의 getter 꼴 */
-export const adminTeamNodeSchema = z.object({
+/**
+ * 재귀 — zod 4 의 getter 꼴.
+ * 🔴 타입을 `z.ZodType<AdminTeamNode>` 로 적는다. 추론에 맡기면 발행 d.ts 가 재귀 자리를 elided any 로 지워
+ *    `children` 이 `Record<string, unknown>[]` 가 되고, 소비자 앱에서 `AdminTeamTree['items']` 가 `AdminTeamNode[]` 에
+ *    들어가지 않는다(README 의 `useTeamTree` load 예시가 컴파일되지 않았다 — 3d 스펙 §11 R15). 저장소 안에서는 소스를
+ *    보므로 드러나지 않는다 — admin-ui `team-types.test.ts` 가 발행 d.ts 로 잰다.
+ */
+export const adminTeamNodeSchema: z.ZodType<AdminTeamNode> = z.object({
   teamNo: z.bigint(),
   teamName: z.string(),
   displayOrder: z.number().int(),
