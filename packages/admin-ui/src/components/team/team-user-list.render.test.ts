@@ -243,6 +243,16 @@ describe('TeamUserList — 쪽 나눔(스크롤하면 더)', () => {
     expect(moreButton()!.textContent).toContain('더 불러오기(1명 남음)')
   })
 
+  it('🔴 목록은 스스로 스크롤 상자가 되지 않는다 — 스크롤은 목록 칸 한 곳(관찰 기준)에서(브라우저 확인 T14)', async () => {
+    // VList 는 Vuetify 기본 overflow: auto 다. 목록 칸(PanelLayout 안쪽, 세로 flex) 안에서 줄어들면 VList 가 따로
+    // 스크롤해 끝 버튼이 처음부터 보이고, 스크롤하기 전에 다음 쪽을 다 부른다. happy-dom 은 레이아웃을 못 재므로
+    // 그 규칙을 지닌 클래스가 붙었는지만 잰다 — 실제 동작은 브라우저에서 요청 수로 확인했다.
+    await setup({ load: vi.fn(async () => page(many(1, 2), 5)), pageSize: 2 })
+    const list = document.querySelector('.team-user-list .v-list')
+    expect(list?.classList.contains('team-user-list__list')).toBe(true)
+    expect(list?.closest('.panel-layout__content-inner')).not.toBeNull()
+  })
+
   it('목록 끝이 화면에 들어오면 저절로 다음 쪽', async () => {
     const load = pagedLoad()
     await setup({ load, pageSize: 2 })

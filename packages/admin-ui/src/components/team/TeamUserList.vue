@@ -287,7 +287,7 @@
       {{ applied === '' ? text.empty : text.emptyFiltered }}
     </p>
     <template v-else-if="items.length > 0">
-      <VList density="compact">
+      <VList class="team-user-list__list" density="compact">
         <VListItem
           v-for="row in items"
           :key="String(row.userNo)"
@@ -352,6 +352,16 @@
     font-size: 0.875rem;
     color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
     text-align: center;
+  }
+
+  /*
+   * 🔴 스크롤은 목록 칸(PanelLayout 안쪽 — 관찰 기준) 한 곳에서. VList 는 Vuetify 기본 overflow: auto 라, 세로 flex 인
+   *    목록 칸 안에서 줄어들면 스스로 스크롤 상자가 되고 아래 "더 불러오기" 가 처음부터 보인다 — 스크롤하기 전에 다음
+   *    쪽을 끝까지 다 부른다(3d 스펙 §11 R14, 브라우저 확인 T14: 높이 471px 에 내용 6256px).
+   */
+  .team-user-list__list {
+    flex: none;
+    overflow: visible;
   }
 
   .team-user-list__more {
