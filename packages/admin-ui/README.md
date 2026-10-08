@@ -59,16 +59,18 @@ export const usePermission = createUsePermission<Permission>(
 
 ## Peer 의존
 
-| 패키지         | 필수 | 용도                                   |
-| -------------- | ---- | -------------------------------------- |
-| `vue`          | 예   |                                        |
-| `vuetify`      | 예   |                                        |
-| `vue-router`   | 예   | 셸·가드·메뉴가 라우트 `meta` 를 읽는다 |
-| `pinia`        | 예   | `createAppStore`                       |
-| `axios`        | 예   | `createApiClient`                      |
-| `@he-tree/vue` | 예   | `TeamTree`(팀 트리 · 드래그)           |
+| 패키지              | 필수 | 용도                                                    |
+| ------------------- | ---- | ------------------------------------------------------- |
+| `vue`               | 예   |                                                         |
+| `vuetify`           | 예   |                                                         |
+| `vue-router`        | 예   | 셸·가드·메뉴가 라우트 `meta` 를 읽는다                  |
+| `pinia`             | 예   | `createAppStore`                                        |
+| `axios`             | 예   | `createApiClient`                                       |
+| `@he-tree/vue`      | 예   | `TeamTree`(팀 트리 · 드래그)                            |
+| `codemirror`        | 예   | `MarkdownEditor` · `LegalDocumentEditor`(약관 편집기)   |
+| `@codemirror/state` | 예   | 같음 — `codemirror` 가 쓰는 것과 같은 인스턴스여야 한다 |
 
-🔴 `pinia`·`axios`·`@he-tree/vue` 도 **필수**다. 엔트리가 하나(`dist/index.js`)라 두 패키지를 최상단에서 import 한다 — `safeRedirect` 하나만 써도 번들러가 `axios` 를 해석하지 못하면 빌드가 깨진다. 서브패스 export 로 가르지 않는 대가다. he-tree CSS 는 import 하지 않아도 된다 — `TeamTree` 가 필요한 규칙을 `style.css` 에 담는다.
+🔴 `pinia`·`axios`·`@he-tree/vue`·`codemirror`·`@codemirror/state` 도 **필수**다. 엔트리가 하나(`dist/index.js`)라 두 패키지를 최상단에서 import 한다 — `safeRedirect` 하나만 써도 번들러가 `axios` 를 해석하지 못하면 빌드가 깨진다. 서브패스 export 로 가르지 않는 대가다. he-tree CSS 는 import 하지 않아도 된다 — `TeamTree` 가 필요한 규칙을 `style.css` 에 담는다. CodeMirror 테마 패키지(`@codemirror/theme-one-dark`)는 필요 없다 — 편집기 색은 Vuetify 테마를 따른다.
 
 pnpm 10 이상은 의존 패키지의 설치 스크립트를 막는다. he-tree 의 하위 의존 `vue-demi` 의 postinstall 이 걸려 pnpm 12 는 `pnpm install` 이 `ERR_PNPM_IGNORED_BUILDS` 로 멈춘다. 소비자 앱의 `pnpm-workspace.yaml` 에 `allowBuilds:` / `vue-demi: false` 를 두면 된다 — Vue 3 에서는 그 스크립트가 할 일이 없다:
 
@@ -82,37 +84,41 @@ allowBuilds:
 
 ## 셸 · 내비게이션 · 인프라
 
-| export                                                                                                                                                                                          | 설명                                                                                                                                                                                   |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `createAdminUi` · `useAdminUi` · `ADMIN_UI_KEY` · `AdminUserInfo` · `AdminUiOptions` · `AdminUiContext` · `AdminUiPlugin`                                                                       | 셸이 호스트 앱에서 읽는 것(사용자·로그아웃·사이트명·IP 차단·표 설정)의 전부. `app.use()` 가 provide. 게터 주입. `AdminUserInfo.isPasswordChangeRequired?` = 강제 변경 표시             |
-| `AdminShell` · `AdminShellMenuProps` · `AdminShellAppBarProps`                                                                                                                                  | 앱바 + 드로어 메뉴 + `RouterView`. 슬롯 `drawer` `app-bar` `banner` `default` `overlays` + 전달 슬롯(아래)                                                                             |
-| `AuthShell`                                                                                                                                                                                     | 앱바·메뉴 없는 인증 전 화면 껍데기. 슬롯 `brand`                                                                                                                                       |
-| `AppBar` · `AppBarMenuItem`                                                                                                                                                                     | 사용자 메뉴·로그아웃이 있는 앱바. 슬롯 `brand` `actions` `user-info` `user-menu`(`{ user, logout }`)                                                                                   |
-| `MainMenu` · `MainMenuItem`                                                                                                                                                                     | 권한으로 걸러 그리는 사이드 메뉴. `groupMode: 'subheader' \| 'collapsible'`                                                                                                            |
-| `IpBlockedDialog`                                                                                                                                                                               | IP 차단 안내. 🔴 `App.vue` 최상위에 둔다(로그인 화면에서도 떠야 한다)                                                                                                                  |
-| `MenuNode` · `filterMenu` · `buildMenu` · `flattenRoutes` · `assertParentAnyPermissionsCoverChildren`                                                                                           | 메뉴 파생 — 출처는 라우트 `meta` 하나. 선언 없음 = 공개                                                                                                                                |
-| `AdminRouteMeta` · `defineAdminRoute`                                                                                                                                                           | 라우트 `meta` 타입과 항등 헬퍼                                                                                                                                                         |
-| `createAdminGuard` · `AdminGuardDeps`                                                                                                                                                           | 전역 `beforeEach`. deps 주입, 기본 fail-closed                                                                                                                                         |
-| `createTitleGuard` · `installChunkRecovery` · `safeRedirect`                                                                                                                                    | `afterEach` 문서 제목 · 청크 404 복구(1회 새로고침) · 오픈 리다이렉트 방어                                                                                                             |
-| `createApiClient` · `ApiClientOptions` · `ApiClient` · `ApiError`                                                                                                                               | axios 팩토리. 봉투 벗김 · bigint · 401 갱신(공유 Promise) · `onAuthFailure`/`onError` 콜백                                                                                             |
-| `createAppStore` · `SessionNotEstablishedError` · `AppStoreOptions` · `AppStoreState` · `AppStoreActions`                                                                                       | 세션 pinia 스토어 팩토리(`initialize` · `login` · `logout` · `clearSession` · `refresh`)                                                                                               |
-| `useDirtyGuard` · `DirtyGuardOptions` · `useTableSelection`                                                                                                                                     | 이탈 확인 · 대량 표 선택(Set + 반전 선택)                                                                                                                                              |
-| `useServerTable` · `ServerTable` · `ServerTableOptions` · `ServerTableParams`                                                                                                                   | 서버 페이징 목록 — 조회 1번 · 늦은 응답 무시 · 필터/쪽 크기 변경 시 1쪽 · 정렬 보정 · bigint `total` · `urlSync`                                                                       |
-| `useQuerySyncedFilter` · `QuerySyncOptions` · `queryCodec` · `withDefault` · `bindQueryCodecs` · `QueryCodec` · `DefaultedQueryCodec` · `QueryCodecSpec` · `QuerySyncBinding` · `RawQueryValue` | 목록 상태 ↔ URL 쿼리. 타이밍 핵심(`read`·`toQuery`) + 선택형 코덱(기본 6종 · 커스텀)                                                                                                   |
-| `useWriteFlow` · `WriteFlow` · `WriteRunOptions` · `ConfirmDialogBindings` · `ReauthDialogBindings`                                                                                             | 쓰기 관문(확인 · 재인증) · busy · 오류 분류. 다이얼로그는 `v-bind="confirmDialog"`                                                                                                     |
-| `toFieldErrors`                                                                                                                                                                                 | `ERR_COMMON_VALIDATION` 의 `details.issues` → 필드 키별 메시지(`'members.0.name'`)                                                                                                     |
-| `PermissionMatrix` · `assertMatrixCoversPermissions` · `PermissionMatrixCategory` · `PermissionMatrixColumn` · `PermissionMatrixRow`                                                            | 자원 행 × 액션 열 권한 격자(`v-model` = 권한 키 배열) · 카탈로그 누락 검사. 아래 "역할 · 설정"                                                                                         |
-| `useRoleEditor` · `RoleEditor` · `RoleEditorApi` · `RoleEditorOptions` · `RoleEditorAction` · `RoleDialogText` · `RoleForm` · `RoleWriteContext` · `PermissionMatrixBindings`                   | 역할 편집 headless 상태 · 규칙(목록 · 선택 · 폼 · 함의 · 권한 상승 방지 · revision 충돌 · 관문)                                                                                        |
-| `SettingsShell`                                                                                                                                                                                 | 설정 2단 셸 — 라우트 직속 자식 `meta` 에서 파생한 좌측 메뉴 + `RouterView`. 부모로 들어오면 허용된 첫 자식으로                                                                         |
-| `SessionTable` · `SessionTableRow`                                                                                                                                                              | 세션 표(기기 · 접속 IP · 최근 활동 · 끝내기, 선택 열 `showUser` · `showIp` · `showLoginAt` · `showExpireAt`). `useSessions().table` 을 `v-bind`. 아래 "세션 · 비밀번호"                |
-| `useSessions` · `Sessions` · `UseSessionsOptions` · `SessionTableBindings` · `SessionMessages` · `SessionDialogText` · `SessionAction` · `SessionRevokedEvent`                                  | 세션 목록 headless — 전량(`list`) · 서버 페이징(`fetch`), 끝내기 · 다른 세션 모두 · 사용자 전체, 확인 관문                                                                             |
-| `TemporaryPasswordDialog`                                                                                                                                                                       | 임시 비밀번호 1회 표시 · 복사. `v-model` 이 곧 값(닫으면 `null`)                                                                                                                       |
-| `PasswordChangeForm`                                                                                                                                                                            | 비밀번호 변경 · 강제 변경 폼 — 정책 검증 · 이중 제출 방지 · 서버 필드 오류 포커스                                                                                                      |
-| `copyText` · `CopyResult`                                                                                                                                                                       | 클립보드 복사. 결과 3갈래(`done` · `failed` · `unavailable`) — 비보안 컨텍스트 대체 경로는 없다                                                                                        |
-| `TeamTree` · `TeamAction` · `TeamEdit` · `TeamEditTarget` · `TeamCommitSource` · `TeamMoveSource` · `TeamTreeMessages`                                                                          | 팀 트리(he-tree). ↑↓ · ⋮ 메뉴(하위 팀 추가 · 이름 바꾸기 · 옮기기 · 삭제) · 노드 안 입력칸 · 부모 포함 검색, `draggable` 로 끌어 옮기기. `useTeamTree().tree` 를 `v-bind`. 아래 "조직" |
-| `TeamMoveDialog`                                                                                                                                                                                | 옮기기 대화상자 — 새 상위 팀 아래 맨 끝으로. `useTeamTree().moveDialog` 를 `v-bind`                                                                                                    |
-| `useTeamTree` · `UseTeamTreeOptions` · `TeamTreeController` · `TeamTreeBindings` · `TeamMoveDialogBindings` · `TeamMessages` · `TeamDialogText` · `TeamDoneEvent` · `TeamDoneAction`            | 팀 트리 headless — 조회 경합 · 쓰기 넷(만들기 · 이름 · 삭제 · 이동) · 드래그 확인과 원위치 · 입력칸 오류는 그 자리에                                                                   |
-| `TeamUserList` · `TeamUserRow` · `TeamUserQuery` · `TeamUserPage` · `TeamUserListMessages`                                                                                                      | 팀 화면 2열 인원 목록 — `load` 어댑터 · ID 검색 · 하위 팀 포함 · 스크롤하면 다음 쪽                                                                                                    |
+| export                                                                                                                                                                                                                                         | 설명                                                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createAdminUi` · `useAdminUi` · `ADMIN_UI_KEY` · `AdminUserInfo` · `AdminUiOptions` · `AdminUiContext` · `AdminUiPlugin`                                                                                                                      | 셸이 호스트 앱에서 읽는 것(사용자·로그아웃·사이트명·IP 차단·표 설정)의 전부. `app.use()` 가 provide. 게터 주입. `AdminUserInfo.isPasswordChangeRequired?` = 강제 변경 표시             |
+| `AdminShell` · `AdminShellMenuProps` · `AdminShellAppBarProps`                                                                                                                                                                                 | 앱바 + 드로어 메뉴 + `RouterView`. 슬롯 `drawer` `app-bar` `banner` `default` `overlays` + 전달 슬롯(아래)                                                                             |
+| `AuthShell`                                                                                                                                                                                                                                    | 앱바·메뉴 없는 인증 전 화면 껍데기. 슬롯 `brand`                                                                                                                                       |
+| `AppBar` · `AppBarMenuItem`                                                                                                                                                                                                                    | 사용자 메뉴·로그아웃이 있는 앱바. 슬롯 `brand` `actions` `user-info` `user-menu`(`{ user, logout }`)                                                                                   |
+| `MainMenu` · `MainMenuItem`                                                                                                                                                                                                                    | 권한으로 걸러 그리는 사이드 메뉴. `groupMode: 'subheader' \| 'collapsible'`                                                                                                            |
+| `IpBlockedDialog`                                                                                                                                                                                                                              | IP 차단 안내. 🔴 `App.vue` 최상위에 둔다(로그인 화면에서도 떠야 한다)                                                                                                                  |
+| `MenuNode` · `filterMenu` · `buildMenu` · `flattenRoutes` · `assertParentAnyPermissionsCoverChildren`                                                                                                                                          | 메뉴 파생 — 출처는 라우트 `meta` 하나. 선언 없음 = 공개                                                                                                                                |
+| `AdminRouteMeta` · `defineAdminRoute`                                                                                                                                                                                                          | 라우트 `meta` 타입과 항등 헬퍼                                                                                                                                                         |
+| `createAdminGuard` · `AdminGuardDeps`                                                                                                                                                                                                          | 전역 `beforeEach`. deps 주입, 기본 fail-closed                                                                                                                                         |
+| `createTitleGuard` · `installChunkRecovery` · `safeRedirect`                                                                                                                                                                                   | `afterEach` 문서 제목 · 청크 404 복구(1회 새로고침) · 오픈 리다이렉트 방어                                                                                                             |
+| `createApiClient` · `ApiClientOptions` · `ApiClient` · `ApiError`                                                                                                                                                                              | axios 팩토리. 봉투 벗김 · bigint · 401 갱신(공유 Promise) · `onAuthFailure`/`onError` 콜백                                                                                             |
+| `createAppStore` · `SessionNotEstablishedError` · `AppStoreOptions` · `AppStoreState` · `AppStoreActions`                                                                                                                                      | 세션 pinia 스토어 팩토리(`initialize` · `login` · `logout` · `clearSession` · `refresh`)                                                                                               |
+| `useDirtyGuard` · `DirtyGuardOptions` · `useTableSelection`                                                                                                                                                                                    | 이탈 확인 · 대량 표 선택(Set + 반전 선택)                                                                                                                                              |
+| `useServerTable` · `ServerTable` · `ServerTableOptions` · `ServerTableParams`                                                                                                                                                                  | 서버 페이징 목록 — 조회 1번 · 늦은 응답 무시 · 필터/쪽 크기 변경 시 1쪽 · 정렬 보정 · bigint `total` · `urlSync`                                                                       |
+| `useQuerySyncedFilter` · `QuerySyncOptions` · `queryCodec` · `withDefault` · `bindQueryCodecs` · `QueryCodec` · `DefaultedQueryCodec` · `QueryCodecSpec` · `QuerySyncBinding` · `RawQueryValue`                                                | 목록 상태 ↔ URL 쿼리. 타이밍 핵심(`read`·`toQuery`) + 선택형 코덱(기본 6종 · 커스텀)                                                                                                   |
+| `useWriteFlow` · `WriteFlow` · `WriteRunOptions` · `ConfirmDialogBindings` · `ReauthDialogBindings`                                                                                                                                            | 쓰기 관문(확인 · 재인증) · busy · 오류 분류. 다이얼로그는 `v-bind="confirmDialog"`                                                                                                     |
+| `toFieldErrors`                                                                                                                                                                                                                                | `ERR_COMMON_VALIDATION` 의 `details.issues` → 필드 키별 메시지(`'members.0.name'`)                                                                                                     |
+| `PermissionMatrix` · `assertMatrixCoversPermissions` · `PermissionMatrixCategory` · `PermissionMatrixColumn` · `PermissionMatrixRow`                                                                                                           | 자원 행 × 액션 열 권한 격자(`v-model` = 권한 키 배열) · 카탈로그 누락 검사. 아래 "역할 · 설정"                                                                                         |
+| `useRoleEditor` · `RoleEditor` · `RoleEditorApi` · `RoleEditorOptions` · `RoleEditorAction` · `RoleDialogText` · `RoleForm` · `RoleWriteContext` · `PermissionMatrixBindings`                                                                  | 역할 편집 headless 상태 · 규칙(목록 · 선택 · 폼 · 함의 · 권한 상승 방지 · revision 충돌 · 관문)                                                                                        |
+| `SettingsShell`                                                                                                                                                                                                                                | 설정 2단 셸 — 라우트 직속 자식 `meta` 에서 파생한 좌측 메뉴 + `RouterView`. 부모로 들어오면 허용된 첫 자식으로                                                                         |
+| `SessionTable` · `SessionTableRow`                                                                                                                                                                                                             | 세션 표(기기 · 접속 IP · 최근 활동 · 끝내기, 선택 열 `showUser` · `showIp` · `showLoginAt` · `showExpireAt`). `useSessions().table` 을 `v-bind`. 아래 "세션 · 비밀번호"                |
+| `useSessions` · `Sessions` · `UseSessionsOptions` · `SessionTableBindings` · `SessionMessages` · `SessionDialogText` · `SessionAction` · `SessionRevokedEvent`                                                                                 | 세션 목록 headless — 전량(`list`) · 서버 페이징(`fetch`), 끝내기 · 다른 세션 모두 · 사용자 전체, 확인 관문                                                                             |
+| `TemporaryPasswordDialog`                                                                                                                                                                                                                      | 임시 비밀번호 1회 표시 · 복사. `v-model` 이 곧 값(닫으면 `null`)                                                                                                                       |
+| `PasswordChangeForm`                                                                                                                                                                                                                           | 비밀번호 변경 · 강제 변경 폼 — 정책 검증 · 이중 제출 방지 · 서버 필드 오류 포커스                                                                                                      |
+| `copyText` · `CopyResult`                                                                                                                                                                                                                      | 클립보드 복사. 결과 3갈래(`done` · `failed` · `unavailable`) — 비보안 컨텍스트 대체 경로는 없다                                                                                        |
+| `TeamTree` · `TeamAction` · `TeamEdit` · `TeamEditTarget` · `TeamCommitSource` · `TeamMoveSource` · `TeamTreeMessages`                                                                                                                         | 팀 트리(he-tree). ↑↓ · ⋮ 메뉴(하위 팀 추가 · 이름 바꾸기 · 옮기기 · 삭제) · 노드 안 입력칸 · 부모 포함 검색, `draggable` 로 끌어 옮기기. `useTeamTree().tree` 를 `v-bind`. 아래 "조직" |
+| `TeamMoveDialog`                                                                                                                                                                                                                               | 옮기기 대화상자 — 새 상위 팀 아래 맨 끝으로. `useTeamTree().moveDialog` 를 `v-bind`                                                                                                    |
+| `useTeamTree` · `UseTeamTreeOptions` · `TeamTreeController` · `TeamTreeBindings` · `TeamMoveDialogBindings` · `TeamMessages` · `TeamDialogText` · `TeamDoneEvent` · `TeamDoneAction`                                                           | 팀 트리 headless — 조회 경합 · 쓰기 넷(만들기 · 이름 · 삭제 · 이동) · 드래그 확인과 원위치 · 입력칸 오류는 그 자리에                                                                   |
+| `TeamUserList` · `TeamUserRow` · `TeamUserQuery` · `TeamUserPage` · `TeamUserListMessages`                                                                                                                                                     | 팀 화면 2열 인원 목록 — `load` 어댑터 · ID 검색 · 하위 팀 포함 · 스크롤하면 다음 쪽                                                                                                    |
+| `MarkdownView`                                                                                                                                                                                                                                 | 마크다운 본문 보기 — `renderMarkdown` 결과를 그리는 킷 유일의 `v-html`. `linkTarget="_blank"` 면 본문 링크를 새 탭으로. `#empty` 슬롯                                                  |
+| `MarkdownEditor`                                                                                                                                                                                                                               | CodeMirror 6 편집기 `v-model`. `readonly`(편집만 막음 — 포커스 · 선택 · 찾기는 됨) · `label`(aria) · `height`. 색은 Vuetify 테마                                                       |
+| `useLegalDocuments` · `UseLegalDocumentsOptions` · `LegalDocumentsController` · `LegalDocumentEditorBindings` · `LegalDetailDialogBindings` · `LegalDoneEvent` · `LegalKindOption` · `LegalPublishBlock` · `LegalMessages` · `LegalDialogText` | 약관 흐름 headless — 종류 전환(초안 확인) · 현재본 · 이력 · 원문 · 발행(확인 → 저장 → revision 충돌)                                                                                   |
+| `LegalDocumentEditor` · `LegalDocumentEditorMessages`                                                                                                                                                                                          | 약관 화면 한 벌 — 탭 · 시행 정보 · 편집기 \| 미리보기 · 발행 · 이력 · 대화상자 셋. `v-bind="legal.editor.value"`                                                                       |
 
 #### `AdminShell` 슬롯
 
@@ -750,6 +756,84 @@ const teams = useTeamTree({
   },
   // 루트는 시드가 만든다 — 지우거나 옮기지 않는다
   canAct: (node, action) => !(node.teamNo === rootNo && (action === 'remove' || action === 'move')),
-  …
+  // create · rename · remove · canWrite · onDone 은 위 「Phase 2 서버」 예와 같다
 })
 ```
+
+## 약관
+
+이용약관 · 개인정보처리방침 같은 법적 문서의 편집 · 발행 · 이력 화면. 발행은 append-only 라 되돌릴 수 없다 — 확인을 거치고, 다른 관리자가 그사이 발행했으면 서버가 revision 충돌로 거절한다(내 초안은 남는다). 페이지 제목 · 카드 틀 · 메뉴는 템플릿 몫이다.
+
+### Phase 2 서버를 쓰는 새 서비스
+
+```ts
+const legal = useLegalDocuments({
+  kinds: [
+    { value: 'TERMS', label: '이용약관' },
+    { value: 'PRIVACY', label: '개인정보처리방침' },
+  ],
+  loadCurrent: (kind) =>
+    api
+      .get<AdminLegalCurrent>('/admin/legal-documents/current', { params: { kind } })
+      .then((r) => r.item),
+  loadHistory: (kind) =>
+    api.get<AdminLegalHistory>('/admin/legal-documents', { params: { kind } }).then((r) => r.items),
+  loadOne: (legalDocNo) => api.get<AdminLegalDocument>(`/admin/legal-documents/${legalDocNo}`),
+  publish: (body) => api.post('/admin/legal-documents', body),
+  canWrite: () => can('settings.legal:publish'),
+  onDone: (e) => toast.success(e.message),
+})
+useDirtyGuard(() => legal.isDirty.value) // 라우트 이탈 · 새로고침 때 미발행 초안 확인 — 라우터는 페이지 몫
+```
+
+```vue
+<PanelLayout title="약관 · 개인정보처리방침">
+  <LegalDocumentEditor v-bind="legal.editor.value" />
+</PanelLayout>
+```
+
+- `publish` 를 주지 않거나 `canWrite()` 가 false 면 읽기 전용이다. 버튼 옆에 "발행 권한이 없습니다." 가 보인다.
+- 탭 전환은 초안이 있으면 "편집 중인 내용 버리기" 확인을 거친다. 취소하면 탭도 초안도 그대로다.
+- 쿼리(`?kind=`)와 맞추려면 `initialKind` 로 시작하고 `legal.kind` 를 지켜본다.
+- 편집 중에 현재본을 다시 불러왔는데(`legal.reload()`) 그사이 다른 판이 발행됐으면, 409 때와 같은 충돌 안내가 뜬다. 초안은 그대로 남고, 다시 발행하면 그 판을 대체한다.
+
+### 이력 표에 열 더하기
+
+```vue
+<LegalDocumentEditor
+  v-bind="legal.editor.value"
+  :history-headers="[{ title: '동의', key: 'consentCount', width: 90 }]"
+>
+  <template #item.consentCount="{ item }">{{ item.consentCount }}건</template>
+</LegalDocumentEditor>
+```
+
+행 타입은 `useLegalDocuments<'TERMS' | 'PRIVACY', AdminLegalHistoryItem & { consentCount: number }>(…)` 처럼 넓힌다.
+
+### 미발행을 404 로 내는 서버(axion · gise 형)
+
+```ts
+loadCurrent: async (kind) => {
+  try {
+    return await legalApi.current(kind)
+  } catch (error) {
+    // 🔴 미발행만 null 로 — 그 밖의 실패는 그대로 던져 "불러오지 못함"(발행 잠금)으로 보이게 한다
+    if (error instanceof ApiError && error.status === 404) {
+      error.handled = true // 전역 토스트를 막는다(정상 시작 상태다)
+      return null
+    }
+    throw error
+  }
+},
+publish: ({ kind, body }) => legalApi.publish({ kind, body }), // 기준 판 번호를 모르는 서버 — 동시 발행 보호 없음
+```
+
+킷은 404 를 스스로 "미발행" 으로 읽지 않는다. 잘못 설정한 주소의 404 가 미발행으로 보이면, 비교할 본 없이 발행하게 되기 때문이다.
+
+### 알려진 한계 · 수동 확인
+
+- 미리보기는 입력마다 다시 렌더한다. 실제 약관 크기(수십 KB)에서는 문제가 없고, 상한(100만 자) 근처에서는 느려질 수 있다.
+- CodeMirror 는 개행을 `\n` 으로 정규화한다. CRLF 로 저장된 본문은 첫 입력부터 LF 로 바뀐다.
+- 테스트가 잴 수 없어 사람이 확인할 것:
+  - 한글 입력이 끊기지 않는가(조합 중 글자 깨짐)
+  - 다크 테마에서 편집기 색 · 선택 영역이 읽히는가

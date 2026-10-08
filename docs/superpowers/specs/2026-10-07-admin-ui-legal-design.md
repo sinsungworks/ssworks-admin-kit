@@ -543,3 +543,9 @@ export interface LegalDocumentEditorMessages {
 3. **아주 긴 본문** — 입력마다 미리보기를 렌더한다(알려진 한계).
 4. **테마 전환 색** — 잴 수 없다. 수동 확인 항목.
 5. **확인 대화상자가 열린 사이의 경합** — 테스트로 고정한 경로 밖에 빠진 것이 없는지 본다.
+
+## 12. 구현 중 정정 (2026-10-08)
+
+- **R1 — markdown-it 15 의 default export 는 값이라 타입 자리에 쓸 수 없다(§4-1).** 15 는 타입을 자체로 싣는데 `MarkdownIt` 를 타입으로 쓰면 typecheck 가 깨진다. 지연 생성하는 인스턴스의 타입은 생성자에서 끌어낸다(`ReturnType<typeof MarkdownItConstructor>`). 옵션 · 지연 생성(D2)은 그대로다(Task 1).
+- **R2 — D9 보강: 초안이 더러운 채 현재본을 다시 불러왔는데 판 번호가 바뀌었으면 `conflict = true` 다.** 409 와 같은 안내를 띄운다. D9 만으로는 기준 판이 조용히 새 판으로 옮겨져, 다음 발행이 남의 판을 409 없이 덮었다(⑤ V2 의 "편집을 시작한 판" 이 꺼진다). 초안이 깨끗하면 일어나지 않는다 — 발행 뒤 재조회 · 종류 전환 · 첫 불러오기는 해당 없음(Task 5 리뷰).
+- **R3 — `@codemirror/commands` 를 admin-ui `devDependencies` 에 둔다(§5 보충).** 되돌리기 기록(D4)을 재는 테스트만 쓴다. 패키지 소스는 import 하지 않으므로 peer 가 아니다(Task 2).
