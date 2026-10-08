@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { computed, ref, watch } from 'vue'
-  import { VAlert, VBtn } from 'vuetify/components'
+  import { VAlert, VBtn, VInput } from 'vuetify/components'
   import BaseDialog from '../common/BaseDialog.vue'
   import { copyText, type CopyResult } from '../../utils/copy-text.js'
 
@@ -10,6 +10,9 @@
   //  ① 열림(boolean)과 값을 따로 받던 것을 `v-model` 하나로 — 값 자체(`string | null`)가 모델이다.
   //  ② hangang 규칙: 값을 글자로 · 복사 3갈래 · 문구는 값 아래 · "한 번만" 경고 · 세션 폐기 안내 · 스스로 닫지 않음.
   //  ③ gise 의 토스트 복사 알림을 버렸다 — 관리자는 지금 이 값을 보고 있다.
+  //  ④ 복사 버튼을 아래 동작 줄에서 값 칸 오른쪽으로 옮겼다(3c 스펙 §11 R7 — 브라우저 확인에서 요청). 값 칸은 `VInput`
+  //     이고 그 안의 값은 여전히 글자다 — `VInput` 은 `<input>` 을 만들지 않는다. `append-icon` 대신 `#append` 슬롯에
+  //     진짜 버튼을 둔다 — 접근 이름("임시 비밀번호 복사")과 복사 중 잠금을 붙이려고.
   //
   // 🔴 `v-model` 이 곧 값이다. 닫기가 `null` 을 내보내 부모의 값을 비운다 — "닫으면 부모가 비운다" 를 부모의
   //    성실함에 맡기지 않는다(3c 스펙 D7). 이 컴포넌트는 값을 따로 보관하지 않는다.
@@ -95,7 +98,21 @@
   >
     <div class="temporary-password">
       <p v-if="target" class="text-body-2">「{{ target }}」의 임시 비밀번호</p>
-      <code class="temporary-password__value">{{ value }}</code>
+      <VInput class="temporary-password__field" hide-details>
+        <code class="temporary-password__value">{{ value }}</code>
+        <template #append>
+          <!-- 🔴 :loading 은 클릭을 안 막는다 — :disabled 와 한 벌 -->
+          <VBtn
+            aria-label="임시 비밀번호 복사"
+            :disabled="copying"
+            icon="mdi-content-copy"
+            :loading="copying"
+            size="small"
+            variant="text"
+            @click="copy"
+          />
+        </template>
+      </VInput>
       <p aria-live="polite" class="text-body-2">
         {{ copyResult ? COPY_MESSAGES[copyResult] : '' }}
       </p>
@@ -109,7 +126,6 @@
       <slot />
     </div>
     <template #actions>
-      <VBtn :disabled="copying" :loading="copying" variant="text" @click="copy">복사</VBtn>
       <VBtn @click="close">닫기</VBtn>
     </template>
   </BaseDialog>
@@ -121,7 +137,13 @@
     flex-direction: column;
     gap: 12px;
   }
+  .temporary-password__field :deep(.v-input__append) {
+    margin-inline-start: 4px;
+  }
+
   .temporary-password__value {
+    flex: 1 1 auto;
+    min-width: 0;
     font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
     font-size: 1.25rem;
     letter-spacing: 0.04em;

@@ -53,6 +53,17 @@ async function setup(props: Record<string, unknown> = {}, slots: Record<string, 
 
 const dialog = () => document.querySelector<HTMLElement>('.v-overlay--active')
 
+/** 값 칸 오른쪽의 복사 버튼 — 접근 이름으로 찾는다 */
+const copyButton = () =>
+  dialog()?.querySelector<HTMLButtonElement>('button[aria-label="임시 비밀번호 복사"]') ?? null
+
+async function clickCopy() {
+  const button = copyButton()
+  expect(button, '가드 — 값 칸에 복사 버튼이 있다').toBeTruthy()
+  button!.click()
+  await flushPromises()
+}
+
 async function click(text: string) {
   const button = buttonByText(text, dialog() ?? document.body)
   expect(button, `가드 — "${text}" 버튼이 있다`).toBeTruthy()
@@ -67,6 +78,17 @@ describe('TemporaryPasswordDialog — 표시', () => {
     expect(dialog()?.querySelector('code')?.textContent).toBe(TEMP)
     const inputs = [...document.querySelectorAll('input')]
     expect(inputs.some((input) => input.value === TEMP)).toBe(false)
+  })
+
+  it('복사 버튼은 값 칸 오른쪽에 있고, 아래 동작 줄에는 닫기만 있다(브라우저 확인 C8)', async () => {
+    await setup()
+    const field = copyButton()?.closest('.v-input')
+    expect(field, '가드 — 복사 버튼이 값 칸 안에 있다').toBeTruthy()
+    expect(field!.querySelector('code')?.textContent).toBe(TEMP)
+    const actions = [...dialog()!.querySelectorAll('.v-card-actions button')].map((b) =>
+      (b.textContent ?? '').trim(),
+    )
+    expect(actions).toEqual(['닫기'])
   })
 
   it('값이 null 이면 열리지 않는다', async () => {
@@ -113,7 +135,7 @@ describe('TemporaryPasswordDialog — 복사', () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     setClipboard({ writeText })
     await setup()
-    await click('복사')
+    await clickCopy()
     expect(writeText).toHaveBeenCalledWith(TEMP)
     expect(dialog()?.querySelector('[aria-live="polite"]')?.textContent).toContain(
       '임시 비밀번호를 복사했습니다.',
@@ -123,7 +145,7 @@ describe('TemporaryPasswordDialog — 복사', () => {
   it('🔴 클립보드 API 가 없으면 "복사했습니다" 를 내지 않는다', async () => {
     setClipboard(undefined)
     await setup()
-    await click('복사')
+    await clickCopy()
     const notice = dialog()?.querySelector('[aria-live="polite"]')?.textContent ?? ''
     expect(notice).toContain(
       '이 브라우저에서는 복사 기능을 쓸 수 없습니다. 위 값을 직접 선택해 복사하세요.',
@@ -134,7 +156,7 @@ describe('TemporaryPasswordDialog — 복사', () => {
   it('거부되면 실패 문구', async () => {
     setClipboard({ writeText: vi.fn().mockRejectedValue(new Error('denied')) })
     await setup()
-    await click('복사')
+    await clickCopy()
     expect(dialog()?.querySelector('[aria-live="polite"]')?.textContent).toContain(
       '복사하지 못했습니다. 위 값을 직접 선택해 복사하세요.',
     )
@@ -144,21 +166,21 @@ describe('TemporaryPasswordDialog — 복사', () => {
     let release!: () => void
     setClipboard({ writeText: vi.fn(() => new Promise<void>((resolve) => (release = resolve))) })
     await setup()
-    await click('복사')
-    expect(buttonByText('복사', dialog()!)?.disabled).toBe(true)
+    await clickCopy()
+    expect(copyButton()?.disabled).toBe(true)
     release()
     await flushPromises()
-    expect(buttonByText('복사', dialog()!)?.disabled).toBe(false)
+    expect(copyButton()?.disabled).toBe(false)
   })
 
   it('🔴 복사 중에 값이 바뀌면 옛 결과를 새 값에 붙이지 않고, 버튼 잠금도 바로 풀린다', async () => {
     let release!: () => void
     setClipboard({ writeText: vi.fn(() => new Promise<void>((resolve) => (release = resolve))) })
     const value = await setup()
-    await click('복사')
+    await clickCopy()
     value.value = 'Zz9yXw8vUt7sRq6p'
     await flushPromises()
-    expect(buttonByText('복사', dialog()!)?.disabled).toBe(false)
+    expect(copyButton()?.disabled).toBe(false)
     release()
     await flushPromises()
     expect(dialog()?.querySelector('[aria-live="polite"]')?.textContent?.trim()).toBe('')
@@ -167,7 +189,7 @@ describe('TemporaryPasswordDialog — 복사', () => {
   it('값이 바뀌면 이전 복사 결과 문구를 지운다', async () => {
     setClipboard({ writeText: vi.fn().mockResolvedValue(undefined) })
     const value = await setup()
-    await click('복사')
+    await clickCopy()
     value.value = 'Zz9yXw8vUt7sRq6p'
     await flushPromises()
     expect(dialog()?.querySelector('[aria-live="polite"]')?.textContent?.trim()).toBe('')
