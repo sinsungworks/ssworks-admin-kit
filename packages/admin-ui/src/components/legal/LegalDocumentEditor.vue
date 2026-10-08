@@ -122,7 +122,9 @@
 
   const conflictText = computed(() =>
     text.value.conflict(
-      props.current != null && !props.loadFailed ? format(props.current.publishedAt) : null,
+      props.current != null && !props.loadFailed && !props.loading
+        ? format(props.current.publishedAt)
+        : null,
     ),
   )
 
@@ -259,7 +261,7 @@
         :items="rows"
         :items-per-page="10"
         :loading="historyLoading"
-        :no-data-text="text.historyEmpty"
+        :no-data-text="historyFailed ? '' : text.historyEmpty"
       >
         <template #item.legalDocNo="{ item }">
           <span class="legal-document-editor__no">

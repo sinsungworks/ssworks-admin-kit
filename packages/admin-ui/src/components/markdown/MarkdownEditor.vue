@@ -1,3 +1,33 @@
+<script lang="ts">
+  import { EditorView as ThemeEditorView } from 'codemirror'
+
+  // 🔴 모듈 수준이어야 한다. `EditorView.theme(...)` 는 부를 때마다 StyleModule 을 문서에 더하고 지우지 않는다 —
+  //    마운트마다 만들면 편집기를 여닫을 때마다 `<style>` 규칙이 쌓인다. 같은 객체를 쓰면 한 번만 더해진다.
+  /** 색은 Vuetify 토큰 — 앱 테마가 바뀌면 CSS 변수가 바뀌어 저절로 따라온다 */
+  const vuetifyTheme = ThemeEditorView.theme({
+    '&': {
+      height: '100%',
+      backgroundColor: 'rgb(var(--v-theme-surface))',
+      color: 'rgb(var(--v-theme-on-surface))',
+      fontSize: '13px',
+    },
+    '&.cm-focused': { outline: 'none' },
+    '.cm-scroller': { overflow: 'auto', fontFamily: 'monospace' },
+    '.cm-content': { caretColor: 'rgb(var(--v-theme-on-surface))' },
+    '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'rgb(var(--v-theme-on-surface))' },
+    '.cm-gutters': {
+      backgroundColor: 'rgba(var(--v-theme-on-surface), 0.04)',
+      color: 'rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity))',
+      border: 'none',
+    },
+    '.cm-activeLine, .cm-activeLineGutter': {
+      backgroundColor: 'rgba(var(--v-theme-on-surface), 0.04)',
+    },
+    '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
+      { backgroundColor: 'rgba(var(--v-theme-primary), 0.2)' },
+  })
+</script>
+
 <script setup lang="ts">
   import { Annotation, Compartment, EditorState, Transaction } from '@codemirror/state'
   import { basicSetup, EditorView } from 'codemirror'
@@ -52,30 +82,6 @@
   ]
   const labelExtension = (label: string) => EditorView.contentAttributes.of({ 'aria-label': label })
   const darkExtension = (dark: boolean) => EditorView.darkTheme.of(dark)
-
-  /** 색은 Vuetify 토큰 — 앱 테마가 바뀌면 CSS 변수가 바뀌어 저절로 따라온다 */
-  const vuetifyTheme = EditorView.theme({
-    '&': {
-      height: '100%',
-      backgroundColor: 'rgb(var(--v-theme-surface))',
-      color: 'rgb(var(--v-theme-on-surface))',
-      fontSize: '13px',
-    },
-    '&.cm-focused': { outline: 'none' },
-    '.cm-scroller': { overflow: 'auto', fontFamily: 'monospace' },
-    '.cm-content': { caretColor: 'rgb(var(--v-theme-on-surface))' },
-    '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'rgb(var(--v-theme-on-surface))' },
-    '.cm-gutters': {
-      backgroundColor: 'rgba(var(--v-theme-on-surface), 0.04)',
-      color: 'rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity))',
-      border: 'none',
-    },
-    '.cm-activeLine, .cm-activeLineGutter': {
-      backgroundColor: 'rgba(var(--v-theme-on-surface), 0.04)',
-    },
-    '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
-      { backgroundColor: 'rgba(var(--v-theme-primary), 0.2)' },
-  })
 
   onMounted(() => {
     view = new EditorView({

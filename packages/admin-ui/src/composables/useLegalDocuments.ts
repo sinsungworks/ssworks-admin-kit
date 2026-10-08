@@ -170,7 +170,9 @@ export function useLegalDocuments<
 
   const kind = ref(initialKind()) as Ref<K>
   const current = shallowRef<AdminLegalDocument | null>(null)
-  const currentLoading = ref(false)
+  // 🔴 아직 한 번도 불러오지 않았으면 loading 이다(D16). false 로 시작하면 `immediate: false` 에서 "미발행" · 쓰기 가능으로 보여
+  //    기준 판 없이 발행할 수 있다. 첫 loadCurrent 가 끝나면 내려간다.
+  const currentLoading = ref(true)
   const currentFailed = ref(false)
   const draft = ref('')
   /** 초안의 비교 기준(D8) */
@@ -320,6 +322,7 @@ export function useLegalDocuments<
     const doPublish = options.publish
     if (doPublish == null || !canPublish.value) return
     const k = kind.value
+    const baseNo = current.value?.legalDocNo ?? null
     const label = labelOf(k)
     const text = messages.publishConfirm(label)
     let attempted = false
@@ -331,8 +334,11 @@ export function useLegalDocuments<
       message: text.message,
       confirmLabel: text.confirmLabel,
       action: async () => {
-        // 🔴 확인 순간에 다시 본다(D10)
-        if (kind.value !== k || publishable() !== null) return
+        // 🔴 확인 순간에 다시 본다(D10). 기준 판 번호도 본다 — 대화상자가 열린 사이 재조회가 새 판을 가져오면(R2 로 충돌 안내가
+        //    뜨지만 대화상자 뒤에 가려진다) 기준이 조용히 옮겨져 있다. 사용자가 확인한 기준 위에서만 보낸다. 안 그러면
+        //    새 판을 409 없이 덮어쓴다.
+        if (kind.value !== k || (current.value?.legalDocNo ?? null) !== baseNo) return
+        if (publishable() !== null) return
         attempted = true
         sent = draft.value
         await doPublish({

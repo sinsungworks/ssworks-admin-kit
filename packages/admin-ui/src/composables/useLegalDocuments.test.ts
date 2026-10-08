@@ -133,6 +133,20 @@ describe('useLegalDocuments — 불러오기', () => {
     expect(loadHistory).not.toHaveBeenCalled()
   })
 
+  it('🔴 immediate: false 는 처음 불러올 때까지 loading — 잠겨 있다(D16)', async () => {
+    const { legal, loadCurrent } = setup({ immediate: false })
+    await flush()
+    expect(legal.loading.value).toBe(true)
+    expect(legal.publishBlock.value).toBe('loading')
+    expect(legal.editor.value.readonly).toBe(true)
+    expect(loadCurrent).not.toHaveBeenCalled()
+
+    await legal.reload()
+    expect(legal.loading.value).toBe(false)
+    expect(legal.publishBlock.value).toBe('unchanged')
+    expect(legal.editor.value.readonly).toBe(false)
+  })
+
   it('initialKind 로 시작하고, 목록에 없으면 경고 뒤 첫 종류', async () => {
     const { legal } = setup({ initialKind: 'PRIVACY' })
     await flush()
@@ -607,6 +621,53 @@ describe('useLegalDocuments — 발행', () => {
     legal.setDraft('# 개인정보 편집\n')
     await confirmPublish(legal)
     expect(publish).not.toHaveBeenCalled()
+  })
+
+  it('🔴 확인 대기 중 재조회가 새 판을 가져오면 보내지 않고 충돌 안내를 남긴다(D10 · R2)', async () => {
+    const loadCurrent = vi
+      .fn<(kind: Kind) => Promise<AdminLegalDocument | null>>()
+      .mockResolvedValueOnce(TERMS_12)
+      .mockResolvedValue(TERMS_13)
+    const { legal, publish } = setup({ loadCurrent })
+    await flush()
+    legal.setDraft('# 내 편집\n')
+    void legal.requestPublish()
+    await legal.reload()
+    expect(legal.current.value?.legalDocNo).toBe(13n)
+    await confirmPublish(legal)
+    expect(publish).not.toHaveBeenCalled()
+    expect(legal.conflict.value).toBe(true)
+    expect(legal.editor.value.publishDialog.modelValue).toBe(false)
+  })
+
+  it('확인 대기 중 재조회가 같은 판이면 그대로 보낸다(과차단 없음)', async () => {
+    const { legal, publish } = setup()
+    await flush()
+    legal.setDraft('# 내 편집\n')
+    void legal.requestPublish()
+    await legal.reload()
+    await confirmPublish(legal)
+    expect(publish).toHaveBeenCalledWith({
+      kind: 'TERMS',
+      body: '# 내 편집\n',
+      baseLegalDocNo: 12n,
+    })
+  })
+
+  it('🔴 발행 뒤 재조회가 서버가 고친 본문을 주면 초안이 그것을 따른다 — 충돌 없음(D11 순서)', async () => {
+    const normalized = doc(13, 'TERMS', '# 이용약관 v13(서버 정규화)\n')
+    const loadCurrent = vi
+      .fn<(kind: Kind) => Promise<AdminLegalDocument | null>>()
+      .mockResolvedValueOnce(TERMS_12)
+      .mockResolvedValueOnce(normalized)
+    const { legal } = setup({ loadCurrent })
+    await flush()
+    legal.setDraft('# 내가 보낸 본문\n')
+    void legal.requestPublish()
+    await confirmPublish(legal)
+    expect(legal.draft.value).toBe(normalized.body)
+    expect(legal.isDirty.value).toBe(false)
+    expect(legal.conflict.value).toBe(false)
   })
 })
 

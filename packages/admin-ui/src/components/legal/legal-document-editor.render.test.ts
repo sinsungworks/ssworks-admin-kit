@@ -199,6 +199,13 @@ describe('LegalDocumentEditor — 충돌', () => {
     const w = mountEditor({ conflict: true, loadFailed: true })
     expect(w.text()).toContain('다른 관리자가 새 버전을 발행했습니다.')
   })
+
+  it('충돌 뒤 재조회 중에는 내 기준 날짜를 새 판처럼 보이지 않는다', () => {
+    const w = mountEditor({ conflict: true, loading: true })
+    const alert = w.find('.v-alert').text()
+    expect(alert).toContain('다른 관리자가 새 버전을 발행했습니다.')
+    expect(alert).not.toContain(`F(${AT})`)
+  })
 })
 
 describe('LegalDocumentEditor — 편집기 · 미리보기', () => {
@@ -317,6 +324,11 @@ describe('LegalDocumentEditor — 이력', () => {
   it('빈 목록이면 안내한다', () => {
     const w = mountEditor({ history: [] })
     expect(w.text()).toContain('발행 이력이 없습니다.')
+  })
+
+  it('이력 실패면 빈 목록 안내를 겹쳐 내지 않는다', () => {
+    const w = mountEditor({ history: [], historyFailed: true })
+    expect(w.text()).not.toContain('발행 이력이 없습니다.')
   })
 })
 
