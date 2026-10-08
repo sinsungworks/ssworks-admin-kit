@@ -41,7 +41,8 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.ts"
   },
   "peerDependencies": {
     "@kim5257/kysely-mariadb-dialect": "^0.2.0",
