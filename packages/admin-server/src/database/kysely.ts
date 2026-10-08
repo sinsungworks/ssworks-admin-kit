@@ -2,6 +2,7 @@ import { MariadbDialect } from '@kim5257/kysely-mariadb-dialect'
 import { CamelCasePlugin, Kysely, type KyselyPlugin } from 'kysely'
 import { createPool } from 'mariadb'
 import { BooleanTransformPlugin } from './boolean-transform.plugin.js'
+import { assertUtcTimezone } from '../config/timezone.js'
 import { adminPoolConfig, type AdminDbConnection } from './connection.js'
 import type { AdminDatabase } from './types.js'
 
@@ -23,9 +24,12 @@ export function adminKyselyPlugins(): KyselyPlugin[] {
 /**
  * 🔴 앱(`AdminServerModule`)과 마이그레이션 러너(`kysely.config.ts`)가 **같은 이 함수**로 만든다. 풀 옵션 · 플러그인이
  *    두 벌이 되면 갈리고, 갈린 쪽이 조용히 틀린 바이트를 쓴다.
+ * 🔴 UTC 가드(`assertUtcTimezone`)가 여기 산다 — 프로세스 TZ 가 DATETIME/TIMESTAMP 저장 바이트의 유일한 가드다(스펙 R8).
+ *    앱 · 러너 · 시드가 모두 이 함수를 지나므로 여기서 막는다. 풀을 만들기 **전에** 던진다.
  * 🔴 풀은 만들자마자 백그라운드로 연결을 시도한다(gise). 다 쓰면 `destroy()` 로 닫는다.
  */
 export function createAdminKysely<DB = AdminDatabase>(connection: AdminDbConnection): Kysely<DB> {
+  assertUtcTimezone('createAdminKysely')
   return new Kysely<DB>({
     dialect: new MariadbDialect({ pool: createPool(adminPoolConfig(connection)) }),
     plugins: adminKyselyPlugins(),

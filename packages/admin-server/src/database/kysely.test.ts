@@ -4,9 +4,28 @@ import {
   type QueryResult,
   type UnknownRow,
 } from 'kysely'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { BooleanTransformPlugin } from './boolean-transform.plugin.js'
-import { adminKyselyPlugins } from './kysely.js'
+import { adminKyselyPlugins, createAdminKysely } from './kysely.js'
+
+const DUMMY_CONNECTION = { host: '127.0.0.1', user: 'u', password: 'p', database: 'd' }
+
+afterEach(() => {
+  process.env.TZ = 'UTC'
+})
+
+describe('createAdminKysely', () => {
+  it('🔴 프로세스 TZ 가 UTC 가 아니면 풀을 만들기 전에 던진다(스펙 R8 · R11)', () => {
+    process.env.TZ = 'Asia/Seoul'
+    expect(() => createAdminKysely(DUMMY_CONNECTION)).toThrow(/createAdminKysely/)
+  })
+
+  it('UTC 면 만들어지고 destroy 로 닫는다', async () => {
+    process.env.TZ = 'UTC'
+    const db = createAdminKysely(DUMMY_CONNECTION)
+    await db.destroy()
+  })
+})
 
 describe('adminKyselyPlugins', () => {
   it('🔴 [BooleanTransform, CamelCase] 순서 — boolean 판정이 snake 원본 키를 먼저 본다', () => {

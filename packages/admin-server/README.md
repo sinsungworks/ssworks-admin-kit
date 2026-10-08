@@ -9,7 +9,7 @@
 ```bash
 pnpm add @ssworks/admin-server @ssworks/admin-shared zod \
   @nestjs/common@^12 @nestjs/core@^12 @nestjs/platform-express@^12 \
-  kysely@^0.29 mariadb @kim5257/kysely-mariadb-dialect@^0.2 reflect-metadata rxjs
+  kysely@^0.29 mariadb@^3 @kim5257/kysely-mariadb-dialect@^0.2 reflect-metadata rxjs
 pnpm add -D kysely-ctl@^0.21 @types/express   # 마이그레이션 러너(kysely.config.ts) · Express 타입 — 쓰는 쪽 개발 도구
 ```
 
@@ -82,6 +82,8 @@ export default defineConfig({
 })
 ```
 
+`createAdminKysely` 자체도 프로세스 실효 타임존이 UTC 가 아니면 던진다 — 앱 · 러너 · 시드가 모두 빨리 실패한다. 위 `assertUtcTimezone` 명시 호출은 그보다 일찍 실패하게 남긴 것이다.
+
 코어 장마다 마이그레이션 폴더에 한 줄 스텁을 둔다. 번호는 프로젝트가 정한다 — 코어 장 순서(roles → users → …)만 지킨다.
 
 ```ts
@@ -122,6 +124,7 @@ export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 - 실패 `{ success: false, code, message, details? }` — 서비스는 admin-shared `BusinessError` 만 던진다. 상태는 코드표(`errorCodes` 또는 코어 표)가 정한다. 5xx 는 고정 문구이고 원문 · `cause` · `details` 는 로그로만 간다.
 - 검증 — `@Body(new ZodValidationPipe(schema))`. 실패는 400 `ERR_COMMON_VALIDATION` + `details.issues[{ path, code, message }]`(`path` 는 배열, 보낸 원문은 싣지 않음). 서비스가 필드 오류를 낼 때는 `validationError([{ path: ['currentPassword'], message }])`. 경로 번호는 `@Param('teamNo', ParseBigIntPipe)`.
 - DB 접근은 `runQuery(() => …)` · `runWriteTransaction(db, (trx) => …)` 로 감싼다 — 드라이버 오류가 코드 있는 오류(UNIQUE → `ERR_COMMON_DUPLICATED`, FK restrict → `ERR_COMMON_IN_USE` …)가 된다. 🔴 재인증(argon2)을 트랜잭션 안에서 부르지 않는다.
+- `runQuery` · `runWriteTransaction` 안에서는 `BusinessError` 가 아닌 오류 — Nest `HttpException`(`NotFoundException` 등) 포함 — 가 모두 가려진 500 `INTERNAL` 이 된다. 쿼리 · 트랜잭션 안에서는 `BusinessError` 를 던진다.
 - 쿼리는 extended 파서다(`filter[key]=…` 가 객체). 값 검증은 zod 로.
 
 ## 코어 스키마와 내 테이블
