@@ -217,6 +217,11 @@ export function useLegalDocuments<
       if (disposed || seq !== currentSeq) return
       // 🔴 그 시점에 초안이 더러우면 지키고 기준만 바꾼다(D9) — 충돌 뒤 재조회 · reload() 가 편집을 덮지 않게
       const keep = draft.value !== baseBody.value
+      // 🔴 초안이 더러운데 다른 판이 보인다 — 그사이 다른 관리자가 발행했다. 기준 판이 조용히 바뀌면 V2 보호가 꺼지므로
+      //    409 충돌과 같은 안내를 띄운다(3e ⑤ V2 · D9). 깨끗하면 초안이 그냥 따라가고, 이미 있는 안내는 여기서 지우지 않는다.
+      if (keep && (document?.legalDocNo ?? null) !== (current.value?.legalDocNo ?? null)) {
+        conflict.value = true
+      }
       current.value = document
       baseBody.value = document?.body ?? ''
       if (!keep) draft.value = baseBody.value

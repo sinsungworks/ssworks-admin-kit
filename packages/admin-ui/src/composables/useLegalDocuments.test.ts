@@ -226,6 +226,39 @@ describe('useLegalDocuments — 불러오기', () => {
     expect(legal.current.value).toEqual(TERMS_13)
     expect(legal.draft.value).toBe('# 내 편집\n')
     expect(legal.isDirty.value).toBe(true)
+    expect(legal.conflict.value).toBe(true)
+  })
+
+  it('같은 판을 더러운 초안 위에 다시 불러오면 충돌 안내는 없다', async () => {
+    const { legal } = setup()
+    await flush()
+    legal.setDraft('# 내 편집\n')
+    await legal.reload()
+    expect(legal.conflict.value).toBe(false)
+  })
+
+  it('미발행에서 편집 중 다른 관리자가 먼저 발행했으면 충돌 안내', async () => {
+    const loadCurrent = vi
+      .fn<(kind: Kind) => Promise<AdminLegalDocument | null>>()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(TERMS_12)
+    const { legal } = setup({ loadCurrent })
+    await flush()
+    legal.setDraft('# 내 편집\n')
+    await legal.reload()
+    expect(legal.conflict.value).toBe(true)
+    expect(legal.draft.value).toBe('# 내 편집\n')
+  })
+
+  it('깨끗한 초안은 새 판을 그냥 따라가고 충돌 안내는 없다', async () => {
+    const loadCurrent = vi
+      .fn<(kind: Kind) => Promise<AdminLegalDocument | null>>()
+      .mockResolvedValueOnce(TERMS_12)
+      .mockResolvedValueOnce(TERMS_13)
+    const { legal } = setup({ loadCurrent })
+    await flush()
+    await legal.reload()
+    expect(legal.conflict.value).toBe(false)
   })
 
   it('깨끗할 때 reload() 는 초안도 새 본문으로', async () => {
@@ -570,6 +603,8 @@ describe('useLegalDocuments — 발행', () => {
     legal.selectKind('PRIVACY')
     legal.editor.value.discardDialog.onConfirm()
     await flush()
+    // 새 종류의 초안이 발행 가능해야 kind 재검사만 막고 있음을 잰다
+    legal.setDraft('# 개인정보 편집\n')
     await confirmPublish(legal)
     expect(publish).not.toHaveBeenCalled()
   })
