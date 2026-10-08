@@ -813,12 +813,14 @@ useDirtyGuard(() => legal.isDirty.value) // 라우트 이탈 · 새로고침 때
 ### 미발행을 404 로 내는 서버(axion · gise 형)
 
 ```ts
+const NOT_PUBLISHED = 'ERR_LEGAL_NOT_PUBLISHED' // axion. gise 는 'ERR_NOT_FOUND'
+
 loadCurrent: async (kind) => {
   try {
     return await legalApi.current(kind)
   } catch (error) {
     // 🔴 미발행만 null 로 — 그 밖의 실패는 그대로 던져 "불러오지 못함"(발행 잠금)으로 보이게 한다
-    if (error instanceof ApiError && error.status === 404) {
+    if (error instanceof ApiError && error.status === 404 && error.code === NOT_PUBLISHED) {
       error.handled = true // 전역 토스트를 막는다(정상 시작 상태다)
       return null
     }
@@ -828,7 +830,7 @@ loadCurrent: async (kind) => {
 publish: ({ kind, body }) => legalApi.publish({ kind, body }), // 기준 판 번호를 모르는 서버 — 동시 발행 보호 없음
 ```
 
-킷은 404 를 스스로 "미발행" 으로 읽지 않는다. 잘못 설정한 주소의 404 가 미발행으로 보이면, 비교할 본 없이 발행하게 되기 때문이다.
+킷은 404 를 스스로 "미발행" 으로 읽지 않는다. 잘못 설정한 주소의 404 가 미발행으로 보이면, 비교할 본 없이 발행하게 되기 때문이다. 어댑터도 상태 코드만이 아니라 서버의 미발행 코드까지 본다. 서버가 "없는 주소" 에도 같은 코드를 쓴다면 구분이 약하다 — Phase 2 계약(`{ item: null }`)을 권한다.
 
 ### 알려진 한계 · 수동 확인
 

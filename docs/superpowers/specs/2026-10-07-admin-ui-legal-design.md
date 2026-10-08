@@ -497,7 +497,7 @@ export interface LegalDocumentEditorMessages {
   - peer 표에 두 줄, API 표 행
   - "## 약관" 절:
     - 페이지 예시: 어댑터 넷 · `useDirtyGuard(() => legal.isDirty.value)` · 열 더하기
-    - 404 를 내는 서버용 어댑터 예시: `ApiError` 404 를 잡아 `handled = true` 로 두고 `null` 을 돌려준다
+    - 404 를 내는 서버용 어댑터 예시: `ApiError` 404 + 서버의 미발행 코드를 잡아 `handled = true` 로 두고 `null` 을 돌려준다
     - 알려진 한계: 입력마다 미리보기 렌더
     - 수동 확인 항목: 한글 입력 · 다크 전환 색
 - **진행 문서:** `CLAUDE.md` · `docs/HANDOFF.md` · `docs/01-phase0.md` §8 진행표를 갱신한다. 3e 완료는 **Phase 1 완료**이고, 다음은 Phase 2 다. 테스트 수는 `pnpm check` 결과로 적는다.
@@ -549,3 +549,6 @@ export interface LegalDocumentEditorMessages {
 - **R1 — markdown-it 15 의 default export 는 값이라 타입 자리에 쓸 수 없다(§4-1).** 15 는 타입을 자체로 싣는데 `MarkdownIt` 를 타입으로 쓰면 typecheck 가 깨진다. 지연 생성하는 인스턴스의 타입은 생성자에서 끌어낸다(`ReturnType<typeof MarkdownItConstructor>`). 옵션 · 지연 생성(D2)은 그대로다(Task 1).
 - **R2 — D9 보강: 초안이 더러운 채 현재본을 다시 불러왔는데 판 번호가 바뀌었으면 `conflict = true` 다.** 409 와 같은 안내를 띄운다. D9 만으로는 기준 판이 조용히 새 판으로 옮겨져, 다음 발행이 남의 판을 409 없이 덮었다(⑤ V2 의 "편집을 시작한 판" 이 꺼진다). 초안이 깨끗하면 일어나지 않는다 — 발행 뒤 재조회 · 종류 전환 · 첫 불러오기는 해당 없음(Task 5 리뷰).
 - **R3 — `@codemirror/commands` 를 admin-ui `devDependencies` 에 둔다(§5 보충).** 되돌리기 기록(D4)을 재는 테스트만 쓴다. 패키지 소스는 import 하지 않으므로 peer 가 아니다(Task 2).
+- **R4 — D10 보강: 확인 순간에 기준 판 번호도 다시 본다.** 대화상자가 열린 사이 재조회가 새 판을 가져오면(R2 로 충돌 안내가 뜨지만 대화상자 뒤에 가려진다) 보내지 않고 닫는다 — 사용자는 안내를 본 뒤 다시 발행한다(최종 리뷰).
+- **R5 — README 의 404 어댑터 예시는 상태 코드만이 아니라 서버의 미발행 코드까지 본다(D15 와 같은 이유).** §8 문구도 고쳤다(최종 리뷰).
+- **R6 — 아직 한 번도 불러오지 않은 상태(`immediate: false`)는 `loading` 이다(D16).** 빈 초안 · 쓰기 가능으로 시작하면 "미발행" 으로 보이고 기준 판 없이 발행할 수 있었다(최종 리뷰).
