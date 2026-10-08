@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 /** `.env` 원문을 파싱한다. 순수 함수 — 파일도 `process.env` 도 건드리지 않는다. */
 export function parseDotEnv(raw: string): Record<string, string> {
   const out: Record<string, string> = {}
-  const text = raw.startsWith('﻿') ? raw.slice(1) : raw
+  const text = raw.startsWith('\uFEFF') ? raw.slice(1) : raw
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim()
     if (!trimmed || trimmed.startsWith('#')) continue

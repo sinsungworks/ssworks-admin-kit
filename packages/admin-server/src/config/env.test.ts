@@ -23,7 +23,10 @@ describe('parseDotEnv', () => {
   })
 
   it('🔴 머리의 UTF-8 BOM 을 벗긴다 — 메모장이 저장한 .env 의 첫 키가 사라지지 않는다', () => {
-    expect(parseDotEnv('﻿DB_HOST=db\nDB_USER=app\n')).toEqual({ DB_HOST: 'db', DB_USER: 'app' })
+    expect(parseDotEnv('\uFEFFDB_HOST=db\nDB_USER=app\n')).toEqual({
+      DB_HOST: 'db',
+      DB_USER: 'app',
+    })
   })
 })
 

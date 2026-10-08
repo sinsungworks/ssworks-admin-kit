@@ -217,6 +217,16 @@ describe('오류 봉투', () => {
     expect(res.body).toMatchObject({ success: false, code: CommonErrorCodes.ERR_COMMON_NOT_FOUND })
   })
 
+  it('🔴 본문 한도는 1mb — 500KB 본문은 통과한다(Express 기본 100kb 였다면 413)', async () => {
+    const body = JSON.stringify({ blob: 'x'.repeat(500_000) })
+    const res = await request(server)
+      .post('/probe/echo')
+      .set('Content-Type', 'application/json')
+      .send(body)
+      .expect(201)
+    expect(res.body.success).toBe(true)
+  })
+
   it('🔴 본문 1mb 초과는 413 봉투(Express http-errors 를 그대로 받는다)', async () => {
     const body = JSON.stringify({ blob: 'x'.repeat(1_100_000) })
     const res = await request(server)
