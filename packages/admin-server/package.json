@@ -2,10 +2,13 @@
   "name": "@ssworks/admin-server",
   "version": "0.2.0",
   "private": true,
-  "description": "관리자 API 공통 NestJS 모듈 — DB 모듈, 인증/세션, 권한 가드, 감사 로그, users/roles/teams 모듈. (Phase 2 — 아직 골격만)",
+  "description": "관리자 API 공통 NestJS 모듈 — 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마. 인증 · 사용자 · 역할 · 팀 · 약관 · IP 는 Phase 2 후속 PR.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
   "files": [
     "dist",
     "README.md"
@@ -16,6 +19,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./runner": {
+      "types": "./dist/runner.d.ts",
+      "import": "./dist/runner.js"
+    },
+    "./migrations/*": {
+      "types": "./dist/database/migrations/*.d.ts",
+      "import": "./dist/database/migrations/*.js"
     },
     "./package.json": "./package.json"
   },
@@ -33,13 +44,37 @@
     "test": "vitest run"
   },
   "peerDependencies": {
+    "@kim5257/kysely-mariadb-dialect": "^0.2.0",
+    "@nestjs/common": "^12.0.0",
+    "@nestjs/core": "^12.0.0",
+    "@nestjs/platform-express": "^12.0.0",
     "@ssworks/admin-shared": "workspace:^0",
+    "kysely": "^0.29.0",
+    "mariadb": "^3.4.0",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.0",
     "zod": "^4.0.0"
   },
+  "dependencies": {
+    "cookie-parser": "^1.4.7"
+  },
   "devDependencies": {
+    "@kim5257/kysely-mariadb-dialect": "^0.2.0",
+    "@nestjs/common": "^12.1.2",
+    "@nestjs/core": "^12.1.2",
+    "@nestjs/platform-express": "^12.1.2",
+    "@nestjs/testing": "^12.1.2",
     "@ssworks/admin-shared": "workspace:*",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
     "@types/node": "^24.0.0",
+    "@types/supertest": "^7.2.1",
+    "kysely": "^0.29.6",
+    "mariadb": "^3.5.4",
+    "reflect-metadata": "^0.2.2",
     "rimraf": "^6.0.1",
+    "rxjs": "^7.8.2",
+    "supertest": "^7.3.1",
     "typescript": "~5.9.2",
     "vitest": "^4.1.10",
     "zod": "^4.3.5"
