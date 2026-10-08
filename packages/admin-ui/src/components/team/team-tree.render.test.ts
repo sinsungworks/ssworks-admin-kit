@@ -101,6 +101,10 @@ interface HeStatLike {
 interface HeTreeVm {
   statsFlat: HeStatLike[]
   move(stat: HeStatLike, parent: HeStatLike | null, index: number): boolean
+  add(data: unknown): HeStatLike
+  getStat(data: unknown): HeStatLike
+  ignoreUpdate(fn: () => void): void
+  placeholderData: unknown
 }
 
 /** he-tree 의 끌어 놓기를 흉내 낸다 — 인스턴스 move() 는 change 를 내지 않아(Task 1 계약) 직접 내보낸다 */
@@ -113,6 +117,20 @@ async function dragTo(team: string, parent: string, index: number) {
   tree.vm.$emit('change')
   await flushPromises()
 }
+
+/** 끄는 중 놓을 자리 위 — he-tree 가 dragover 에서 하는 그대로 자리 표시를 끼워 그 자리로 옮긴다(놓지는 않는다) */
+async function hoverAt(team: string, parent: string, index: number) {
+  const tree = wrapper!.findComponent(Draggable)
+  const vm = tree.vm as unknown as HeTreeVm
+  const stat = (name: string) => vm.statsFlat.find((s) => s.data.team?.teamName === name)!
+  tree.vm.$emit('before-drag-start', stat(team))
+  vm.ignoreUpdate(() => {
+    vm.add(vm.placeholderData)
+    vm.move(vm.getStat(vm.placeholderData), stat(parent), index)
+  })
+  await flushPromises()
+}
+const placeholder = () => document.querySelector<HTMLElement>('.he-tree-drag-placeholder')
 
 describe('TeamTree — 그리기', () => {
   it('displayOrder 로 정렬해 깊이 우선으로 그리고, 깊이는 aria-level 로 잰다', async () => {
@@ -543,5 +561,51 @@ describe('TeamTree — 드래그', () => {
     await setup()
     const event = key(treeItemOf('분당지점'), { key: 'ArrowLeft', altKey: true })
     expect(event.defaultPrevented).toBe(false)
+  })
+})
+
+describe('TeamTree — 드래그 미리보기', () => {
+  it('🔴 he-tree 가 자리 표시를 끼워도 그린다 — 행 키가 자리 표시를 팀으로 읽지 않는다', async () => {
+    await setup({ draggable: true })
+    await hoverAt('판교지점', '관리본부', 1)
+    expect(placeholder()).not.toBeNull()
+    expect(names()).toEqual(expect.arrayContaining(ALL))
+  })
+
+  it('놓일 자리에 끄는 팀의 행을 옅게 그린다', async () => {
+    await setup({ draggable: true })
+    await hoverAt('판교지점', '관리본부', 1)
+    const ghost = placeholder()!.querySelector('.team-tree__row--ghost')
+    expect(ghost).not.toBeNull()
+    expect(ghost!.querySelector('.team-tree__name')?.textContent?.trim()).toBe('판교지점')
+    expect(ghost!.textContent).not.toContain('▸')
+  })
+
+  it('하위 팀이 있는 팀이면 접힌 표시가 붙는다 — 가지째 옮겨진다', async () => {
+    await setup({ draggable: true })
+    await hoverAt('영업본부', '관리본부', 1)
+    const ghost = placeholder()!.querySelector('.team-tree__row--ghost')!
+    expect(ghost.querySelector('.team-tree__name')?.textContent?.trim()).toBe('영업본부')
+    expect(ghost.textContent).toContain('▸')
+  })
+
+  it('#badge 슬롯도 그 팀으로 그린다', async () => {
+    await setup(
+      { draggable: true },
+      {
+        badge: ({ node }: { node: AdminTeamNode }) =>
+          h('span', { class: 'chip' }, `칩:${node.teamName}`),
+      },
+    )
+    await hoverAt('판교지점', '관리본부', 1)
+    expect(placeholder()!.textContent).toContain('칩:판교지점')
+  })
+
+  it('미리보기에는 버튼이 없고 화면 낭독기에서 숨는다 — 위치는 he-tree 가 알린다', async () => {
+    await setup({ draggable: true })
+    await hoverAt('판교지점', '관리본부', 1)
+    const ghost = placeholder()!.querySelector('.team-tree__row--ghost')!
+    expect(ghost.getAttribute('aria-hidden')).toBe('true')
+    expect(placeholder()!.querySelectorAll('button')).toHaveLength(0)
   })
 })

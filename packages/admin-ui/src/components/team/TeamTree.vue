@@ -173,6 +173,8 @@
   }
 
   const isDraft = (item: TreeItem): item is DraftItem => 'draft' in item
+  /** he-tree 자리 표시(`placeholderData`)는 팀도 초안도 아니다 */
+  const isTeamItem = (item: TreeItem): item is TeamItem => 'team' in item
 
   function buildItems(
     nodes: readonly AdminTeamNode[],
@@ -268,9 +270,15 @@
     { immediate: true },
   )
 
-  /** 🔴 행이 순서 번호가 아니라 팀을 따라가야 재조회 뒤 포커스 · 열린 메뉴가 옆 팀으로 넘어가지 않는다 */
-  const nodeKeyOf = (stat: HeStat): string =>
-    isDraft(stat.data) ? 'draft' : String(stat.data.team.teamNo)
+  /**
+   * 🔴 행이 순서 번호가 아니라 팀을 따라가야 재조회 뒤 포커스 · 열린 메뉴가 옆 팀으로 넘어가지 않는다.
+   * 🔴 he-tree 는 끄는 동안 자기 자리 표시(`placeholderData`, 빈 객체)를 목록에 끼워 이 함수에 넘긴다 — 팀으로 읽으면
+   *    던지고, 렌더가 멈춰 자리 표시가 안 보인다(브라우저 확인에서 발견).
+   */
+  const nodeKeyOf = (stat: HeStat): string => {
+    if (isDraft(stat.data)) return 'draft'
+    return isTeamItem(stat.data) ? String(stat.data.team.teamNo) : 'drag-placeholder'
+  }
 
   function statHandler<S extends HeStat>(stat: S): S {
     const item = stat.data
@@ -333,9 +341,15 @@
   // ── 드래그 ────────────────────────────────────────────────────────
 
   let dragging: ({ teamNo: bigint } & TeamPlacement) | null = null
+  /**
+   * 끄는 팀 — he-tree 가 놓일 자리에 끼우는 자리 표시 안에 그 행을 옅게 그린다(미리보기). he-tree 는 끄는 동안 원래 행을
+   * 숨기므로 무엇이 어디로 가는지가 이 한 줄에 보인다. 드래그가 끝나면 자리 표시가 사라지므로 비우지 않아도 남지 않는다.
+   */
+  const ghost = shallowRef<AdminTeamNode | null>(null)
 
   function onBeforeDragStart(stat: HeStat): void {
     if (isDraft(stat.data)) return
+    ghost.value = stat.data.team
     const teamNo = stat.data.team.teamNo
     const from = findTeamPlacement(toNodes(items.value), teamNo)
     dragging = from == null ? null : { teamNo, ...from }
@@ -438,6 +452,15 @@
         @close:node="remember"
         @open:node="remember"
       >
+        <!-- 놓일 자리 미리보기 — 끄는 팀의 행을 옅게. 버튼은 없고, 위치는 he-tree 의 화면 낭독기 안내가 알리므로 숨긴다 -->
+        <template #placeholder>
+          <div v-if="ghost" aria-hidden="true" class="team-tree__row team-tree__row--ghost">
+            <span v-if="ghost.children.length > 0" class="team-tree__gap team-tree__mark">▸</span>
+            <span v-else class="team-tree__gap" />
+            <span class="team-tree__name">{{ ghost.teamName }}</span>
+            <slot name="badge" :node="ghost" />
+          </div>
+        </template>
         <template #default="{ node: item, stat }">
           <div v-if="isDraft(item)" class="team-tree__row team-tree__row--draft">
             <span class="team-tree__gap" />
@@ -653,11 +676,26 @@
     outline-offset: -2px;
   }
 
+  /* 자리 표시 높이는 실제 행(36px)에 맞춘다 — 끄는 동안 줄 높이가 덜 출렁인다 */
   .team-tree__body :deep(.he-tree-drag-placeholder) {
+    box-sizing: border-box;
     width: 100%;
-    height: 32px;
+    min-height: 36px;
     background: rgba(var(--v-theme-primary), 0.08);
     border: 1px dashed rgb(var(--v-theme-primary));
+    border-radius: 4px;
+  }
+
+  .team-tree__row--ghost {
+    min-height: 34px;
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  .team-tree__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .team-tree__body :deep(.sr-only) {
