@@ -1,6 +1,6 @@
 {
   "name": "@ssworks/admin-shared",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "관리자 페이지 공통 계약 — 권한 카탈로그 팩토리, scope, 에러 코드, 응답 봉투, 페이지네이션 스키마, BigInt JSON 코덱. 프레임워크 무의존(브라우저·NestJS 공용).",
   "license": "MIT",
   "type": "module",
