@@ -581,4 +581,16 @@ docs/01-phase0.md · docs/HANDOFF.md · CLAUDE.md
 
 ## 14. 구현 중 정정
 
-§12 의 확인 결과와 구현 · 리뷰에서 바뀐 것을 `R<n>` 으로 더한다. 아직 없다.
+§12 의 확인 결과와 구현 · 리뷰에서 바뀐 것을 `R<n>` 으로 더한다.
+
+- **R1 — §12 다섯 위험 실측(2026-10-14, Nest 12.1.2 · MariaDB 11.4.13, 스크래치 프로브 — 지웠다). 설계를 바꿀 것은 없다.**
+  1. 기능 모듈의 `APP_INTERCEPTOR` 는 다른 모듈 라우트에도 걸리고, `catchError` 에서 다시 던진 원래 예외를 전역 필터가 그대로 받는다(404 봉투). import 순서를 바꿔도 같다. 감사 인터셉터는 봉투 인터셉터 **안쪽**이라 핸들러의 원래 반환값을 본다. 성공 경로의 `res.statusCode` 는 GET 200 · POST 201.
+  2. 전역 모듈이 낸 `ADMIN_AUTH_EVENTS` 를 `AdminAuthService` 의 `@Optional()` 주입이 받는다 — `AdminAuthModule` 앞 · 뒤 어느 쪽에 import 해도. 없으면 `undefined`.
+  3. `DiscoveryService.getControllers()` + `Reflector` 가 `RouterModule` 아래 컨트롤러의 메서드 메타를 찾는다. `onApplicationBootstrap` 에서 던지면 `app.init()` 이 그 문구로 거부된다. `ModulesContainer` 의 `ref.metatype === AdminAuthModule` 이 import 유무를 가른다.
+  4. `like ? escape '!'` 가 `%` · `_` · `!` 를 글자 그대로 찾고 `utf8mb4_unicode_ci` 컬럼은 대소문자를 무시한다. `json` + `JSON_BIN` DDL 은 `longtext … CHECK (json_valid(…))` 로 받아들여진다. 🔴 드라이버는 JSON 컬럼을 **이미 파싱한 값**으로 준다(문자열이 아니다) — `readJsonColumn` 이 그대로 통과시킨다. 잘못된 JSON INSERT 는 4025(CONSTRAINT) 로 거부된다.
+  5. `query parser: 'extended'` 가 `filter[…]` 를 객체로 풀고 값은 모두 문자열이다(`filter[keyword]=` 는 `''` 로 남는다). 🔴 `BigInt('')` 는 `0n`, `BigInt(' 3 ')` 은 `3n` — 둘 다 던지지 않는다. `queryBigIntSchema` 는 숫자만 든 문자열을 정규식으로 먼저 거른다(B13).
+- **R2 — `AdminSessionsModule` 이 `AdminSessionStore` 를 자기 provider 로 둔다(§4-2 정정, 플랜 작성 2026-10-14).** 저장소는 무상태(KYSELY 만)라 두 벌이어도 해가 없다. `AdminAuthModule` 의 것을 export 받으면 인증 모듈이 빠진 앱이 DI 해석 오류로 멈춰 이유가 안 보인다 — 자기 provider 면 `assertAuthModuleRegistered` 의 문구로 멈춘다. `AdminAuthModule` 의 export 는 바꾸지 않는다.
+- **R3 — `AuditCatalog` 의 기본 타입 인자는 `Record<string, string>` 이다(§4-3 정정).** `Record<never, never>` 면 프로젝트 카탈로그(`AuditCatalog<{ X: 'x' }>`)가 타입 술어 · 값 배열 때문에 옵션 `audit.catalog`(타입 `AuditCatalog`)에 할당되지 않는다. `defineAuditCatalog` 의 제네릭 기본값은 그대로(추론용).
+- **R4 — 코어 옵션 해석이 모르는 슬롯(오타) · 빈 키를 기동에서 막는다(① P1 보강, `resolvePermissionMap`).** 모듈의 빠진 슬롯 검사만으로는 `'session.read'` 같은 오타가 조용히 무시되고 403 만 남는다.
+- **R5 — `errorCode` 도 64 코드 포인트로 자른다(§5-2 보강).** 오류 코드는 쓰는 쪽이 정하므로 길 수 있다 — 넘으면 INSERT 가 죽어 행이 빠진다. 액션 · 대상 종류의 폭은 `defineAuditCatalog`(1~128 · 1~64)와 기동 검사가 지킨다.
+- **R6 — 플랜의 Task 순서는 감사(6~9)가 세션(10~11)보다 앞이다(§8 의 목록 순서 정정).** 세션 컨트롤러가 `@Audit` · `attachAudit*` 를 쓴다.
