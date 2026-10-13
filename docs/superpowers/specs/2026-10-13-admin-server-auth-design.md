@@ -356,16 +356,18 @@ principal = findPrincipal(userNo)
 req.admin = { …principal, sessionNo, permissions: 강제 변경이면 [] }
 ```
 
-`AdminPermissionGuard`:
+`AdminPermissionGuard`(순서는 §14 R3 — 권한 선언이 `@SelfOnly` 보다 먼저):
 
 ```
+HTTP 가 아닌 컨텍스트 ─────────────────── 통과(§14 R4 — AdminAuthGuard 도 같다)
 @Public ──────────────────────────────── 통과
 req.admin 없음 ───────────────────────── 401 ERR_COMMON_UNAUTHORIZED
 강제 변경 계정 · 허용 표시 없음 ──────── 403 ERR_PASSWORD_CHANGE_REQUIRED  비밀번호를 바꾼 뒤 이용할 수 있습니다.
+권한 선언 있음
+   @RequirePermissions 실패 · @RequireAnyPermissions 실패 ── 403 ERR_COMMON_FORBIDDEN  권한이 없습니다.
+   (둘 다 선언되면 둘 다 통과해야 한다. '*' 는 정확 일치 — admin-shared 판정 함수) · 통과
 @SelfOnly ────────────────────────────── 통과
 선언 없음 ────────────────────────────── failClosed ? 403 ERR_COMMON_FORBIDDEN { reason: 'no-permission-declared' } : 통과
-@RequirePermissions 실패 · @RequireAnyPermissions 실패 ── 403 ERR_COMMON_FORBIDDEN  권한이 없습니다.
-                                           (둘 다 선언되면 둘 다 통과해야 한다. '*' 는 정확 일치 — admin-shared 판정 함수)
 ```
 
 DB 왕복 둘(세션 · 주체). `lastAccessAt` 은 쓰지 않는다.
@@ -581,4 +583,14 @@ DB 에 닿기 전에 끝나는 경로만: 라우트가 `/admin/auth/*` 에 있�
 
 ## 14. 구현 중 정정
 
-(구현하며 채운다.)
+- **R1 — §12 위험 1~5 실측(2026-10-13, 플랜 전, `%TEMP%\ak2b` · MariaDB 11.4).**
+  1. `@nestjs/jwt` 12.0.2 는 ESM 으로 import 된다. `new JwtService({ secret, signOptions, verifyOptions })` 를 직접 만들어 쓴다. `verify(token, { clockTimestamp })` 는 기본 `verifyOptions`(`algorithms: ['HS256']`)와 합쳐진다 — `clockTimestamp = exp` 면 `TokenExpiredError`(`instanceof` 로 가른다), `exp − 1` 은 통과. 다른 비밀키 · 잘린 토큰은 `JsonWebTokenError`, HS512 는 `invalid algorithm`, `alg: none` 은 `jwt signature is required`.
+  2. `@node-rs/argon2` 2.2.2 는 Windows 에서 프리빌드로 설치되고 m=64MiB · t=3 · p=4 해시 · 검증이 각 약 15ms 다 — DB 테스트는 시드마다 그냥 해시한다(미리 해시한 상수 불필요). 깨진 해시의 `verify` 는 `Decoding failed` 로 던진다 → 500(마스킹). `Algorithm` 은 const enum 이라 `isolatedModules` 에서 값으로 못 쓴다 — 숫자 `2` 를 쓴다(gise 와 같다).
+  3. `RouterModule.register([{ path: 'admin', module: AdminAuthModule }])` 는 정적 import 와 같은 클래스의 동적 모듈(`withRepository`) 모두에 prefix 를 붙인다. 기능 모듈이 등록한 `APP_GUARD` 는 다른 모듈의 라우트에도 걸린다. `inject: [{ token, optional: true }]` 팩토리로 기본 · 교체 리포지토리를 가른다.
+  4. MariaDB 11.4(REPEATABLE READ): 별도 연결이 커밋 전 UPDATE 로 행을 잡은 동안 autocommit SELECT 는 옛 버전을 보고(막히지 않는다), 같은 행의 조건부 UPDATE 는 상대 커밋까지 기다렸다가(≈0.5초) 0행을 받는다 — P1 을 결정적으로 재현할 수 있다.
+  5. supertest `request.agent` 는 `Path=/` 쿠키를 다시 싣는다. Express 5 `clearCookie` 는 `maxAge` 를 무시하고 `Expires=Thu, 01 Jan 1970` 을 낸다. cookie-parser 는 `j:{"a":1}` · `j:[1]` 을 객체 · 배열로 푼다. trust proxy 없이는 `X-Forwarded-Proto: https` 가 `req.secure` 를 바꾸지 않는다 — `'auto'` 가 헤더를 직접 읽는 이유다.
+- **R2 — §5-3 의 "트랜잭션 안의 평범한 SELECT 는 회전 전 버전을 본다" 는 부정확하다(R1-4 실측).** 트랜잭션의 첫 문장이 잠금 읽기(UPDATE)면 아직 읽기 뷰가 없어, 그 뒤의 SELECT 는 커밋된 최신 값을 본다. P1 재조회를 트랜잭션 밖에 두는 결정은 그대로다 — 읽기 뷰가 만들어지는 시점에 기대지 않는다.
+- **R3 — 권한 가드는 권한 선언을 `@SelfOnly` 보다 먼저 본다(§5-2 순서 정정, 플랜).** hangang 은 `@SelfOnly` 면 곧바로 통과시켜, 클래스에 `@SelfOnly` · 메서드에 `@RequirePermissions` 가 함께 있으면 권한 검사 없이 열렸다(`getAllAndOverride` 가 클래스 값을 돌려준다). 이제 순서는 `@Public` → 주체 → 강제 변경 → **권한 선언이 있으면 그것을 판정** → 없고 `@SelfOnly` 면 통과 → 둘 다 없으면 fail-closed. 선언한 권한은 늘 지켜진다.
+- **R4 — HTTP 가 아닌 실행 컨텍스트(마이크로서비스 · WebSocket)는 두 가드 모두 통과시킨다(플랜).** 가드가 앱 전역(G1)이라 쓰는 쪽 RPC 핸들러에도 걸리는데, 쿠키 인증을 할 수 없는 자리를 막으면 그 핸들러가 전부 깨진다. 관리자 인증은 HTTP 만 지킨다(2a F4 봉투와 같은 규칙).
+- **R5 — 시각 컬럼 `datetime` · `timestamp` 는 초 단위로 잘려 저장된다(MariaDB 기본, gise 실측).** `revokedAt` · `expireAt` · `lockUntil` 은 앱이 넣은 시각보다 1초 미만 이를 수 있다 — 유예창 경과가 그만큼 길게, 잠금이 그만큼 일찍 풀린다. 경계의 같은 순간은 단위 층(§9-1)이 재고, DB 층은 ±2초로 잰다(§9-3).
+- **R6 — 작은 파일 셋을 더한다(§8 보강).** `auth/password-check.ts`(비밀번호 확인 세 자리의 카운터 공용 함수 — B2) · `auth/request-meta.ts`(`clientIp` · `userAgent` 를 요청에서 꺼낸다) · `auth/errors.ts`(§5 의 문구 표 `AUTH_MESSAGES` — 서비스 · 가드 · 테스트가 같은 문구를 쓴다). 테스트 하네스는 `test-support/auth.ts`(DB 시드 · 서비스 조립 · 잠금 연결 · 가짜 정책 · 이벤트)와 `test-support/auth-probe.ts`(프로브 컨트롤러 · 앱 부트)로 나눈다.
