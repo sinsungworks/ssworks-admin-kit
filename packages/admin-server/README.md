@@ -162,7 +162,7 @@ export interface Database extends AdminDatabase {
         }
       },
     }),
-    AdminAuthModule, // 사용자 테이블 컬럼이 다르면 AdminAuthModule.withRepository(MyAuthRepository, { imports })
+    AdminAuthModule, // 🔴 AppModule 에서 한 번만 import 한다 — 전역 모듈이다. 사용자 테이블 컬럼이 다르면 AdminAuthModule.withRepository(MyAuthRepository, { imports })
   ],
 })
 export class AppModule {}
@@ -182,18 +182,18 @@ export class AppModule {}
 - 관리자 라우트는 권한을 선언한다: `@RequirePermissions(...)`(AND) · `@RequireAnyPermissions(...)`(OR) · `@SelfOnly()`(인증만). 🔴 선언이 없으면 403(fail-closed) — `'*'` 권한도 막는다. 선언한 권한은 클래스 `@SelfOnly` 보다 우선한다. crm · axion 이식 과도기에만 `auth.failClosed: false`.
 - 프로젝트 권한 타입으로 좁히려면 감싼다: `export const Require = (...p: Permission[]) => RequirePermissions(...p)`.
 - 주체는 `@CurrentAdmin()`(`AdminPrincipal`) 으로 받는다 — `req.admin` 에 있어 회원 인증(passport)의 `req.user` 와 갈린다. 인터셉터에서는 `getAdminPrincipal(req)`.
-- HTTP 가 아닌 컨텍스트(마이크로서비스 · WebSocket)는 가드가 지나친다.
+- 마이크로서비스(`rpc`) · WebSocket(`ws`) 컨텍스트는 가드가 지나친다. GraphQL 같은 그 밖의 비HTTP 컨텍스트는 401 — 쓰려면 자기 가드를 둔다.
 
 ### 토큰 · 쿠키
 
 - 액세스 = JWT HS256 15분, refresh = 512비트 난수 7일(DB 에는 sha256 만, 회전마다 새로). 둘 다 httpOnly 쿠키 `admin_at` · `admin_rt`, `Path=/`, `SameSite=Lax`.
 - Secure 는 `'auto'` — `req.secure` 또는 `X-Forwarded-Proto` 첫 값이 https 또는 `NODE_ENV=production`. 🔴 http 개발 서버를 `NODE_ENV=production` 으로 띄우면 브라우저가 쿠키를 버린다 — admin-ui 스토어가 `SessionNotEstablishedError` 로 알린다.
-- 옵션: `auth.accessTtlMs` · `refreshTtlMs` · `refreshGraceMs`(기본 30 000, 0 이면 끔) · `lockout: { maxFailures, lockMs }` · `cookies: { accessName, refreshName, refreshPath, sameSite, secure, domain }`.
+- 옵션: `auth.accessTtlMs` · `refreshTtlMs` · `refreshGraceMs`(기본 30 000, 0 이면 끔) · `lockout: { maxFailures, lockMs }` · `cookies: { accessName, refreshName, refreshPath, sameSite, secure, domain }`. `refreshPath` 를 좁힐 때는 `logout` 까지 덮는 경로를 쓴다(예 `/api/admin/auth`) — `/auth/refresh` 만 덮으면 로그아웃이 세션을 끊지 못한다.
 - 회전된 refresh 가 다시 오면 그 사용자의 세션을 전부 끊는다(재사용 탐지, 401 `ERR_REFRESH_REUSED`). 30초 유예창 안에서 다른 탭이 늦게 낸 같은 토큰은 새 세션을 하나 더 준다.
 
 ### 로그인 판정 · 강제 변경 · 재인증
 
-- 비밀번호가 먼저다 — 틀리면 언제나 401 `ERR_LOGIN_FAILED`(없는 아이디 · 퇴사 · 잠긴 계정도 같은 응답). 맞으면 퇴사 403 → IP 403 → 잠김 423 순서. 5회 틀리면 15분 잠긴다 — 로그인 · 비밀번호 변경 · 재인증이 한 카운터를 쓴다.
+- 비밀번호가 먼저다 — 틀리면 언제나 401 `ERR_LOGIN_FAILED`(없는 아이디 · 퇴사 · 잠긴 계정도 같은 응답). 5회 틀리면 15분 잠긴다 — 로그인 · 비밀번호 변경 · 재인증이 한 카운터를 원자적으로 쓴다. 🔴 잠긴 동안의 로그인은 비밀번호가 맞아도 같은 401 이다(정답 여부를 흘리지 않는다). 잠기지 않았고 맞으면 퇴사 403 → IP 403 순서. 로그인된 본인의 비밀번호 변경 · 재인증은 잠김을 423 으로 알린다.
 - 퇴사: `users.resignAt` 은 **효력 시각**이다 — 그 시각부터 로그인 · 요청 · 갱신이 403 `ERR_RESIGNED_USER`. "퇴사일 당일까지 근무" 는 쓸 때 다음 날 0시(기준 시간대)로 바꿔 넣는다.
 - 강제 변경(`isPasswordChangeRequired`): 로그인은 되고 `/me` 가 `permissions: []` 와 플래그를 낸다. 그 밖의 라우트는 403 `ERR_PASSWORD_CHANGE_REQUIRED`. admin-ui `createAdminGuard({ isPasswordChangeRequired })` 가 변경 화면으로 보낸다.
 - 민감 작업 재인증: 서비스 진입부에서 `await reauth.verify(admin, body.currentPassword)`(`AdminReauthService`, 틀리면 403 `ERR_REAUTH_REQUIRED`). 🔴 트랜잭션 안에서 부르지 않는다.
@@ -206,12 +206,14 @@ export class AppModule {}
 ```ts
 @Injectable()
 class MyAuthRepository implements AdminAuthRepository {
-  // findCredentialByUserId · findCredentialByNo · findPrincipal · saveLoginState · changePassword
+  // findCredentialByUserId · findCredentialByNo · findPrincipal · updateLoginState · changePassword
   // 예: isActive 컬럼이면 resignAt: row.isActive ? null : new Date(0)
 }
 
 AdminAuthModule.withRepository(MyAuthRepository, { imports: [MyUsersDataModule] })
 ```
+
+🔴 `updateLoginState` 는 원자적이어야 한다(행 잠금 또는 compare-and-set). `changePassword` 의 `trx` 는 `Transaction<AdminDatabase>` 라 자기 Database 타입으로 단언해 쓴다.
 
 ### 시드 · 2c · 2f 자리
 

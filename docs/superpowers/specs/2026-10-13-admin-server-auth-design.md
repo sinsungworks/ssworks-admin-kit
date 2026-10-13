@@ -13,7 +13,7 @@
 끝 상태 — 실 MariaDB 의 HTTP 계약으로 증명한다:
 
 - 로그인 → 쿠키 → `/me` → 회전 → 옛 refresh 재제시 시 그 사용자의 살아 있는 세션 전부 폐기 + 401 `ERR_REFRESH_REUSED`
-- 잠금 423 `ERR_ACCOUNT_LOCKED`, 자격 불일치 401 `ERR_LOGIN_FAILED`, 액세스 토큰 만료 401 `ERR_EXPIRED_TOKEN`
+- 잠긴 계정의 로그인은 비밀번호가 맞아도 401 `ERR_LOGIN_FAILED`(판정 오라클 방지 — §14 R7), 비밀번호 변경 · 재인증의 잠김은 423 `ERR_ACCOUNT_LOCKED`, 자격 불일치 401 `ERR_LOGIN_FAILED`, 액세스 토큰 만료 401 `ERR_EXPIRED_TOKEN`
 - 권한 표시 없는 라우트 403(fail-closed), 강제 변경 계정은 `/me` · 비밀번호 변경만
 - 틀린 현재 비밀번호 = 400 `ERR_COMMON_VALIDATION` + `details.issues[{ path: ['currentPassword'] }]`(3c W1)
 
@@ -39,7 +39,7 @@
 ### 2-2. 공통 결정 (정본이 같거나 계약이 정한 것 — 이의 없음)
 
 1. **토큰.** 토큰은 httpOnly 쿠키로만 나간다 — 본문에 싣지 않는다(gise). 액세스 = JWT HS256 `{ userNo, sessionNo }`(`"BigInt(n)"` 래퍼 문자열), 15분. refresh = 512비트 난수, DB 에는 sha256 hex 만, 7일(회전마다 새 행이 7일을 다시 받는다). `jwtSecret` 필수 · 32자 미만이면 기동 거부(axion).
-2. **로그인 판정 순서.** 비밀번호 검증이 먼저다 — 존재 · 잠김 · 퇴사는 비밀번호를 아는 사람에게만 드러난다(gise · hangang). 잠금 5회 · 15분, 잠긴 동안 연장 없음, 잠금이 끝난 뒤 첫 실패는 1부터(두 정본 같은 알고리즘).
+2. **로그인 판정 순서.** 비밀번호 검증이 먼저다 — 존재 · 잠김 · 퇴사는 비밀번호를 아는 사람에게만 드러난다(gise · hangang). 잠금 5회 · 15분, 잠긴 동안 연장 없음, 잠금이 끝난 뒤 첫 실패는 1부터(두 정본 같은 알고리즘). 잠긴 동안의 로그인은 맞은 비밀번호도 같은 401(§14 R7).
 3. **매 요청.** 권한은 토큰에 싣지 않고 매 요청 DB 에서 읽는다. 세션 행의 `userNo` 를 토큰과 대조한다(axion). `lastAccessAt` 은 요청마다 쓰지 않는다 — 15분마다 회전이 새 행을 지금 시각으로 만든다.
 4. **회전 · 재사용.** 재사용 탐지는 살아 있는 세션만 `'reuse_detected'` 로 바꾼다(hangang R34). `'terminated'` · `'reuse_detected'` 의 재제시는 401 `ERR_INVALID_TOKEN` 만. 잠김 계정의 회전은 막지 않는다(잠금은 비밀번호 대입 방어다).
 5. **강제 변경 · 비밀번호 변경 · 로그아웃 · 재인증.** §5-4.
@@ -179,7 +179,11 @@ export interface AdminAuthRepository {
   findCredentialByUserId(userId: string): Promise<AdminCredential | null>
   findCredentialByNo(userNo: bigint): Promise<AdminCredential | null>
   findPrincipal(userNo: bigint): Promise<AdminPrincipalRecord | null>
-  saveLoginState(userNo: bigint, state: AdminLoginState): Promise<void>
+  // 🔴 원자적 — 행 잠금(SELECT … FOR UPDATE)으로 현재 값을 읽어 next 의 결과를 쓰고 돌려준다(§14 R8)
+  updateLoginState(
+    userNo: bigint,
+    next: (current: AdminLoginState) => AdminLoginState,
+  ): Promise<AdminLoginState>
   /**
    * 🔴 기대 해시(`expectedHash`)가 그대로일 때만 바꾼다 — 바꿀 때 `isPasswordChangeRequired = false`,
    * `loginFailCount = 0`, `lockUntil = null` 을 함께 쓴다. 바뀐 행 수(0 = 검증 뒤 다른 쓰기가 먼저 커밋).
@@ -325,14 +329,15 @@ export function verifyPassword(passwordHash: string, password: string): Promise<
 ```
 cred = findCredentialByUserId(userId)
 ├ null ─────────────────── verifyPassword(DUMMY) · login.fail(userNo null) → 401 ERR_LOGIN_FAILED
-├ 비밀번호 틀림 ────────── saveLoginState(nextLoginState FAIL) · login.fail → 401 ERR_LOGIN_FAILED
+├ 비밀번호 틀림 ────────── updateLoginState(nextLoginState FAIL — 원자적) · login.fail → 401 ERR_LOGIN_FAILED
 │                            🔴 잠김 · 퇴사 계정이어도 같은 응답 · 같은 비용(argon2 1회)
 └ 비밀번호 맞음
+   ├ updateLoginState(잠겨 있으면 그대로, 아니면 SUCCESS) → 방금 잠근 행이 잠김
+   │     ── login.blocked(locked) → 401 ERR_LOGIN_FAILED   (잠긴 동안은 맞든 틀리든 같은 401 — §14 R7)
    ├ isResigned(resignAt, now) ── login.blocked(resigned) → 403 ERR_RESIGNED_USER
    ├ ADMIN_ACCESS_POLICY 있음 → principal = findPrincipal(userNo) → allows({ clientIp, userNo, teamNos })
    │     false ── login.blocked(ip) → 403 ERR_IP_NOT_ALLOWED { clientIp }
-   ├ isLocked(lockUntil, now) ── login.blocked(locked) → 423 ERR_ACCOUNT_LOCKED   (카운터는 건드리지 않는다)
-   └ 성공 ── saveLoginState(0, null)(바뀔 때만) · 세션 INSERT(loginAt = lastAccessAt = now) · 액세스 서명
+   └ 성공 ── 세션 INSERT(loginAt = lastAccessAt = now) · 액세스 서명
              · login.success → 쿠키 둘 → 200
 ```
 
@@ -359,7 +364,7 @@ req.admin = { …principal, sessionNo, permissions: 강제 변경이면 [] }
 `AdminPermissionGuard`(순서는 §14 R3 — 권한 선언이 `@SelfOnly` 보다 먼저):
 
 ```
-HTTP 가 아닌 컨텍스트 ─────────────────── 통과(§14 R4 — AdminAuthGuard 도 같다)
+rpc · ws 컨텍스트 ─────────────────────── 통과 · 그 밖의 비HTTP ── 401(§14 R10 — AdminAuthGuard 도 같다)
 @Public ──────────────────────────────── 통과
 req.admin 없음 ───────────────────────── 401 ERR_COMMON_UNAUTHORIZED
 강제 변경 계정 · 허용 표시 없음 ──────── 403 ERR_PASSWORD_CHANGE_REQUIRED  비밀번호를 바꾼 뒤 이용할 수 있습니다.
@@ -421,7 +426,7 @@ UPDATE sessions SET replaced_by_session_no = :new WHERE session_no = :old AND re
 cred = findCredentialByNo(userNo) — null → 401 ERR_COMMON_UNAUTHORIZED
 isLocked ── 423 ERR_ACCOUNT_LOCKED
 verifyPassword(cred.passwordHash, currentPassword) 거짓
-   ── saveLoginState(FAIL) → validationError([{ path: ['currentPassword'], code: 'custom',
+   ── updateLoginState(FAIL) → validationError([{ path: ['currentPassword'], code: 'custom',
                                                 message: '현재 비밀번호가 올바르지 않습니다.' }])   (3c W1)
 newHash = hashPassword(newPassword)                     ← 트랜잭션 밖
 runWriteTransaction:
@@ -431,7 +436,7 @@ runWriteTransaction:
 password.change { revokedCount } → 200          현재 세션 · 쿠키는 그대로
 ```
 
-**재인증** (`AdminReauthService.verify`): `findCredentialByNo` → null 401 → 잠김 423 → 틀리면 `saveLoginState(FAIL)` · 403 `ERR_REAUTH_REQUIRED` `비밀번호가 올바르지 않습니다.` → 맞으면 카운터 · 잠금이 남아 있을 때만 `saveLoginState(0, null)`. 이벤트는 내지 않는다(감사는 그 쓰기의 `@Audit` 몫 — 2c).
+**재인증** (`AdminReauthService.verify`): `findCredentialByNo` → null 401 → 잠김 423 → 틀리면 `updateLoginState(FAIL)` · 403 `ERR_REAUTH_REQUIRED` `비밀번호가 올바르지 않습니다.` → 맞으면 카운터 · 잠금이 남아 있을 때만 `updateLoginState(SUCCESS)`. 이벤트는 내지 않는다(감사는 그 쓰기의 `@Audit` 몫 — 2c).
 
 **로그아웃**: refresh 쿠키가 문자열이면 `findByRefreshHash` → 살아 있으면 `revoke(sessionNo, 'terminated')` · `logout` 이벤트. 🔴 이미 폐기된 행의 사유를 덮지 않는다(그 행이 `'rotated'` 면 재사용 탐지가 무력화된다, gise). 모르는 토큰 · 쿠키 없음도 200. 쿠키는 늘 지운다.
 
@@ -460,22 +465,22 @@ password.change { revokedCount } → 200          현재 세션 · 쿠키는 그
 
 ## 6. 오류 표
 
-| 상황                                            | 상태 | 코드                           | 자리                   |
-| ----------------------------------------------- | ---- | ------------------------------ | ---------------------- |
-| 본문 검증 실패 · 틀린 현재 비밀번호             | 400  | `ERR_COMMON_VALIDATION`        | 파이프 · 변경          |
-| 쿠키 없음 · `req.admin` 없음                    | 401  | `ERR_COMMON_UNAUTHORIZED`      | 가드 · 회전            |
-| 아이디 · 비밀번호 불일치                        | 401  | `ERR_LOGIN_FAILED`             | 로그인                 |
-| 액세스 토큰 만료                                | 401  | `ERR_EXPIRED_TOKEN`            | 가드                   |
-| 위조 · 형식 오류 · 폐기 · 모르는 refresh · 경합 | 401  | `ERR_INVALID_TOKEN`            | 가드 · 회전            |
-| 세션 만료                                       | 401  | `ERR_SESSION_EXPIRED`          | 가드 · 회전            |
-| 회전된 refresh 재제시(창 밖)                    | 401  | `ERR_REFRESH_REUSED`           | 회전                   |
-| 권한 없음 · 선언 없음                           | 403  | `ERR_COMMON_FORBIDDEN`         | 권한 가드              |
-| 퇴사                                            | 403  | `ERR_RESIGNED_USER`            | 로그인 · 가드 · 회전   |
-| IP 거부                                         | 403  | `ERR_IP_NOT_ALLOWED`           | 로그인 · 가드          |
-| 강제 변경 계정의 다른 라우트                    | 403  | `ERR_PASSWORD_CHANGE_REQUIRED` | 권한 가드              |
-| 재인증 실패                                     | 403  | `ERR_REAUTH_REQUIRED`          | 재인증                 |
-| 비밀번호 동시 변경                              | 409  | `ERR_COMMON_CONFLICT`          | 변경                   |
-| 잠김                                            | 423  | `ERR_ACCOUNT_LOCKED`           | 로그인 · 변경 · 재인증 |
+| 상황                                            | 상태 | 코드                           | 자리                 |
+| ----------------------------------------------- | ---- | ------------------------------ | -------------------- |
+| 본문 검증 실패 · 틀린 현재 비밀번호             | 400  | `ERR_COMMON_VALIDATION`        | 파이프 · 변경        |
+| 쿠키 없음 · `req.admin` 없음                    | 401  | `ERR_COMMON_UNAUTHORIZED`      | 가드 · 회전          |
+| 아이디 · 비밀번호 불일치 · 잠긴 계정의 로그인   | 401  | `ERR_LOGIN_FAILED`             | 로그인               |
+| 액세스 토큰 만료                                | 401  | `ERR_EXPIRED_TOKEN`            | 가드                 |
+| 위조 · 형식 오류 · 폐기 · 모르는 refresh · 경합 | 401  | `ERR_INVALID_TOKEN`            | 가드 · 회전          |
+| 세션 만료                                       | 401  | `ERR_SESSION_EXPIRED`          | 가드 · 회전          |
+| 회전된 refresh 재제시(창 밖)                    | 401  | `ERR_REFRESH_REUSED`           | 회전                 |
+| 권한 없음 · 선언 없음                           | 403  | `ERR_COMMON_FORBIDDEN`         | 권한 가드            |
+| 퇴사                                            | 403  | `ERR_RESIGNED_USER`            | 로그인 · 가드 · 회전 |
+| IP 거부                                         | 403  | `ERR_IP_NOT_ALLOWED`           | 로그인 · 가드        |
+| 강제 변경 계정의 다른 라우트                    | 403  | `ERR_PASSWORD_CHANGE_REQUIRED` | 권한 가드            |
+| 재인증 실패                                     | 403  | `ERR_REAUTH_REQUIRED`          | 재인증               |
+| 비밀번호 동시 변경                              | 409  | `ERR_COMMON_CONFLICT`          | 변경                 |
+| 잠김                                            | 423  | `ERR_ACCOUNT_LOCKED`           | 변경 · 재인증        |
 
 모두 admin-shared `COMMON_ERROR_STATUS` 에 이미 있다 — 새 코드는 없다. 🔴 갱신해도 풀리지 않는 거부(잠김 · 퇴사 · IP · 강제 변경)가 401 이 아닌 것은 admin-ui 클라이언트의 갱신 루프를 막기 위해서다(admin-shared 표 주석).
 
@@ -534,8 +539,8 @@ DB 에 닿기 전에 끝나는 경로만: 라우트가 `/admin/auth/*` 에 있�
 
 - **리포지토리**: 대표 팀(두 팀 소속이면 작은 teamNo · 팀 없으면 null), 권한 JSON 이 객체 · 숫자 원소면 `[]` · 문자열만, `changePassword` 기대 해시 불일치 0행 · 일치 1행 + 플래그 · 카운터 · 잠금 초기화, userId 대소문자(ci) 조회.
 - **세션 저장소**: `rotate` 성공(옛 행 rotated · revokedAt · 링크, 새 행 loginAt 이 옛 값) · 원자성(INSERT 가 실패하게 만들면 옛 행이 살아 있음) · 🔴 잠금 경합(별도 연결이 옛 행을 커밋 전 rotated 로 바꾼 채 `rotate` 를 부르면 기다렸다가 null) · `revokeAllOfUser` 는 살아 있는 행만(rotated · terminated 사유 보존) · `exceptSessionNo`.
-- **서비스**: 로그인 다섯 갈래와 순서(가짜 정책 · 이벤트가 "어느 갈래에서 몇 번" — 비밀번호 틀린 퇴사 계정은 정책을 부르지 않음, 잠긴 계정의 맞은 비밀번호는 정책 다음에 423), 회전 · 유예 · 재사용, 🔴 P1 결정적 재현(별도 연결이 옛 행을 커밋 전 `'rotated'` + 살아 있는 후계로 바꾼 채 refresh → 기다렸다가 0행 → 다시 읽어 `'grace'` 로 200, graceMs 0 이면 401 `ERR_INVALID_TOKEN` 이고 `reuse_detected` 행 없음), P2(앞 회전 뒤 옛 토큰: 창 안 + 후계 생존 → 200 · 창 밖 → 전량 폐기), 후계를 로그아웃한 뒤 창 안 재제시 → 재사용, 변경 · 재인증 · 카운터 공유(B2).
-- **HTTP 계약(끝 상태)**: 로그인 → 쿠키 속성(HttpOnly · `Path=/` · `SameSite=Lax` · http 에서 Secure 없음 · `X-Forwarded-Proto: https` 면 Secure) → `/me` 모양 → refresh 가 새 쿠키 둘 → 옛 refresh(창 밖) `ERR_REFRESH_REUSED` + 다른 기기 세션도 401 → Promise.all 동시 refresh 둘 다 200. 틀림 401 · 5회째 잠김 · 맞은 비밀번호 423 · `lockUntil` 을 과거로 바꾸면 성공. 퇴사 계정 로그인 · 가드 · refresh 403. 세션 `expireAt` 을 과거로 → `ERR_SESSION_EXPIRED`. 선언 없는 프로브 403 · `'*'` 역할 통과 · AND/OR. 강제 변경 계정 `/me` 200 + `permissions: []` · 다른 `@SelfOnly` 403 `ERR_PASSWORD_CHANGE_REQUIRED` · refresh 200. 비밀번호 변경 — 틀린 현재 400 `issues[0].path = ['currentPassword']` + 카운터 증가 · 새 = 현재 400 `newPassword` · 잠김 423 · 성공 200 → 플래그 해제 · 다른 기기 refresh `ERR_INVALID_TOKEN` · 현재 세션 유지 · 새 비밀번호로 로그인. 로그아웃 — 두 쿠키 지움 · 그 뒤 옛 refresh `ERR_INVALID_TOKEN`(재사용 아님 · 다른 세션 살아 있음). IP 자리 — 가짜 정책 거부 시 로그인(비밀번호 맞은 뒤) · 가드에서 403 `details.clientIp`. 응답 본문이 모두 admin-shared `errorRespSchema` 로 파싱.
+- **서비스**: 로그인 다섯 갈래와 순서(가짜 정책 · 이벤트가 "어느 갈래에서 몇 번" — 비밀번호 틀린 퇴사 계정은 정책을 부르지 않음, 잠긴 계정의 맞은 비밀번호는 정책을 부르지 않고 401, 동시 틀린 비밀번호 N건은 N 으로 센다), 회전 · 유예 · 재사용, 🔴 P1 결정적 재현(별도 연결이 옛 행을 커밋 전 `'rotated'` + 살아 있는 후계로 바꾼 채 refresh → 기다렸다가 0행 → 다시 읽어 `'grace'` 로 200, graceMs 0 이면 401 `ERR_INVALID_TOKEN` 이고 `reuse_detected` 행 없음), P2(앞 회전 뒤 옛 토큰: 창 안 + 후계 생존 → 200 · 창 밖 → 전량 폐기), 후계를 로그아웃한 뒤 창 안 재제시 → 재사용, 변경 · 재인증 · 카운터 공유(B2).
+- **HTTP 계약(끝 상태)**: 로그인 → 쿠키 속성(HttpOnly · `Path=/` · `SameSite=Lax` · http 에서 Secure 없음 · `X-Forwarded-Proto: https` 면 Secure) → `/me` 모양 → refresh 가 새 쿠키 둘 → 옛 refresh(창 밖) `ERR_REFRESH_REUSED` + 다른 기기 세션도 401 → Promise.all 동시 refresh 둘 다 200. 틀림 401 · 5회째 잠김 · 맞은 비밀번호도 401 · `lockUntil` 을 과거로 바꾸면 성공. 퇴사 계정 로그인 · 가드 · refresh 403. 세션 `expireAt` 을 과거로 → `ERR_SESSION_EXPIRED`. 선언 없는 프로브 403 · `'*'` 역할 통과 · AND/OR. 강제 변경 계정 `/me` 200 + `permissions: []` · 다른 `@SelfOnly` 403 `ERR_PASSWORD_CHANGE_REQUIRED` · refresh 200. 비밀번호 변경 — 틀린 현재 400 `issues[0].path = ['currentPassword']` + 카운터 증가 · 새 = 현재 400 `newPassword` · 잠김 423 · 성공 200 → 플래그 해제 · 다른 기기 refresh `ERR_INVALID_TOKEN` · 현재 세션 유지 · 새 비밀번호로 로그인. 로그아웃 — 두 쿠키 지움 · 그 뒤 옛 refresh `ERR_INVALID_TOKEN`(재사용 아님 · 다른 세션 살아 있음). IP 자리 — 가짜 정책 거부 시 로그인(비밀번호 맞은 뒤) · 가드에서 403 `details.clientIp`. 응답 본문이 모두 admin-shared `errorRespSchema` 로 파싱.
 - **시계**: HTTP 층에서는 DB 값을 지금 ±2초로 넣는다. 같은 순간은 9-1 이 맡는다.
 
 ### 9-4. 리뷰 초점 (플랜 · 리뷰어에게 넘긴다)
@@ -594,3 +599,7 @@ DB 에 닿기 전에 끝나는 경로만: 라우트가 `/admin/auth/*` 에 있�
 - **R4 — HTTP 가 아닌 실행 컨텍스트(마이크로서비스 · WebSocket)는 두 가드 모두 통과시킨다(플랜).** 가드가 앱 전역(G1)이라 쓰는 쪽 RPC 핸들러에도 걸리는데, 쿠키 인증을 할 수 없는 자리를 막으면 그 핸들러가 전부 깨진다. 관리자 인증은 HTTP 만 지킨다(2a F4 봉투와 같은 규칙).
 - **R5 — 시각 컬럼 `datetime` · `timestamp` 는 초 단위로 잘려 저장된다(MariaDB 기본, gise 실측).** `revokedAt` · `expireAt` · `lockUntil` 은 앱이 넣은 시각보다 1초 미만 이를 수 있다 — 유예창 경과가 그만큼 길게, 잠금이 그만큼 일찍 풀린다. 경계의 같은 순간은 단위 층(§9-1)이 재고, DB 층은 ±2초로 잰다(§9-3).
 - **R6 — 작은 파일 셋을 더한다(§8 보강).** `auth/password-check.ts`(비밀번호 확인 세 자리의 카운터 공용 함수 — B2) · `auth/request-meta.ts`(`clientIp` · `userAgent` 를 요청에서 꺼낸다) · `auth/errors.ts`(§5 의 문구 표 `AUTH_MESSAGES` — 서비스 · 가드 · 테스트가 같은 문구를 쓴다). 테스트 하네스는 `test-support/auth.ts`(DB 시드 · 서비스 조립 · 잠금 연결 · 가짜 정책 · 이벤트)와 `test-support/auth-probe.ts`(프로브 컨트롤러 · 앱 부트)로 나눈다.
+- **R7 — 잠김은 맞은 비밀번호 바로 다음, 퇴사 · IP 보다 먼저 보고, 잠긴 동안의 로그인은 같은 401 이다(최종 리뷰 Critical, 사용자 결정 2026-10-13).** 잠긴 동안 틀린 비밀번호는 401 · 맞은 비밀번호는 423 이면 잠금 중에도 대입을 계속해 정답을 알아낸다(판정 오라클). 그래서 로그인은 잠긴 동안 맞든 틀리든 같은 401 `ERR_LOGIN_FAILED` 이고 문구는 `아이디 또는 비밀번호가 올바르지 않거나, 로그인 실패가 반복되어 잠시 잠겼습니다.` 하나다. 423 은 이미 인증된 본인의 비밀번호 변경 · 재인증에만 남는다. 정본 gise · hangang 은 423 이었다.
+- **R8 — 실패 카운터는 원자적이다(최종 리뷰 F2).** `saveLoginState(userNo, state)` 를 `updateLoginState(userNo, next)` 로 바꿨다 — 행을 잠그고(`FOR UPDATE`) 현재 값에서 다음 상태를 셈한다. 검증 전 스냅숏으로 셈하면 병렬 틀린 비밀번호가 덜 센다. 맞은 비밀번호도 방금 잠근 행으로 잠김을 판정한다.
+- **R9 — `AdminAuthModule` 은 전역이고 한 번만 등록한다(최종 리뷰 F3).** 두 번째 import 는 가드 · 라우트를 둘로 만들고 하나는 기본 리포지토리로 돈다. `@Global()` 로 다른 모듈이 import 없이 `AdminReauthService` 를 주입받고, 두 번 등록되면 기동에서 던진다.
+- **R10 — 가드는 rpc · ws 만 통과시킨다(R4 정정, 최종 리뷰 F4).** GraphQL 은 HTTP 위에서 쿠키를 싣고 오는데도 `getType()` 이 `'graphql'` 이라 통과했다. 그 밖의 비HTTP 컨텍스트는 401 이다.

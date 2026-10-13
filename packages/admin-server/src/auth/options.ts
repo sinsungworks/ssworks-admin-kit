@@ -9,7 +9,7 @@ export interface AdminAuthCookieOptions {
   accessName?: string
   /** 기본 'admin_rt' */
   refreshName?: string
-  /** refresh 쿠키 경로. 기본 '/'. 좁히려면 브라우저가 보는 경로(전역 prefix 포함)를 적는다 */
+  /** refresh 쿠키 경로. 기본 '/'. 좁히려면 브라우저가 보는 경로(전역 prefix 포함)를 적는다. logout 까지 덮어야 한다 */
   refreshPath?: string
   /** 기본 'lax' */
   sameSite?: 'lax' | 'strict'

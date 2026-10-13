@@ -59,6 +59,8 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
   - 2c: `AdminSessionStore` 에 목록 메서드를 더하고 `ADMIN_AUTH_EVENTS` 를 제공한다. 감사 행을 비밀번호 변경과 같은 트랜잭션에 쓸지 정한다(2b 는 커밋 뒤에 이벤트를 낸다 — 스펙 B8).
   - 2d: `resignAt` 효력 시각 계산("퇴사일 당일까지 근무" · 기준 시간대), 비밀번호 변경이 `users.revision` 을 올리는지(B9), 재인증(`AdminReauthService`)을 붙일 쓰기.
   - 2f: `ADMIN_ACCESS_POLICY` 구현과 `clientIp` 출처(trust proxy · X-Real-IP 우선).
+  - 최종 리뷰(2026-10-13)에서 이 PR 이 고친 것: 잠긴 계정의 로그인 판정 오라클(맞은 비밀번호도 같은 401 — 스펙 §14 R7, 사용자 결정), 실패 카운터 경합(`updateLoginState` 원자화 — R8), `AdminAuthModule` 중복 등록(전역 · 기동 거부 — R9), GraphQL 등 비HTTP 통과(rpc · ws 만 — R10).
+  - 후속(최종 리뷰 Minor): 계정 유무 타이밍 차(틀린 비밀번호의 UPDATE 몇 ms — throttling 층과 함께), `refreshPath` · `domain` 기동 검증(`;` · 공백), 로그인 본문의 form-encoded 허용(로그인 CSRF — JSON 만 받기), JWT `aud` 클레임, `emit` 이 요청 안에서 기다림 · 경고에 sink 오류 문구(2c), `users.updateAt` 이 로그인 실패마다 바뀜(2d 의 "수정일" 표시), 유예 발급이 남기는 고아 세션(2c 세션 목록), 빈 `@RequirePermissions()` 를 데코레이터 시점에 던지기, 로그아웃 실패 경로 · `revision` 불변 테스트, decorator-metadata 테스트에 새 서비스 생성자.
 
 ## 작업 폴더 밖에 남은 것
 
