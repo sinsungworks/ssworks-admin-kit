@@ -182,7 +182,7 @@ export class AppModule {}
 - 관리자 라우트는 권한을 선언한다: `@RequirePermissions(...)`(AND) · `@RequireAnyPermissions(...)`(OR) · `@SelfOnly()`(인증만). 🔴 선언이 없으면 403(fail-closed) — `'*'` 권한도 막는다. 선언한 권한은 클래스 `@SelfOnly` 보다 우선한다. crm · axion 이식 과도기에만 `auth.failClosed: false`.
 - 프로젝트 권한 타입으로 좁히려면 감싼다: `export const Require = (...p: Permission[]) => RequirePermissions(...p)`.
 - 주체는 `@CurrentAdmin()`(`AdminPrincipal`) 으로 받는다 — `req.admin` 에 있어 회원 인증(passport)의 `req.user` 와 갈린다. 인터셉터에서는 `getAdminPrincipal(req)`.
-- 마이크로서비스(`rpc`) · WebSocket(`ws`) 컨텍스트는 가드가 지나친다. GraphQL 같은 그 밖의 비HTTP 컨텍스트는 401 — 쓰려면 자기 가드를 둔다.
+- 마이크로서비스(`rpc`) · WebSocket(`ws`) 컨텍스트는 가드가 지나친다. GraphQL 같은 그 밖의 비HTTP 컨텍스트는 401 이다. 🔴 전역 가드가 어떤 가드보다 먼저, `@Public()` 을 읽기 전에 막으므로 같은 앱에서는 GraphQL 을 열 수 없다 — GraphQL 은 관리자 API 와 다른 앱(프로세스)에 둔다.
 
 ### 토큰 · 쿠키
 
