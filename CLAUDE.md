@@ -12,7 +12,7 @@
 | ----------------------- | ----------------------- | ------------------------------------------------------------------ |
 | `packages/admin-shared` | `@ssworks/admin-shared` | 프레임워크 무의존. 브라우저·NestJS 양쪽이 import 한다              |
 | `packages/admin-ui`     | `@ssworks/admin-ui`     | Vue 3 + Vuetify 4 컴포넌트·composable. vue·vuetify 는 peer         |
-| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 진행 — 2a 기반 · 코어 스키마 완료)         |
+| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 진행 — 2a 기반 · 2b 인증 완료)             |
 | `docs/`                 | —                       | 검토·Phase 0 대조 보고. **설계 근거는 코드 주석과 이 폴더에 있다** |
 
 ## 명령어
@@ -90,6 +90,8 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 - 데코레이터가 붙은 시그니처의 인터페이스 · 타입 별칭은 `import type`(TS1272), DI 로 받는 클래스는 일반 import.
 - 장은 `Kysely<unknown>` 을 받는다. 제약 · 인덱스 이름은 DB 에서 snake_case(`CamelCasePlugin`).
 - 테스트 세 층: 단위 · DB 없는 HTTP(프로브 모듈, `src/test-support/`)는 `pnpm check`, 실 MariaDB(`*.db.test.ts`)는 `pnpm db:test:up` 뒤 `pnpm test:db`(CI `db` 잡 필수).
+- 인증 · 권한 가드는 **앱 전역**(`AdminAuthModule` 의 `APP_GUARD`)이다. 관리자 밖 컨트롤러는 `@Public()`, 관리자 라우트는 `@RequirePermissions` · `@RequireAnyPermissions` · `@SelfOnly` 중 하나를 선언한다 — 없으면 403(fail-closed).
+- argon2(`hashPassword` · `verifyPassword` · 재인증)는 트랜잭션 밖에서만 부른다. 인증 문구는 `auth/errors.ts` 의 `AUTH_MESSAGES` 하나에서 가져온다.
 
 ## 변경 흐름
 
@@ -110,7 +112,8 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 | Phase 1 PR #3d — `TeamTree`(he-tree) · `useTeamTree` · `TeamMoveDialog` · `TeamUserList` · 팀 스키마 · 트리 함수                       | 완료                      | 스펙 `docs/superpowers/specs/2026-10-07-admin-ui-teams-design.md` · 플랜 `docs/superpowers/plans/2026-10-07-admin-ui-teams.md`                           |
 | Phase 1 PR #3e — `MarkdownView`·`MarkdownEditor`(CodeMirror) · `useLegalDocuments`·`LegalDocumentEditor`·`renderMarkdown`· 약관 스키마 | 완료                      | 스펙 `docs/superpowers/specs/2026-10-07-admin-ui-legal-design.md` · 플랜 `docs/superpowers/plans/2026-10-08-admin-ui-legal.md`                           |
 | Phase 2 PR 2a — 기반 · 코어 스키마(`AdminServerModule` · 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 7장 · runner)                 | 완료                      | 스펙 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` · 플랜 `docs/superpowers/plans/2026-10-08-admin-server-foundation.md`         |
-| **Phase 2 PR 2b — 인증**                                                                                                               | **다음**                  | 2a 스펙 §1-3                                                                                                                                             |
+| Phase 2 PR 2b — 인증(`AdminAuthModule` · 앱 전역 가드 · 회전 · 재사용 탐지 · 잠금 · 재인증)                                            | 완료                      | 스펙 `docs/superpowers/specs/2026-10-13-admin-server-auth-design.md` · 플랜 `docs/superpowers/plans/2026-10-13-admin-server-auth.md`                     |
+| **Phase 2 PR 2c — 세션 · 감사**                                                                                                        | **다음**                  | 2a 스펙 §1-3 · 2b 스펙 §4-6 · §11                                                                                                                        |
 | 템플릿 `kim5257-project-template` `preset/admin` + `.claude/skills/admin-scaffold`                                                     | 대기                      | `docs/00-admin-common-review.md` §3                                                                                                                      |
 
 `docs/01-phase0.md` §8 표를 단계가 끝날 때마다 갱신한다.

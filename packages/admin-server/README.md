@@ -2,7 +2,7 @@
 
 관리자 API 공통 NestJS 모듈 — NestJS 12 · Kysely 0.29 · MariaDB. **Phase 2 진행 중**이고 `private: true` 라 아직 발행하지 않는다(Phase 2 마지막 PR 뒤 첫 발행).
 
-지금(PR 2a) 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 7장이다. 인증 · 세션 · 감사 · 사용자 · 역할 · 팀 · 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
+지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 7장(PR 2a)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증)이다. 세션 목록 · 감사 · 사용자 · 역할 · 팀 · 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
 
 ## 설치
 
@@ -105,16 +105,17 @@ export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 
 ## 환경 변수
 
-| 이름                    | 필수 | 기본  | 뜻                                                                 |
-| ----------------------- | ---- | ----- | ------------------------------------------------------------------ |
-| `DB_HOST`               | 예   |       |                                                                    |
-| `DB_PORT`               |      | 3306  | 양의 정수가 아니면 기동 실패                                       |
-| `DB_USER`               | 예   |       |                                                                    |
-| `DB_PASSWORD`           | 예   |       |                                                                    |
-| `DB_NAME`               | 예   |       | gise 처럼 `DB_DATABASE` 를 쓰면 `AdminDbConnection` 을 직접 만든다 |
-| `DB_POOL_LIMIT`         |      | 10    | `× API 프로세스 수` 가 DB `max_connections` 여유 안이어야 한다     |
-| `DB_ACQUIRE_TIMEOUT_MS` |      | 10000 |                                                                    |
-| `TZ`                    | 예   |       | `UTC` — 아니면 `assertUtcTimezone` 이 기동을 멈춘다                |
+| 이름                    | 필수 | 기본  | 뜻                                                                                                         |
+| ----------------------- | ---- | ----- | ---------------------------------------------------------------------------------------------------------- |
+| `DB_HOST`               | 예   |       |                                                                                                            |
+| `DB_PORT`               |      | 3306  | 양의 정수가 아니면 기동 실패                                                                               |
+| `DB_USER`               | 예   |       |                                                                                                            |
+| `DB_PASSWORD`           | 예   |       |                                                                                                            |
+| `DB_NAME`               | 예   |       | gise 처럼 `DB_DATABASE` 를 쓰면 `AdminDbConnection` 을 직접 만든다                                         |
+| `DB_POOL_LIMIT`         |      | 10    | `× API 프로세스 수` 가 DB `max_connections` 여유 안이어야 한다                                             |
+| `DB_ACQUIRE_TIMEOUT_MS` |      | 10000 |                                                                                                            |
+| `TZ`                    | 예   |       | `UTC` — 아니면 `assertUtcTimezone` 이 기동을 멈춘다                                                        |
+| `ADMIN_JWT_SECRET`      | 예   |       | 액세스 토큰 HS256 비밀키(32자 이상). 🔴 패키지가 직접 읽지 않는다 — `auth.jwtSecret` 으로 넘기는 예시 이름 |
 
 풀 안전 옵션(`timezone: 'Z'` · 숫자 옵션 넷 · `logParam: false`)은 바꿀 수 없다.
 
@@ -143,6 +144,80 @@ export interface Database extends AdminDatabase {
 - 제약 · 인덱스 이름은 DB 에서 snake_case 다(`uq_users_user_id`) — `CamelCasePlugin` 이 바꾼다.
 - JSON 컬럼(`roles.permissions`)은 `readJsonColumn()` + zod 로 읽는다.
 
+## 인증
+
+`AdminAuthModule` 을 import 하면 관리자 인증이 켜진다 — `/api/admin/auth/*` 라우트와 **앱 전역** 인증 · 권한 가드.
+
+```ts
+// src/app.module.ts
+@Module({
+  imports: [
+    AdminServerModule.forRootAsync({
+      useFactory: () => {
+        requireEnv(['ADMIN_JWT_SECRET'])
+        return {
+          db: adminDbConnectionFromEnv(),
+          auth: { jwtSecret: process.env.ADMIN_JWT_SECRET! }, // 🔴 32자 이상 — 짧으면 기동에서 멈춘다
+          passwordPolicy, // admin-shared definePasswordPolicy() — 화면과 같이 쓴다. 생략하면 8 · 200
+        }
+      },
+    }),
+    AdminAuthModule, // 사용자 테이블 컬럼이 다르면 AdminAuthModule.withRepository(MyAuthRepository, { imports })
+  ],
+})
+export class AppModule {}
+```
+
+| 라우트                 | 표시        | 본문 → 응답                                                                                                  |
+| ---------------------- | ----------- | ------------------------------------------------------------------------------------------------------------ |
+| `POST /auth/login`     | 공개        | `{ userId, password }` → 쿠키 둘, `data: null`                                                               |
+| `POST /auth/refresh`   | 공개        | refresh 쿠키 → 쿠키 둘(회전), `data: null`                                                                   |
+| `POST /auth/logout`    | 공개        | refresh 쿠키 → 두 쿠키를 지운다(늘 200)                                                                      |
+| `GET /auth/me`         | `@SelfOnly` | `{ userNo, userId, userName, roleNo, roleName, teamNo?, teamName?, permissions, isPasswordChangeRequired }`  |
+| `PATCH /auth/password` | `@SelfOnly` | `{ currentPassword, newPassword }`(`passwordPolicy.changePasswordSchema`) → `data: null`, 다른 세션을 끊는다 |
+
+### 🔴 가드는 앱 전역이다
+
+- 관리자 밖 컨트롤러(회원 · 공개 · 헬스체크 · 웹훅)는 클래스에 `@Public()` 을 붙인다. 안 붙이면 401 이다 — 구멍이 아니라 고장으로 드러난다.
+- 관리자 라우트는 권한을 선언한다: `@RequirePermissions(...)`(AND) · `@RequireAnyPermissions(...)`(OR) · `@SelfOnly()`(인증만). 🔴 선언이 없으면 403(fail-closed) — `'*'` 권한도 막는다. 선언한 권한은 클래스 `@SelfOnly` 보다 우선한다. crm · axion 이식 과도기에만 `auth.failClosed: false`.
+- 프로젝트 권한 타입으로 좁히려면 감싼다: `export const Require = (...p: Permission[]) => RequirePermissions(...p)`.
+- 주체는 `@CurrentAdmin()`(`AdminPrincipal`) 으로 받는다 — `req.admin` 에 있어 회원 인증(passport)의 `req.user` 와 갈린다. 인터셉터에서는 `getAdminPrincipal(req)`.
+- HTTP 가 아닌 컨텍스트(마이크로서비스 · WebSocket)는 가드가 지나친다.
+
+### 토큰 · 쿠키
+
+- 액세스 = JWT HS256 15분, refresh = 512비트 난수 7일(DB 에는 sha256 만, 회전마다 새로). 둘 다 httpOnly 쿠키 `admin_at` · `admin_rt`, `Path=/`, `SameSite=Lax`.
+- Secure 는 `'auto'` — `req.secure` 또는 `X-Forwarded-Proto` 첫 값이 https 또는 `NODE_ENV=production`. 🔴 http 개발 서버를 `NODE_ENV=production` 으로 띄우면 브라우저가 쿠키를 버린다 — admin-ui 스토어가 `SessionNotEstablishedError` 로 알린다.
+- 옵션: `auth.accessTtlMs` · `refreshTtlMs` · `refreshGraceMs`(기본 30 000, 0 이면 끔) · `lockout: { maxFailures, lockMs }` · `cookies: { accessName, refreshName, refreshPath, sameSite, secure, domain }`.
+- 회전된 refresh 가 다시 오면 그 사용자의 세션을 전부 끊는다(재사용 탐지, 401 `ERR_REFRESH_REUSED`). 30초 유예창 안에서 다른 탭이 늦게 낸 같은 토큰은 새 세션을 하나 더 준다.
+
+### 로그인 판정 · 강제 변경 · 재인증
+
+- 비밀번호가 먼저다 — 틀리면 언제나 401 `ERR_LOGIN_FAILED`(없는 아이디 · 퇴사 · 잠긴 계정도 같은 응답). 맞으면 퇴사 403 → IP 403 → 잠김 423 순서. 5회 틀리면 15분 잠긴다 — 로그인 · 비밀번호 변경 · 재인증이 한 카운터를 쓴다.
+- 퇴사: `users.resignAt` 은 **효력 시각**이다 — 그 시각부터 로그인 · 요청 · 갱신이 403 `ERR_RESIGNED_USER`. "퇴사일 당일까지 근무" 는 쓸 때 다음 날 0시(기준 시간대)로 바꿔 넣는다.
+- 강제 변경(`isPasswordChangeRequired`): 로그인은 되고 `/me` 가 `permissions: []` 와 플래그를 낸다. 그 밖의 라우트는 403 `ERR_PASSWORD_CHANGE_REQUIRED`. admin-ui `createAdminGuard({ isPasswordChangeRequired })` 가 변경 화면으로 보낸다.
+- 민감 작업 재인증: 서비스 진입부에서 `await reauth.verify(admin, body.currentPassword)`(`AdminReauthService`, 틀리면 403 `ERR_REAUTH_REQUIRED`). 🔴 트랜잭션 안에서 부르지 않는다.
+- 로그인 시도 제한(IP 단위)은 쓰는 쪽이 edge(nginx) · `@nestjs/throttler` 로 건다. 패키지는 계정 잠금과 argon2 비용을 맡는다.
+
+### 사용자 테이블이 다를 때
+
+컬럼 매핑 옵션은 없다. `AdminAuthRepository` 다섯 메서드를 구현해 바꾼다.
+
+```ts
+@Injectable()
+class MyAuthRepository implements AdminAuthRepository {
+  // findCredentialByUserId · findCredentialByNo · findPrincipal · saveLoginState · changePassword
+  // 예: isActive 컬럼이면 resignAt: row.isActive ? null : new Date(0)
+}
+
+AdminAuthModule.withRepository(MyAuthRepository, { imports: [MyUsersDataModule] })
+```
+
+### 시드 · 2c · 2f 자리
+
+- 첫 관리자는 `@ssworks/admin-server/runner` 의 `hashPassword` 로 만든다(Nest 없이).
+- `ADMIN_AUTH_EVENTS`(로그인 · 갱신 · 재사용 · 로그아웃 · 비밀번호 변경 이벤트) · `ADMIN_ACCESS_POLICY`(IP 판정)를 전역 모듈이 제공하면 인증이 부른다. 패키지의 감사(2c) · IP 접근 제어(2f) 모듈이 채운다.
+
 ## admin-ui 와 맞물리기
 
 ```ts
@@ -153,7 +228,7 @@ createApiClient({
 })
 ```
 
-봉투(`envelope: 'success-data'`)와 bigint 코덱은 admin-ui 기본값과 같다. 오류 `code` · `details.issues` 는 `ApiError` · `toFieldErrors` 가 그대로 읽는다.
+봉투(`envelope: 'success-data'`)와 bigint 코덱은 admin-ui 기본값과 같다. 오류 `code` · `details.issues` 는 `ApiError` · `toFieldErrors` 가 그대로 읽는다. 스토어는 `fetchMe: () => api.get('/auth/me')` · `login: (c) => api.post('/auth/login', c)` · `logout: () => api.post('/auth/logout')`, 강제 변경은 `createAdminGuard({ isPasswordChangeRequired: () => store.userInfo?.isPasswordChangeRequired === true })`, IP 차단은 `onError` 에서 `ERR_IP_NOT_ALLOWED` 와 `details.clientIp`(admin-ui README).
 
 ## 테스트(이 저장소)
 
