@@ -21,8 +21,9 @@ import { checkPasswordWithCounter } from './password-check.js'
 import { DUMMY_PASSWORD_HASH, verifyPassword } from './password.js'
 import type { AdminPrincipal } from './principal.js'
 import { createRefreshToken, hashRefreshToken } from './refresh-token.js'
+import { judgeRotatedReuse } from './refresh-policy.js'
 import { requestMetaOf } from './request-meta.js'
-import { AdminSessionStore, type NewSessionInput } from './session.store.js'
+import { AdminSessionStore, type AdminSessionRow, type NewSessionInput } from './session.store.js'
 
 // 정본: ssworks-gise-home apps/api/src/modules/auth/auth.service.ts(로그인 · 회전 · 유예 · 재사용 · 로그아웃 멱등) +
 //       hangang-home modules/auth/auth.service.ts(로그인 순서: 비밀번호 → 퇴사 → IP → 잠금) · core/guards/auth.guard.ts
@@ -213,6 +214,135 @@ export class AdminAuthService {
       // 🔴 강제 변경 계정은 권한을 비운다(gise) — 가드의 허용 표시와 함께 이중으로 막는다.
       permissions: record.isPasswordChangeRequired ? [] : record.permissions,
       isPasswordChangeRequired: record.isPasswordChangeRequired,
+    }
+  }
+
+  /**
+   * 회전(스펙 §5-3). 🔴 'rotated' 만 재사용 판정 대상이다 — 'terminated'(로그아웃 · 강제 종료)를 재사용으로 보면 세션
+   * 하나를 끊었을 뿐인데 전 기기가 로그아웃된다(hangang 011).
+   */
+  async refresh(refreshToken: string | undefined, req: Request): Promise<AdminTokenPair> {
+    if (refreshToken == null) {
+      throw new BusinessError(
+        CommonErrorCodes.ERR_COMMON_UNAUTHORIZED,
+        AUTH_MESSAGES.refreshMissing,
+      )
+    }
+    const now = new Date()
+    const row = await this.sessions.findByRefreshHash(hashRefreshToken(refreshToken))
+    if (row == null) {
+      throw new BusinessError(CommonErrorCodes.ERR_INVALID_TOKEN, AUTH_MESSAGES.refreshInvalid)
+    }
+
+    if (row.isRevoked) {
+      // P2 — 다른 탭의 회전이 이 읽기보다 먼저 커밋됐다.
+      if (row.revokedReason === 'rotated') return this.reuseOfRotated(row, req, now)
+      throw new BusinessError(CommonErrorCodes.ERR_INVALID_TOKEN, AUTH_MESSAGES.refreshEnded)
+    }
+
+    if (isSessionExpired(row.expireAt, now)) {
+      // 🔴 EXPIRED_TOKEN 이 아니다 — 그것은 "액세스 토큰이 만료됐으니 갱신하라" 는 신호다. 갱신 안에서 그 코드를 쓰면
+      //    반드시 실패할 왕복을 하나 더 태운다(gise).
+      throw new BusinessError(CommonErrorCodes.ERR_SESSION_EXPIRED, AUTH_MESSAGES.refreshExpired)
+    }
+    // 🔴 퇴사는 회전 전에 막는다 — 새 토큰을 내주지 않는다. 강제 변경 · 잠김은 회전한다.
+    await this.assertActive(row.userNo, now)
+
+    const issued = this.newSession(row.userNo, req, now)
+    const sessionNo = await this.sessions.rotate(
+      { sessionNo: row.sessionNo, loginAt: row.loginAt },
+      issued.input,
+    )
+    if (sessionNo == null) {
+      // P1 — 두 요청이 위의 읽기를 둘 다 통과한 뒤 조건부 UPDATE 에서 갈렸다. 정본이 놓친 경로이고 실제로는 이쪽이
+      // 더 잦다(gise). 🔴 유예가 꺼져 있으면 전량 폐기하지 않는다 — 흔한 탭 경쟁 한 번에 전 기기가 로그아웃된다(hangang).
+      if (this.config.refreshGraceMs === 0) {
+        throw new BusinessError(CommonErrorCodes.ERR_INVALID_TOKEN, AUTH_MESSAGES.refreshRaced)
+      }
+      // 🔴 트랜잭션 밖에서 다시 읽는다 — 위의 row 는 회전 전 스냅숏이라 revokedAt · replacedBySessionNo 가 비어 있다.
+      const rotated = await this.sessions.findByNo(row.sessionNo)
+      if (rotated == null || rotated.revokedReason !== 'rotated') {
+        throw new BusinessError(CommonErrorCodes.ERR_INVALID_TOKEN, AUTH_MESSAGES.refreshRaced)
+      }
+      return this.reuseOfRotated(rotated, req, now)
+    }
+
+    await this.emit(
+      {
+        type: 'token.refresh',
+        userNo: row.userNo,
+        sessionNo,
+        rotatedFrom: row.sessionNo,
+        grace: false,
+      },
+      req,
+    )
+    return {
+      accessToken: this.tokens.sign({ userNo: row.userNo, sessionNo }),
+      refreshToken: issued.refreshToken,
+    }
+  }
+
+  /**
+   * 🔴 액세스 토큰이 만료된 상태에서도 성공해야 쿠키가 지워진다 — @Public 이라 주체가 없고, refresh 쿠키가 세션을
+   * 지목한다(gise C1). 이미 폐기된 행 · 모르는 토큰은 아무 일도 하지 않는다(멱등).
+   */
+  async logout(refreshToken: string | undefined, req: Request): Promise<void> {
+    if (refreshToken == null) return
+    const row = await this.sessions.findByRefreshHash(hashRefreshToken(refreshToken))
+    // 🔴 이미 폐기된 행은 건드리지 않는다 — 'rotated' 를 'terminated' 로 덮으면 재사용 탐지가 꺼진다(gise).
+    if (row == null || row.isRevoked) return
+    if ((await this.sessions.revoke(row.sessionNo, 'terminated', new Date())) > 0) {
+      await this.emit({ type: 'logout', userNo: row.userNo, sessionNo: row.sessionNo }, req)
+    }
+  }
+
+  /** P1 · P2 가 같은 답을 내도록 판정을 한 곳에 둔다(gise). */
+  private async reuseOfRotated(
+    row: AdminSessionRow,
+    req: Request,
+    now: Date,
+  ): Promise<AdminTokenPair> {
+    const successor =
+      row.replacedBySessionNo == null ? null : await this.sessions.findByNo(row.replacedBySessionNo)
+
+    if (judgeRotatedReuse(row, successor, now, this.config.refreshGraceMs) === 'grace') {
+      await this.assertActive(row.userNo, now)
+      // 🔴 새 세션을 하나 더 준다. 이긴 탭의 세션은 건드리지 않는다 — 원문을 저장하지 않으니 같은 쿠키를 줄 수 없고,
+      //    두 응답 중 나중에 도착한 쪽이 쿠키를 덮어도 살아 있는 토큰만 남아야 한다(gise). 링크는 하지 않는다.
+      const issued = this.newSession(row.userNo, req, now)
+      const sessionNo = await this.sessions.create({ ...issued.input, loginAt: row.loginAt })
+      await this.emit(
+        {
+          type: 'token.refresh',
+          userNo: row.userNo,
+          sessionNo,
+          rotatedFrom: row.sessionNo,
+          grace: true,
+        },
+        req,
+      )
+      return {
+        accessToken: this.tokens.sign({ userNo: row.userNo, sessionNo }),
+        refreshToken: issued.refreshToken,
+      }
+    }
+
+    // 🔴 정상 클라이언트라면 버렸을 값이다. 그 값을 가진 다른 주체가 있으니 누가 진짜인지 알 수 없다 — 전부 끊는다.
+    const revokedCount = await this.sessions.revokeAllOfUser(row.userNo, 'reuse_detected', now)
+    await this.emit(
+      { type: 'token.reuse', userNo: row.userNo, sessionNo: row.sessionNo, revokedCount },
+      req,
+    )
+    throw new BusinessError(CommonErrorCodes.ERR_REFRESH_REUSED, AUTH_MESSAGES.refreshReused)
+  }
+
+  /** 회전 · 유예 발급 전 — 계정이 없으면 401, 퇴사면 403. */
+  private async assertActive(userNo: bigint, now: Date): Promise<void> {
+    const credential = await this.repo.findCredentialByNo(userNo)
+    if (credential == null) throw sessionInvalid()
+    if (isResigned(credential.resignAt, now)) {
+      throw new BusinessError(CommonErrorCodes.ERR_RESIGNED_USER, AUTH_MESSAGES.resigned)
     }
   }
 
