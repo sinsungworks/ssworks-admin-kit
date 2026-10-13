@@ -32,7 +32,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
         .modifyEnd(comment('현재 활성 재직 사이클의 캐시. 원천은 userEmploymentPeriods')),
     )
     .addColumn('resignAt', 'timestamp', (col) =>
-      col.modifyFront(sql`null`).modifyEnd(comment('NULL 이 아니면 퇴사')),
+      col
+        .modifyFront(sql`null`)
+        .modifyEnd(comment('퇴사 효력 시각. 이 시각부터 로그인 · 요청이 막힌다. NULL = 재직')),
     )
     .addColumn('isPasswordChangeRequired', sql`tinyint(1)`, (col) =>
       col

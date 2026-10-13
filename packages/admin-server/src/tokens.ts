@@ -15,3 +15,6 @@ export const RAW_RESPONSE = 'admin-kit:raw-response'
  * index 에 내지 않는다.
  */
 export const ADMIN_AUTH_CONFIG = Symbol('ADMIN_AUTH_CONFIG')
+
+/** `AdminAuthRepository` — 사용자 테이블을 읽고 쓰는 교체 지점(스펙 ⑤ A1). 교체는 `AdminAuthModule.withRepository` */
+export const AUTH_REPOSITORY = Symbol('AUTH_REPOSITORY')

@@ -1,7 +1,7 @@
 import type { ColumnType, Generated } from 'kysely'
 
 // 정본: hangang-home apps/api/src/core/database/tables/users.table.ts
-// 바꾼 점: `revision` 추가.
+// 바꾼 점: `revision` 추가. `resignAt` 은 효력 시각이다(2b 스펙 ④ R1 — hangang 은 날짜였다).
 
 export interface AdminUsersTable {
   userNo: Generated<bigint>
@@ -12,7 +12,7 @@ export interface AdminUsersTable {
   roleNo: bigint
   /** 현재 활성 재직 사이클의 캐시 — 원천은 userEmploymentPeriods. DB 기본값이 있어 넣을 때 생략할 수 있다 */
   joinAt: ColumnType<Date, Date | undefined, Date>
-  /** NULL 이 아니면 퇴사 */
+  /** 🔴 퇴사 효력 시각 — 이 시각부터 로그인 · 요청이 막힌다(인증은 resignAt ≤ now 만 본다). NULL = 재직 */
   resignAt: Date | null
   isPasswordChangeRequired: Generated<boolean>
   loginFailCount: Generated<number>
