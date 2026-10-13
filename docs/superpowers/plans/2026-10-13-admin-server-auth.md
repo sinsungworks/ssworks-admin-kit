@@ -2280,14 +2280,12 @@ describe('revoke · revokeAllOfUser', () => {
     const user = await seedUser(t.db, { roleNo })
     const keep = await store.create(input(user.userNo))
     const drop = await store.create(input(user.userNo))
-    const count = await t.db
-      .transaction()
-      .execute((trx) =>
-        store.revokeAllOfUser(user.userNo, 'terminated', new Date(), {
-          exceptSessionNo: keep,
-          trx,
-        }),
-      )
+    const count = await t.db.transaction().execute((trx) =>
+      store.revokeAllOfUser(user.userNo, 'terminated', new Date(), {
+        exceptSessionNo: keep,
+        trx,
+      }),
+    )
     expect(count).toBe(1)
     expect((await store.findByNo(keep))?.isRevoked).toBe(false)
     expect((await store.findByNo(drop))?.revokedReason).toBe('terminated')
