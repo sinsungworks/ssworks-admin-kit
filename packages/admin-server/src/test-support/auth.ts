@@ -1,6 +1,22 @@
+import type { Request } from 'express'
 import type { Kysely } from 'kysely'
 import { createConnection } from 'mariadb'
+import { AdminAccessTokenService } from '../auth/access-token.service.js'
+import { AdminAuthService } from '../auth/auth.service.js'
+import type {
+  AdminAccessContext,
+  AdminAccessPolicy,
+  AdminAuthEvent,
+  AdminAuthEventSink,
+} from '../auth/hooks.js'
+import { KyselyAuthRepository } from '../auth/kysely-auth.repository.js'
+import {
+  resolveAuthConfig,
+  type AdminAuthOptions,
+  type ResolvedAuthConfig,
+} from '../auth/options.js'
 import { hashPassword } from '../auth/password.js'
+import { AdminSessionStore } from '../auth/session.store.js'
 import type { AdminDatabase } from '../database/types.js'
 import type { TestDatabase } from './db.js'
 import { testDbServer } from './db-url.js'
@@ -106,4 +122,82 @@ export async function holdRotation(
       }
     },
   }
+}
+
+export const TEST_JWT_SECRET = 'admin-kit-test-jwt-secret'.padEnd(32, '-')
+
+/** 서비스 테스트용 요청 — ip · User-Agent · 쿠키만 */
+export function fakeRequest(
+  input: { ip?: string; userAgent?: string; cookies?: Record<string, unknown> } = {},
+): Request {
+  return {
+    ip: input.ip ?? '10.0.0.1',
+    headers: { 'user-agent': input.userAgent ?? 'TestAgent/1.0' },
+    cookies: input.cookies ?? {},
+    secure: false,
+  } as unknown as Request
+}
+
+/** `ADMIN_AUTH_EVENTS` 가짜 — 받은 이벤트를 모은다. `failWith` 가 있으면 던진다 */
+export class RecordingEvents implements AdminAuthEventSink {
+  readonly events: AdminAuthEvent[] = []
+  failWith: Error | null = null
+
+  async record(event: AdminAuthEvent): Promise<void> {
+    if (this.failWith != null) throw this.failWith
+    this.events.push(event)
+  }
+
+  /** 'login.blocked' 는 'login.blocked:locked' 처럼 사유를 붙인다 */
+  types(): string[] {
+    return this.events.map((event) =>
+      event.type === 'login.blocked' || event.type === 'access.blocked'
+        ? `${event.type}:${event.reason}`
+        : event.type,
+    )
+  }
+}
+
+/** `ADMIN_ACCESS_POLICY` 가짜 — `allow` 로 답하고 받은 문맥을 모은다 */
+export class SwitchablePolicy implements AdminAccessPolicy {
+  allow = true
+  readonly calls: AdminAccessContext[] = []
+
+  async allows(context: AdminAccessContext): Promise<boolean> {
+    this.calls.push(context)
+    return this.allow
+  }
+}
+
+export interface AuthKit {
+  config: ResolvedAuthConfig
+  repo: KyselyAuthRepository
+  store: AdminSessionStore
+  tokens: AdminAccessTokenService
+  service: AdminAuthService
+  events: RecordingEvents
+  policy: SwitchablePolicy
+}
+
+/** Nest 없이 서비스를 조립한다. `policy: false` 면 정책을 주입하지 않는다 */
+export function createAuthKit(
+  t: TestDatabase,
+  options: { auth?: Partial<AdminAuthOptions>; policy?: boolean } = {},
+): AuthKit {
+  const config = resolveAuthConfig({ jwtSecret: TEST_JWT_SECRET, ...options.auth }, undefined)
+  const repo = new KyselyAuthRepository(t.db)
+  const store = new AdminSessionStore(t.db)
+  const tokens = new AdminAccessTokenService(config)
+  const events = new RecordingEvents()
+  const policy = new SwitchablePolicy()
+  const service = new AdminAuthService(
+    config,
+    repo,
+    store,
+    tokens,
+    t.db,
+    options.policy === false ? undefined : policy,
+    events,
+  )
+  return { config, repo, store, tokens, service, events, policy }
 }
