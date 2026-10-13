@@ -1,5 +1,6 @@
 import type { FactoryProvider, ModuleMetadata } from '@nestjs/common'
-import type { ErrorCodeTable } from '@ssworks/admin-shared'
+import type { ErrorCodeTable, PasswordPolicy } from '@ssworks/admin-shared'
+import type { AdminAuthOptions } from './auth/options.js'
 import type { AdminDbConnection } from './database/connection.js'
 
 export interface AdminServerOptions {
@@ -10,6 +11,10 @@ export interface AdminServerOptions {
    * 없으면 코어 표(`COMMON_ERROR_STATUS`). 표에 없는 코드는 500.
    */
   errorCodes?: Pick<ErrorCodeTable<Record<string, string>>, 'httpStatusFor'>
+  /** `AdminAuthModule` 을 쓰면 필수 — 없으면 기동에서 멈춘다(스펙 §4-1) */
+  auth?: AdminAuthOptions
+  /** admin-shared `definePasswordPolicy()` 결과. 없으면 기본 정책(8 · 200). 인증(비밀번호 변경)과 2d 가 함께 읽는다 */
+  passwordPolicy?: PasswordPolicy
 }
 
 /** 정적 옵션 — `RouterModule` 이 모듈 정의 시점의 값을 요구한다(스펙 F2). */

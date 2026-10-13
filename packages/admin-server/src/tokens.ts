@@ -9,3 +9,9 @@ export const ADMIN_SERVER_OPTIONS = Symbol('ADMIN_SERVER_OPTIONS')
 
 /** `@RawResponse()` 가 남기는 메타데이터 키 */
 export const RAW_RESPONSE = 'admin-kit:raw-response'
+
+/**
+ * 내부 — 해석된 인증 설정(`ResolvedAuthConfig`). `AdminAuthModule` 이 코어 옵션의 `auth` · `passwordPolicy` 로 만든다.
+ * index 에 내지 않는다.
+ */
+export const ADMIN_AUTH_CONFIG = Symbol('ADMIN_AUTH_CONFIG')
