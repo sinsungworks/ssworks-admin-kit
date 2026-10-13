@@ -101,11 +101,15 @@ export class KyselyAuthRepository implements AdminAuthRepository {
         .executeTakeFirst()
       if (current == null) return next({ loginFailCount: 0, lockUntil: null })
       const state = next(current)
-      await trx
-        .updateTable('users')
-        .set({ loginFailCount: state.loginFailCount, lockUntil: state.lockUntil })
-        .where('userNo', '=', userNo)
-        .execute()
+      // 바뀌지 않으면 쓰지 않는다 — 맞은 비밀번호 로그인은 늘 이 메서드로 잠김을 판정하므로(스펙 §14 R8), 카운터가 이미
+      // { 0, null } 인 정상 로그인이 매번 UPDATE 를 치르지 않게 한다. 행 잠금은 커밋 때 풀린다.
+      if (!isSameLoginState(state, current)) {
+        await trx
+          .updateTable('users')
+          .set({ loginFailCount: state.loginFailCount, lockUntil: state.lockUntil })
+          .where('userNo', '=', userNo)
+          .execute()
+      }
       return state
     })
   }
@@ -157,4 +161,9 @@ export class KyselyAuthRepository implements AdminAuthRepository {
     }
     return parsed.filter((item): item is string => typeof item === 'string')
   }
+}
+
+/** 같은 순간을 담은 다른 Date 객체도 같다고 본다 — `next` 가 잠금 시각을 새로 만들어 돌려줄 수 있다. */
+function isSameLoginState(a: AdminLoginState, b: AdminLoginState): boolean {
+  return a.loginFailCount === b.loginFailCount && a.lockUntil?.getTime() === b.lockUntil?.getTime()
 }

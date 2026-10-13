@@ -11,7 +11,8 @@ export type PasswordCheck = { ok: true } | { ok: false; state: AdminLoginState }
 
 /**
  * 🔴 트랜잭션 밖에서 부른다(argon2 — 스펙 Global Constraints). 틀리면 실패 상태를 저장하고 그 상태를 돌려준다.
- * 맞았을 때 카운터를 되돌리는 것은 호출부 몫이다(로그인 · 재인증은 needsReset, 변경은 changePassword 가 함께 쓴다).
+ * 맞았을 때 카운터를 되돌리는 것은 호출부 몫이다 — 로그인은 잠근 행으로 잠김을 판정하며 함께 되돌리고(updateLoginState,
+ * 스펙 §14 R7 · R8), 재인증은 남아 있을 때만(needsReset), 비밀번호 변경은 changePassword 가 함께 쓴다.
  */
 export async function checkPasswordWithCounter(
   repo: AdminAuthRepository,
