@@ -17,7 +17,7 @@ import { isResigned, isSessionExpired } from './account-policy.js'
 import type { AdminAuthRepository } from './auth.repository.js'
 import { AUTH_MESSAGES } from './errors.js'
 import type { AdminAccessPolicy, AdminAuthEvent, AdminAuthEventSink } from './hooks.js'
-import { isLocked, needsReset, nextLoginState } from './login-policy.js'
+import { isLocked, nextLoginState } from './login-policy.js'
 import type { ResolvedAuthConfig } from './options.js'
 import { checkPasswordWithCounter } from './password-check.js'
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.js'
@@ -28,7 +28,7 @@ import { requestMetaOf } from './request-meta.js'
 import { AdminSessionStore, type AdminSessionRow, type NewSessionInput } from './session.store.js'
 
 // 정본: ssworks-gise-home apps/api/src/modules/auth/auth.service.ts(로그인 · 회전 · 유예 · 재사용 · 로그아웃 멱등) +
-//       hangang-home modules/auth/auth.service.ts(로그인 순서: 비밀번호 → 퇴사 → IP → 잠금) · core/guards/auth.guard.ts
+//       hangang-home modules/auth/auth.service.ts(로그인 순서: 비밀번호 → 퇴사 → IP → 잠금 — 여기서는 잠금이 퇴사 앞) · core/guards/auth.guard.ts
 //       (매 요청: 세션 → 사용자 → 퇴사 → IP) + ssworks-axion-admin checkSession(sessionNo, userNo) 소유 대조
 // 바꾼 점:
 //  - 사용자 쪽은 AUTH_REPOSITORY, 세션은 AdminSessionStore(스펙 ⑤ A1). Kysely 를 직접 쓰는 곳은 비밀번호 변경
@@ -36,6 +36,7 @@ import { AdminSessionStore, type AdminSessionRow, type NewSessionInput } from '.
 //  - 감사 직접 호출 대신 ADMIN_AUTH_EVENTS, IP 평가 대신 ADMIN_ACCESS_POLICY — 둘 다 선택(스펙 ⑧ H1).
 //  - 퇴사는 resignAt ≤ now(스펙 ④ R1 — hangang 사이트 시간대 · gise isActive 대신).
 //  - 로그인 실패는 401 ERR_LOGIN_FAILED(hangang 은 404 ERR_NO_USER).
+//  - 잠김은 맞은 비밀번호 바로 다음 — 잠긴 동안은 같은 401(최종 리뷰 F1). hangang · gise 는 423 이었다.
 
 export interface AdminTokenPair {
   accessToken: string
@@ -58,8 +59,8 @@ export class AdminAuthService {
   ) {}
 
   /**
-   * 🔴 비밀번호 검증이 먼저다 — 존재 · 잠김 · 퇴사는 비밀번호를 아는 사람에게만 드러난다(gise · hangang 코드 리뷰 I1).
-   * 실패 카운터는 비밀번호가 틀렸을 때만 오른다(hangang I2).
+   * 🔴 비밀번호 검증이 먼저다 — 존재 · 퇴사 · IP 는 비밀번호를 아는 사람에게만 드러난다(gise · hangang 코드 리뷰 I1).
+   * 실패 카운터는 비밀번호가 틀렸을 때만 오른다(hangang I2). 순서: 비밀번호 → 잠김(같은 401) → 퇴사 403 → IP 403.
    */
   async login(input: { userId: string; password: string }, req: Request): Promise<AdminTokenPair> {
     const now = new Date()
@@ -95,7 +96,28 @@ export class AdminAuthService {
       throw loginFailed()
     }
 
-    // 여기부터는 비밀번호가 맞았다 — 존재를 숨길 이유가 없다.
+    // 🔴 잠김은 맞은 비밀번호 바로 다음, 퇴사 · IP 보다 먼저 본다. 잠긴 동안은 맞든 틀리든 같은 401 이다 — 맞은 비밀번호에만
+    //    다른 응답(423 · 퇴사 403 · IP 403)을 주면 잠금 중에도 대입을 계속해 정답을 알아낸다(최종 리뷰 F1, 2026-10-13 사용자 결정).
+    //    잠금 판정은 방금 잠근 행으로 한다 — 비밀번호 검증 전에 읽은 스냅숏이면 동시 요청이 잠근 뒤에도 통과한다.
+    const settled = await this.repo.updateLoginState(credential.userNo, (current) =>
+      isLocked(current.lockUntil, now)
+        ? current
+        : nextLoginState(current, 'success', now, this.config.lockout),
+    )
+    if (isLocked(settled.lockUntil, now)) {
+      await this.emit(
+        {
+          type: 'login.blocked',
+          reason: 'locked',
+          userId: input.userId,
+          userNo: credential.userNo,
+        },
+        req,
+      )
+      throw loginFailed()
+    }
+
+    // 여기부터는 비밀번호가 맞았고 잠기지 않았다.
     if (isResigned(credential.resignAt, now)) {
       await this.emit(
         {
@@ -124,27 +146,6 @@ export class AdminAuthService {
         )
         throw ipNotAllowed(clientIp)
       }
-    }
-
-    // 🔴 맞은 비밀번호도 잠긴 동안에는 막는다 — 잠금 중에 맞힌 대입이 통과하면 잠금이 무의미하다. 카운터는 건드리지 않는다.
-    if (isLocked(credential.lockUntil, now)) {
-      await this.emit(
-        {
-          type: 'login.blocked',
-          reason: 'locked',
-          userId: input.userId,
-          userNo: credential.userNo,
-        },
-        req,
-      )
-      throw new BusinessError(CommonErrorCodes.ERR_ACCOUNT_LOCKED, AUTH_MESSAGES.locked)
-    }
-
-    if (needsReset(credential)) {
-      await this.repo.saveLoginState(
-        credential.userNo,
-        nextLoginState(credential, 'success', now, this.config.lockout),
-      )
     }
 
     const issued = this.newSession(credential.userNo, req, now)

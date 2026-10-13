@@ -48,9 +48,8 @@ export class AdminReauthService {
       throw new BusinessError(CommonErrorCodes.ERR_REAUTH_REQUIRED, AUTH_MESSAGES.reauthFailed)
     }
     if (needsReset(credential)) {
-      await this.repo.saveLoginState(
-        credential.userNo,
-        nextLoginState(credential, 'success', now, this.config.lockout),
+      await this.repo.updateLoginState(credential.userNo, (current) =>
+        nextLoginState(current, 'success', now, this.config.lockout),
       )
     }
   }

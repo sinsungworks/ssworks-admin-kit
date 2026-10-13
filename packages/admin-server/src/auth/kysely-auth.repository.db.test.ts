@@ -104,21 +104,55 @@ describe('findPrincipal', () => {
   })
 })
 
-describe('saveLoginState', () => {
-  it('카운트와 잠금 시각을 쓴다', async () => {
+describe('updateLoginState', () => {
+  it('next 는 현재 행 값을 받고, 돌려준 상태가 저장된다', async () => {
     const roleNo = await seedRole(t.db)
     const user = await seedUser(t.db, { roleNo })
     const lockUntil = new Date('2031-02-03T04:05:06.000Z')
-    await repo.saveLoginState(user.userNo, { loginFailCount: 5, lockUntil })
+    const seen: unknown[] = []
+    const first = await repo.updateLoginState(user.userNo, (current) => {
+      seen.push({ ...current })
+      return { loginFailCount: 5, lockUntil }
+    })
+    expect(seen).toEqual([{ loginFailCount: 0, lockUntil: null }])
+    expect(first).toEqual({ loginFailCount: 5, lockUntil })
     expect(await repo.findCredentialByNo(user.userNo)).toMatchObject({
       loginFailCount: 5,
       lockUntil,
     })
-    await repo.saveLoginState(user.userNo, { loginFailCount: 0, lockUntil: null })
+    const second = await repo.updateLoginState(user.userNo, (current) => {
+      seen.push({ ...current })
+      return { loginFailCount: 0, lockUntil: null }
+    })
+    expect(seen[1]).toEqual({ loginFailCount: 5, lockUntil })
+    expect(second).toEqual({ loginFailCount: 0, lockUntil: null })
     expect(await repo.findCredentialByNo(user.userNo)).toMatchObject({
       loginFailCount: 0,
       lockUntil: null,
     })
+  })
+
+  it('🔴 병렬 8건이 모두 센다 — 행 잠금(F2)', async () => {
+    const roleNo = await seedRole(t.db)
+    const user = await seedUser(t.db, { roleNo })
+    await Promise.all(
+      Array.from({ length: 8 }, () =>
+        repo.updateLoginState(user.userNo, (current) => ({
+          loginFailCount: current.loginFailCount + 1,
+          lockUntil: current.lockUntil,
+        })),
+      ),
+    )
+    expect(await repo.findCredentialByNo(user.userNo)).toMatchObject({ loginFailCount: 8 })
+  })
+
+  it('없는 사용자는 next({ 0, null }) 를 돌려주고 아무것도 쓰지 않는다', async () => {
+    const state = await repo.updateLoginState(999_999n, (current) => ({
+      loginFailCount: current.loginFailCount + 1,
+      lockUntil: null,
+    }))
+    expect(state).toEqual({ loginFailCount: 1, lockUntil: null })
+    expect(await repo.findCredentialByNo(999_999n)).toBeNull()
   })
 })
 

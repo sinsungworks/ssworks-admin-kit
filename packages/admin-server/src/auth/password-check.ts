@@ -21,7 +21,9 @@ export async function checkPasswordWithCounter(
   lockout: LoginLockout,
 ): Promise<PasswordCheck> {
   if (await verifyPassword(credential.passwordHash, password)) return { ok: true }
-  const state = nextLoginState(credential, 'fail', now, lockout)
-  await repo.saveLoginState(credential.userNo, state)
+  // 🔴 원자적으로 센다(최종 리뷰 F2) — credential 은 검증 전 스냅숏이라 다음 상태를 거기서 셈하지 않는다.
+  const state = await repo.updateLoginState(credential.userNo, (current) =>
+    nextLoginState(current, 'fail', now, lockout),
+  )
   return { ok: false, state }
 }

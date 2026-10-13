@@ -99,7 +99,7 @@ describe('login', () => {
     ])
   })
 
-  it('🔴 5회째 잠기고, 맞은 비밀번호도 정책 다음에 423 — 카운터는 그대로', async () => {
+  it('🔴 5회째 잠기고, 맞은 비밀번호도 같은 401 — 정책을 부르지 않고 카운터는 그대로(F1)', async () => {
     const kit = createAuthKit(t)
     const user = await seedUser(t.db, { roleNo })
     for (let i = 0; i < 5; i += 1) {
@@ -112,11 +112,40 @@ describe('login', () => {
     const error = await rejection(
       kit.service.login({ userId: user.userId, password: user.password }, fakeRequest()),
     )
-    expect(error.code).toBe(CommonErrorCodes.ERR_ACCOUNT_LOCKED)
-    expect(error.message).toBe(AUTH_MESSAGES.locked)
-    expect(kit.policy.calls).toHaveLength(1)
+    expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
+    expect(error.message).toBe(AUTH_MESSAGES.loginFailed)
+    expect(kit.policy.calls).toHaveLength(0)
     expect(await counters(kit, user.userNo)).toEqual(locked)
     expect(kit.events.types().at(-1)).toBe('login.blocked:locked')
+  })
+
+  it('🔴 잠긴 계정 + 퇴사 + 맞은 비밀번호 — 퇴사 403 이 아니라 401(잠김이 먼저)', async () => {
+    const kit = createAuthKit(t)
+    const user = await seedUser(t.db, {
+      roleNo,
+      resignAt: later(-60_000),
+      loginFailCount: 5,
+      lockUntil: later(60_000),
+    })
+    const error = await rejection(
+      kit.service.login({ userId: user.userId, password: user.password }, fakeRequest()),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
+    expect(error.message).toBe(AUTH_MESSAGES.loginFailed)
+  })
+
+  it('🔴 동시 틀린 비밀번호 8건은 8로 세고 잠근다(F2)', async () => {
+    const kit = createAuthKit(t)
+    const user = await seedUser(t.db, { roleNo })
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        rejection(kit.service.login({ userId: user.userId, password: 'wrong' }, fakeRequest())),
+      ),
+    )
+    for (const error of results) expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
+    const state = await counters(kit, user.userNo)
+    expect(state.loginFailCount).toBe(8)
+    expect(state.lockUntil!.getTime()).toBeGreaterThan(Date.now())
   })
 
   it('🔴 잠긴 동안의 틀린 비밀번호는 401 이고 잠금을 늘리지 않는다', async () => {

@@ -98,8 +98,20 @@ const routes = new Routes()
 const selfOnlyRoutes = new SelfOnlyRoutes()
 
 describe('AdminPermissionGuard', () => {
-  it('🔴 HTTP 가 아닌 컨텍스트는 통과(스펙 §14 R4)', () => {
+  it('🔴 rpc · ws 컨텍스트만 통과(스펙 §14 R4 · R10)', () => {
     expect(guard().canActivate(context(routes, 'undeclared', undefined, 'rpc'))).toBe(true)
+    expect(guard().canActivate(context(routes, 'undeclared', undefined, 'ws'))).toBe(true)
+  })
+
+  it('🔴 GraphQL 같은 그 밖의 비HTTP 컨텍스트는 401(스펙 §14 R10)', () => {
+    let error: unknown
+    try {
+      guard().canActivate(context(routes, 'open', undefined, 'graphql'))
+    } catch (caught) {
+      error = caught
+    }
+    expect(error).toBeInstanceOf(BusinessError)
+    expect((error as BusinessError).code).toBe(CommonErrorCodes.ERR_COMMON_UNAUTHORIZED)
   })
 
   it('@Public 은 주체 없이 통과', () => {

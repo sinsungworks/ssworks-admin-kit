@@ -63,7 +63,8 @@ export class AuthProbeController {
   }
 }
 
-@Module({ imports: [AdminAuthModule], controllers: [AuthProbeController] })
+// AdminAuthModule 을 import 하지 않는다 — 전역 모듈이라 AdminReauthService 가 그대로 주입된다(최종 리뷰 F3).
+@Module({ controllers: [AuthProbeController] })
 export class AuthProbeModule {}
 
 @Module({})

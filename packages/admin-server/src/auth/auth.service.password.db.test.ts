@@ -216,7 +216,7 @@ describe('AdminReauthService', () => {
 })
 
 describe('🔴 비밀번호 확인 세 자리가 카운터 하나를 쓴다(스펙 B2)', () => {
-  it('로그인 2 + 변경 2 + 재인증 1 = 5회 → 잠김 → 맞은 비밀번호로도 로그인 423', async () => {
+  it('로그인 2 + 변경 2 + 재인증 1 = 5회 → 잠김 → 맞은 비밀번호로도 로그인 401(F1)', async () => {
     const kit = createAuthKit(t)
     const { user, principal } = await signedIn(kit)
     for (let i = 0; i < 2; i += 1) {
@@ -234,6 +234,6 @@ describe('🔴 비밀번호 확인 세 자리가 카운터 하나를 쓴다(스�
     const error = await rejection(
       kit.service.login({ userId: user.userId, password: user.password }, fakeRequest()),
     )
-    expect(error.code).toBe(CommonErrorCodes.ERR_ACCOUNT_LOCKED)
+    expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
   })
 })

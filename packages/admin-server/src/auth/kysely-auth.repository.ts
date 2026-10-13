@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import type { Kysely, Transaction } from 'kysely'
 import { readJsonColumn } from '../database/json.js'
-import { runQuery } from '../database/run.js'
+import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { KYSELY } from '../tokens.js'
 import type {
@@ -88,14 +88,26 @@ export class KyselyAuthRepository implements AdminAuthRepository {
     }
   }
 
-  async saveLoginState(userNo: bigint, state: AdminLoginState): Promise<void> {
-    await runQuery(() =>
-      this.db
+  updateLoginState(
+    userNo: bigint,
+    next: (current: AdminLoginState) => AdminLoginState,
+  ): Promise<AdminLoginState> {
+    return runWriteTransaction(this.db, async (trx) => {
+      const current = await trx
+        .selectFrom('users')
+        .select(['loginFailCount', 'lockUntil'])
+        .where('userNo', '=', userNo)
+        .forUpdate()
+        .executeTakeFirst()
+      if (current == null) return next({ loginFailCount: 0, lockUntil: null })
+      const state = next(current)
+      await trx
         .updateTable('users')
         .set({ loginFailCount: state.loginFailCount, lockUntil: state.lockUntil })
         .where('userNo', '=', userNo)
-        .execute(),
-    )
+        .execute()
+      return state
+    })
   }
 
   async changePassword(

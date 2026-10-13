@@ -25,7 +25,7 @@ import { getAdminPrincipal } from './principal.js'
 //    메서드 @RequirePermissions 가 권한 검사 없이 열렸다.
 //  - 강제 변경 계정은 허용 표시가 있는 라우트만(gise — 권한을 빈 배열로 보는 것만으로는 @SelfOnly 라우트가 열린다).
 //  - 판정은 admin-shared hasPermission · hasAnyPermission('*' 정확 일치 — 화면과 같은 함수).
-//  - failClosed: false 과도기 옵션(Phase 0 §4 #5). HTTP 가 아닌 컨텍스트는 통과(스펙 §14 R4).
+//  - failClosed: false 과도기 옵션(Phase 0 §4 #5). rpc · ws 만 통과, 그 밖의 비HTTP 는 401(스펙 §14 R4 · R10).
 
 @Injectable()
 export class AdminPermissionGuard implements CanActivate {
@@ -35,7 +35,13 @@ export class AdminPermissionGuard implements CanActivate {
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
-    if (context.getType() !== 'http') return true
+    const type = context.getType<string>()
+    // 🔴 쿠키 인증을 할 수 없는 마이크로서비스 · WebSocket 만 지나친다(스펙 §14 R4). 그 밖의 비HTTP 컨텍스트(GraphQL 등 — HTTP 위에서
+    //    쿠키를 싣고 온다)는 막는다 — 통과시키면 전역 가드가 통째로 열린다(최종 리뷰 F4).
+    if (type === 'rpc' || type === 'ws') return true
+    if (type !== 'http') {
+      throw new BusinessError(CommonErrorCodes.ERR_COMMON_UNAUTHORIZED, AUTH_MESSAGES.unauthorized)
+    }
     const targets = [context.getHandler(), context.getClass()]
     const flag = (key: string): boolean =>
       this.reflector.getAllAndOverride<boolean | undefined>(key, targets) === true

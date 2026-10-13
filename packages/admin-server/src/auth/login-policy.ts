@@ -10,7 +10,7 @@ export interface LoginLockout {
 
 export const DEFAULT_LOCKOUT: LoginLockout = { maxFailures: 5, lockMs: 15 * 60 * 1000 }
 
-/** users 의 잠금 두 컬럼. 리포지토리가 그대로 읽고 쓴다(`AdminAuthRepository.saveLoginState`). */
+/** users 의 잠금 두 컬럼. 리포지토리가 그대로 읽고 쓴다(`AdminAuthRepository.updateLoginState`). */
 export interface AdminLoginState {
   loginFailCount: number
   lockUntil: Date | null

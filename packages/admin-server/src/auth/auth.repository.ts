@@ -44,7 +44,16 @@ export interface AdminAuthRepository {
   findCredentialByUserId(userId: string): Promise<AdminCredential | null>
   findCredentialByNo(userNo: bigint): Promise<AdminCredential | null>
   findPrincipal(userNo: bigint): Promise<AdminPrincipalRecord | null>
-  saveLoginState(userNo: bigint, state: AdminLoginState): Promise<void>
+  /**
+   * 🔴 원자적으로 바꾼다 — 현재 행을 잠그고(SELECT … FOR UPDATE) `next(current)` 를 써서 그 결과를 돌려준다. 호출부가
+   * 비밀번호 검증 전에 읽은 스냅숏으로 다음 상태를 셈하면 동시 요청이 같은 값을 읽어 덜 센다(최종 리뷰 F2).
+   * 교체 구현도 원자성을 지킨다(행 잠금 또는 compare-and-set 재시도). 행이 없으면 쓰지 않고 next({ 0, null }) 를 돌려준다.
+   * 🔴 argon2 를 이 안에서 부르지 않는다 — 호출부가 검증을 끝낸 뒤에 부른다.
+   */
+  updateLoginState(
+    userNo: bigint,
+    next: (current: AdminLoginState) => AdminLoginState,
+  ): Promise<AdminLoginState>
   /**
    * 🔴 기대 해시(`expectedHash`)가 그대로일 때만 바꾼다 — 바꿀 때 `isPasswordChangeRequired = false` · `loginFailCount = 0`
    * · `lockUntil = null` 을 함께 쓴다. 바뀐 행 수(0 = 검증 뒤 다른 쓰기가 먼저 커밋). 받은 트랜잭션 위에서만 쓴다.

@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common'
+import { Logger, Module } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import { CommonErrorCodes, errorRespSchema } from '@ssworks/admin-shared'
@@ -17,6 +17,33 @@ import { AUTH_MESSAGES } from './errors.js'
 
 const unreachable = { host: '127.0.0.1', port: 1, user: 'u', password: 'p', database: 'd' }
 const fakeKysely = () => ({ destroy: vi.fn(async () => undefined) })
+
+class MemoryRepository implements AdminAuthRepository {
+  async findCredentialByUserId() {
+    return null
+  }
+  async findCredentialByNo() {
+    return null
+  }
+  async findPrincipal() {
+    return null
+  }
+  async updateLoginState(
+    _userNo: bigint,
+    next: (current: { loginFailCount: number; lockUntil: Date | null }) => {
+      loginFailCount: number
+      lockUntil: Date | null
+    },
+  ) {
+    return next({ loginFailCount: 0, lockUntil: null })
+  }
+  async changePassword() {
+    return 0
+  }
+}
+
+@Module({ imports: [AdminAuthModule] })
+class ConsumerModule {}
 
 let app: NestExpressApplication
 
@@ -171,21 +198,6 @@ describe('기동 검사', () => {
   })
 
   it('withRepository — 바꾼 리포지토리가 AUTH_REPOSITORY 가 되고 /admin/auth/* 가 그대로 있다', async () => {
-    class MemoryRepository implements AdminAuthRepository {
-      async findCredentialByUserId() {
-        return null
-      }
-      async findCredentialByNo() {
-        return null
-      }
-      async findPrincipal() {
-        return null
-      }
-      async saveLoginState() {}
-      async changePassword() {
-        return 0
-      }
-    }
     const custom = await createHttpApp(
       {
         imports: [
@@ -201,5 +213,20 @@ describe('기동 검사', () => {
     } finally {
       await custom.close()
     }
+  })
+
+  it('🔴 AdminAuthModule 을 두 번 등록하면 기동에서 멈춘다', async () => {
+    await expect(
+      createHttpApp(
+        {
+          imports: [
+            AdminServerModule.forRoot({ db: unreachable, auth: { jwtSecret: TEST_JWT_SECRET } }),
+            AdminAuthModule.withRepository(MemoryRepository),
+            ConsumerModule,
+          ],
+        },
+        { override: (builder) => builder.overrideProvider(KYSELY).useValue(fakeKysely()) },
+      ),
+    ).rejects.toThrow('AdminAuthModule 이 두 번 등록됐다')
   })
 })

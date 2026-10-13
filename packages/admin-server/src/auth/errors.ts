@@ -2,7 +2,7 @@
 
 export const AUTH_MESSAGES = {
   unauthorized: '인증이 필요합니다.',
-  loginFailed: '아이디 또는 비밀번호가 올바르지 않습니다.',
+  loginFailed: '아이디 또는 비밀번호가 올바르지 않거나, 로그인 실패가 반복되어 잠시 잠겼습니다.',
   resigned: '퇴사한 계정입니다.',
   ipNotAllowed: '허용되지 않은 접속 위치입니다.',
   locked: '로그인 실패가 반복되어 계정이 잠겼습니다. 잠시 후 다시 시도해 주세요.',

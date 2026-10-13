@@ -179,7 +179,7 @@ describe('회전 · 재사용 탐지', () => {
 })
 
 describe('로그인 실패 · 잠금 · 퇴사 · 만료', () => {
-  it('🔴 틀림 401 × 5 → 맞은 비밀번호 423 → 잠금이 지나면 200', async () => {
+  it('🔴 틀림 401 × 5 → 맞은 비밀번호도 401 → 잠금이 지나면 200', async () => {
     const user = await seedUser(t.db, { roleNo: readerRole })
     for (let i = 0; i < 5; i += 1) {
       expectError(
@@ -191,9 +191,9 @@ describe('로그인 실패 · 잠금 · 퇴사 · 만료', () => {
     }
     expectError(
       await request(server()).post(LOGIN).send({ userId: user.userId, password: user.password }),
-      423,
-      CommonErrorCodes.ERR_ACCOUNT_LOCKED,
-      AUTH_MESSAGES.locked,
+      401,
+      CommonErrorCodes.ERR_LOGIN_FAILED,
+      AUTH_MESSAGES.loginFailed,
     )
     await t.db
       .updateTable('users')
