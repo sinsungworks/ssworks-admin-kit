@@ -1,6 +1,9 @@
 import type { Kysely } from 'kysely'
+import { createConnection } from 'mariadb'
 import { hashPassword } from '../auth/password.js'
 import type { AdminDatabase } from '../database/types.js'
+import type { TestDatabase } from './db.js'
+import { testDbServer } from './db-url.js'
 
 // 테스트 전용 — 인증 테스트의 계정 시드. 🔴 빌드에서 빠진다(tsconfig.build.json 의 test-support 제외).
 // argon2 해시가 한 번에 약 15ms 라(스펙 §14 R1-2) 시드마다 그냥 해시한다.
@@ -74,4 +77,33 @@ export async function addToTeam(
   userNo: bigint,
 ): Promise<void> {
   await db.insertInto('teamUserMap').values({ teamNo, userNo }).execute()
+}
+
+/**
+ * 🔴 P1(동시 회전 경합)을 결정적으로 재현한다(스펙 §9-3 · §14 R1-4). 별도 연결이 옛 행을 커밋 전 'rotated' 로 잡는다 —
+ * 그동안 autocommit 읽기는 옛(살아 있는) 버전을 보고, 같은 행의 조건부 UPDATE 는 `release()` 의 커밋까지 기다렸다가
+ * 0행을 받는다.
+ */
+export async function holdRotation(
+  t: TestDatabase,
+  sessionNo: bigint,
+  replacedBySessionNo: bigint | null,
+): Promise<{ release(): Promise<void> }> {
+  // 🔴 revoked_at 은 테스트 프로세스 시각으로 넣는다 — DB 컨테이너 시계(UTC_TIMESTAMP)가 호스트보다 5초 넘게 앞서면 유예
+  //    판정이 재사용으로 바뀐다. timezone 'Z' + 프로세스 TZ=UTC(vitest env)라 저장 바이트가 UTC 다(2a R8).
+  const connection = await createConnection({ ...testDbServer(), database: t.name, timezone: 'Z' })
+  await connection.beginTransaction()
+  await connection.query(
+    "update sessions set is_revoked = 1, revoked_reason = 'rotated', revoked_at = ?, replaced_by_session_no = ? where session_no = ?",
+    [new Date(), replacedBySessionNo, sessionNo],
+  )
+  return {
+    async release() {
+      try {
+        await connection.commit()
+      } finally {
+        await connection.end()
+      }
+    },
+  }
 }
