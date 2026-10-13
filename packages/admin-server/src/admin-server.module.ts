@@ -11,6 +11,7 @@ import {
 import { APP_FILTER, APP_INTERCEPTOR, HttpAdapterHost, RouterModule } from '@nestjs/core'
 import { bigintJsonReplacer } from '@ssworks/admin-shared'
 import type { Kysely } from 'kysely'
+import { AdminAuthModule } from './auth/admin-auth.module.js'
 import { createAdminKysely } from './database/kysely.js'
 import { AdminEnvelopeInterceptor } from './http/envelope.interceptor.js'
 import { AdminExceptionFilter } from './http/exception.filter.js'
@@ -26,11 +27,10 @@ import { ADMIN_SERVER_OPTIONS, KYSELY } from './tokens.js'
 
 /**
  * 패키지가 아는 기능 모듈 — `routePrefix` 를 붙일 대상. 쓰는 쪽이 import 하지 않은 모듈은 `RouterModule` 이 건너뛴다
- * (`@nestjs/core` router-module.js 실측).
+ * (`@nestjs/core` router-module.js 실측). 같은 클래스의 동적 모듈(`withRepository`)에도 붙는다(2b 스펙 §14 R1-3).
  * 🔴 여기 오는 모듈 파일은 이 파일을 import 하지 않는다(순환) — 토큰은 tokens.ts 에서 가져온다.
- * 2a 에는 기능 모듈이 없다. 2b 부터 붙는다.
  */
-const ADMIN_ROUTE_MODULES: readonly Type[] = []
+const ADMIN_ROUTE_MODULES: readonly Type[] = [AdminAuthModule]
 
 const DEFAULT_ROUTE_PREFIX = 'admin'
 

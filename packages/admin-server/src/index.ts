@@ -16,3 +16,30 @@ export { AdminEnvelopeInterceptor, RawResponse } from './http/envelope.intercept
 export { AdminExceptionFilter } from './http/exception.filter.js'
 export { ZodValidationPipe, ParseBigIntPipe } from './http/pipes.js'
 export { validationError } from './http/validation.js'
+
+// 인증(PR 2b)
+export { AdminAuthModule } from './auth/admin-auth.module.js'
+export { AUTH_REPOSITORY, ADMIN_ACCESS_POLICY, ADMIN_AUTH_EVENTS } from './tokens.js'
+export type { AdminAuthOptions, AdminAuthCookieOptions } from './auth/options.js'
+export type {
+  AdminAuthRepository,
+  AdminCredential,
+  AdminPrincipalRecord,
+  AdminLoginState,
+} from './auth/auth.repository.js'
+export { KyselyAuthRepository } from './auth/kysely-auth.repository.js'
+export { getAdminPrincipal, type AdminPrincipal, type AdminMe } from './auth/principal.js'
+export {
+  Public,
+  SelfOnly,
+  RequirePermissions,
+  RequireAnyPermissions,
+  CurrentAdmin,
+} from './auth/decorators.js'
+export type {
+  AdminAccessContext,
+  AdminAccessPolicy,
+  AdminAuthEvent,
+  AdminAuthEventSink,
+} from './auth/hooks.js'
+export { AdminReauthService } from './auth/reauth.service.js'

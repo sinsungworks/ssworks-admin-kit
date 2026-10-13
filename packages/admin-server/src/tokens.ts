@@ -32,3 +32,6 @@ export const REQUIRED_PERMISSIONS = 'admin-kit:permissions'
 export const ANY_PERMISSIONS = 'admin-kit:any-permissions'
 /** 내부 — 강제 변경 계정에도 여는 라우트(me · password) */
 export const ALLOW_PASSWORD_CHANGE = 'admin-kit:allow-password-change'
+
+/** 내부 — `AdminAuthModule.withRepository` 가 넣는 교체 구현. AUTH_REPOSITORY 팩토리가 있으면 쓴다(스펙 B6) */
+export const CUSTOM_AUTH_REPOSITORY = Symbol('CUSTOM_AUTH_REPOSITORY')
