@@ -38,6 +38,8 @@ describe('runner 진입점', () => {
       ),
     ).toEqual([])
     expect(packages).toContain('kysely')
+    // 시드 스크립트가 러너로 계정을 만든다(스펙 B5) — argon2 는 Nest 무의존이다
+    expect(packages).toContain('@node-rs/argon2')
   })
 
   it('대조 — index 그래프는 @nestjs/common 을 끌어온다(탐지기가 살아 있다)', () => {
