@@ -18,3 +18,17 @@ export const ADMIN_AUTH_CONFIG = Symbol('ADMIN_AUTH_CONFIG')
 
 /** `AdminAuthRepository` — 사용자 테이블을 읽고 쓰는 교체 지점(스펙 ⑤ A1). 교체는 `AdminAuthModule.withRepository` */
 export const AUTH_REPOSITORY = Symbol('AUTH_REPOSITORY')
+
+/** 2f 가 제공하는 IP 접근 정책(선택, `AdminAccessPolicy`). 제공하는 모듈은 전역으로 내보낸다 */
+export const ADMIN_ACCESS_POLICY = Symbol('ADMIN_ACCESS_POLICY')
+
+/** 2c 가 제공하는 인증 이벤트 기록기(선택, `AdminAuthEventSink`). 제공하는 모듈은 전역으로 내보낸다 */
+export const ADMIN_AUTH_EVENTS = Symbol('ADMIN_AUTH_EVENTS')
+
+/** 데코레이터 메타데이터 키 — 🔴 `admin-kit:` 접두라 쓰는 쪽 `isPublic` 키와 섞이지 않는다 */
+export const IS_PUBLIC = 'admin-kit:public'
+export const IS_SELF_ONLY = 'admin-kit:self-only'
+export const REQUIRED_PERMISSIONS = 'admin-kit:permissions'
+export const ANY_PERMISSIONS = 'admin-kit:any-permissions'
+/** 내부 — 강제 변경 계정에도 여는 라우트(me · password) */
+export const ALLOW_PASSWORD_CHANGE = 'admin-kit:allow-password-change'

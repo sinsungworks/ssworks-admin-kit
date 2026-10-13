@@ -1,6 +1,25 @@
 // 인증 오류 문구 — 서비스 · 가드 · 테스트가 이 표 하나를 본다(스펙 §5 · §14 R6). 코드 · 상태는 admin-shared 코어 표.
 
 export const AUTH_MESSAGES = {
+  unauthorized: '인증이 필요합니다.',
+  loginFailed: '아이디 또는 비밀번호가 올바르지 않습니다.',
+  resigned: '퇴사한 계정입니다.',
+  ipNotAllowed: '허용되지 않은 접속 위치입니다.',
+  locked: '로그인 실패가 반복되어 계정이 잠겼습니다. 잠시 후 다시 시도해 주세요.',
   accessExpired: '접근 토큰이 만료되었습니다.',
   accessInvalid: '유효하지 않은 접근 토큰입니다.',
+  sessionInvalid: '세션이 유효하지 않습니다.',
+  sessionExpired: '세션이 만료되었습니다.',
+  refreshMissing: '갱신 토큰이 없습니다.',
+  refreshInvalid: '유효하지 않은 갱신 토큰입니다.',
+  refreshEnded: '세션이 종료되었습니다. 다시 로그인해 주세요.',
+  refreshExpired: '갱신 토큰이 만료되었습니다.',
+  refreshRaced: '이미 갱신된 토큰입니다. 잠시 후 다시 시도해 주세요.',
+  refreshReused: '이미 사용된 갱신 토큰입니다. 다시 로그인해 주세요.',
+  passwordChangeRequired: '비밀번호를 바꾼 뒤 이용할 수 있습니다.',
+  noPermissionDeclared: '이 기능에 접근할 수 없습니다.',
+  forbidden: '권한이 없습니다.',
+  currentPasswordMismatch: '현재 비밀번호가 올바르지 않습니다.',
+  reauthFailed: '비밀번호가 올바르지 않습니다.',
+  passwordConflict: '동시 요청이 충돌했습니다. 다시 시도해 주세요.',
 } as const
