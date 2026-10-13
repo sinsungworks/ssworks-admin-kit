@@ -2,7 +2,9 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
 import type { Request } from 'express'
 import type { Kysely } from 'kysely'
+import { runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
+import { validationError } from '../http/validation.js'
 import {
   ADMIN_ACCESS_POLICY,
   ADMIN_AUTH_CONFIG,
@@ -18,7 +20,7 @@ import type { AdminAccessPolicy, AdminAuthEvent, AdminAuthEventSink } from './ho
 import { isLocked, needsReset, nextLoginState } from './login-policy.js'
 import type { ResolvedAuthConfig } from './options.js'
 import { checkPasswordWithCounter } from './password-check.js'
-import { DUMMY_PASSWORD_HASH, verifyPassword } from './password.js'
+import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.js'
 import type { AdminPrincipal } from './principal.js'
 import { createRefreshToken, hashRefreshToken } from './refresh-token.js'
 import { judgeRotatedReuse } from './refresh-policy.js'
@@ -49,7 +51,7 @@ export class AdminAuthService {
     @Inject(AUTH_REPOSITORY) private readonly repo: AdminAuthRepository,
     private readonly sessions: AdminSessionStore,
     private readonly tokens: AdminAccessTokenService,
-    /** 비밀번호 변경 트랜잭션(Task 10) */
+    /** 비밀번호 변경 트랜잭션 */
     @Inject(KYSELY) private readonly db: Kysely<AdminDatabase>,
     @Optional() @Inject(ADMIN_ACCESS_POLICY) private readonly accessPolicy?: AdminAccessPolicy,
     @Optional() @Inject(ADMIN_AUTH_EVENTS) private readonly events?: AdminAuthEventSink,
@@ -295,6 +297,76 @@ export class AdminAuthService {
     if ((await this.sessions.revoke(row.sessionNo, 'terminated', new Date())) > 0) {
       await this.emit({ type: 'logout', userNo: row.userNo, sessionNo: row.sessionNo }, req)
     }
+  }
+
+  /**
+   * 내 비밀번호 변경(스펙 §5-4). 본문은 이미 쓰는 쪽 정책 스키마를 지났다 — 길이 · 새 = 현재는 400 이 저절로 났다.
+   * 🔴 잠김을 먼저 본다(gise — 이미 인증된 본인이라 계정 존재를 숨길 이유가 없다). 틀린 현재 비밀번호는 로그인 실패로
+   *    센다(스펙 B2) — 세션을 쥔 사람이 이 경로로 비밀번호를 대입하지 못하게.
+   */
+  async changePassword(
+    principal: AdminPrincipal,
+    body: { currentPassword: string; newPassword: string },
+    req: Request,
+  ): Promise<void> {
+    const now = new Date()
+    const credential = await this.repo.findCredentialByNo(principal.userNo)
+    if (credential == null) {
+      throw new BusinessError(CommonErrorCodes.ERR_COMMON_UNAUTHORIZED, AUTH_MESSAGES.unauthorized)
+    }
+    if (isLocked(credential.lockUntil, now)) {
+      throw new BusinessError(CommonErrorCodes.ERR_ACCOUNT_LOCKED, AUTH_MESSAGES.locked)
+    }
+    const check = await checkPasswordWithCounter(
+      this.repo,
+      credential,
+      body.currentPassword,
+      now,
+      this.config.lockout,
+    )
+    if (!check.ok) {
+      // 🔴 3c W1 — admin-ui PasswordChangeForm 이 이 경로를 '현재 비밀번호' 칸 옆에 낸다.
+      throw validationError([
+        {
+          path: ['currentPassword'],
+          code: 'custom',
+          message: AUTH_MESSAGES.currentPasswordMismatch,
+        },
+      ])
+    }
+
+    // 🔴 argon2 는 트랜잭션 밖이다.
+    const newHash = await hashPassword(body.newPassword)
+    const revokedCount = await runWriteTransaction(this.db, async (trx) => {
+      const changed = await this.repo.changePassword(
+        trx,
+        credential.userNo,
+        credential.passwordHash,
+        newHash,
+      )
+      // 검증 뒤 다른 쓰기(다른 세션의 변경 · 관리자 초기화)가 먼저 커밋했다(gise).
+      if (changed === 0) {
+        throw new BusinessError(
+          CommonErrorCodes.ERR_COMMON_CONFLICT,
+          AUTH_MESSAGES.passwordConflict,
+        )
+      }
+      // 현재 세션은 남기고 나머지를 끊는다(gise · 3c §9).
+      return this.sessions.revokeAllOfUser(credential.userNo, 'terminated', now, {
+        exceptSessionNo: principal.sessionNo,
+        trx,
+      })
+    })
+    // 커밋 뒤에 낸다(스펙 B8). 같은 트랜잭션 감사는 2c 가 정한다.
+    await this.emit(
+      {
+        type: 'password.change',
+        userNo: credential.userNo,
+        sessionNo: principal.sessionNo,
+        revokedCount,
+      },
+      req,
+    )
   }
 
   /** P1 · P2 가 같은 답을 내도록 판정을 한 곳에 둔다(gise). */

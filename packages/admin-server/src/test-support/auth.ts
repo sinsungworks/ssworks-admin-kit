@@ -16,6 +16,7 @@ import {
   type ResolvedAuthConfig,
 } from '../auth/options.js'
 import { hashPassword } from '../auth/password.js'
+import { AdminReauthService } from '../auth/reauth.service.js'
 import { AdminSessionStore } from '../auth/session.store.js'
 import type { AdminDatabase } from '../database/types.js'
 import type { TestDatabase } from './db.js'
@@ -175,6 +176,7 @@ export interface AuthKit {
   store: AdminSessionStore
   tokens: AdminAccessTokenService
   service: AdminAuthService
+  reauth: AdminReauthService
   events: RecordingEvents
   policy: SwitchablePolicy
 }
@@ -199,5 +201,14 @@ export function createAuthKit(
     options.policy === false ? undefined : policy,
     events,
   )
-  return { config, repo, store, tokens, service, events, policy }
+  return {
+    config,
+    repo,
+    store,
+    tokens,
+    service,
+    reauth: new AdminReauthService(config, repo),
+    events,
+    policy,
+  }
 }
