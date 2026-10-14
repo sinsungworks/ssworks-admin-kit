@@ -45,3 +45,7 @@ export type {
   AdminAuthEventSink,
 } from './auth/hooks.js'
 export { AdminReauthService } from './auth/reauth.service.js'
+
+// 세션 · 감사(PR 2c)
+export { Audit, type AuditOptions } from './audit/audit.decorator.js'
+export { attachAuditTarget, attachAuditMeta, attachAuditDiff } from './audit/audit-bag.js'

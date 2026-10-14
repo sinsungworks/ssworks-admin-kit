@@ -34,6 +34,8 @@ export const ANY_PERMISSIONS = 'admin-kit:any-permissions'
 export const ALLOW_PASSWORD_CHANGE = 'admin-kit:allow-password-change'
 /** 내부 — 패키지 라우트의 권한 슬롯(2c 스펙 ① P1). 키는 `AdminServerOptions.permissions` 가 준다 */
 export const PERMISSION_SLOT = 'admin-kit:permission-slot'
+/** `@Audit()` 이 남기는 메타데이터 키(2c) */
+export const AUDIT_META = 'admin-kit:audit'
 
 /** 내부 — `AdminAuthModule.withRepository` 가 넣는 교체 구현. AUTH_REPOSITORY 팩토리가 있으면 쓴다(스펙 B6) */
 export const CUSTOM_AUTH_REPOSITORY = Symbol('CUSTOM_AUTH_REPOSITORY')
