@@ -12,8 +12,8 @@ import {
 } from './audit.js'
 
 describe('코어 카탈로그', () => {
-  it('🔴 액션 18 · 대상 3 · 라벨이 하나씩 — 개수는 이 테스트가 고정한다(산문의 개수는 낡는다)', () => {
-    expect(Object.values(CoreAuditActions)).toHaveLength(18)
+  it('🔴 액션 25 · 대상 3 · 라벨이 하나씩 — 개수는 이 테스트가 고정한다(산문의 개수는 낡는다)', () => {
+    expect(Object.values(CoreAuditActions)).toHaveLength(25)
     expect(Object.values(CoreAuditTargets)).toEqual(['user', 'session', 'role'])
     expect(Object.keys(CORE_AUDIT_ACTION_LABELS).sort()).toEqual(
       [...Object.values(CoreAuditActions)].sort(),
@@ -37,6 +37,29 @@ describe('코어 카탈로그', () => {
     expect(coreAuditCatalog.labelOf('org.role.move')).toBe('역할 표시 순서 변경')
     expect(coreAuditCatalog.targetLabelOf('role')).toBe('역할')
   })
+
+  it('사용자 액션(2d-2) — hangang 이름 org.user.* + gise 잠금 해제와 라벨', () => {
+    expect([
+      CoreAuditActions.USER_CREATE,
+      CoreAuditActions.USER_UPDATE,
+      CoreAuditActions.USER_RESIGN,
+      CoreAuditActions.USER_RESIGN_DATE_UPDATE,
+      CoreAuditActions.USER_REHIRE,
+      CoreAuditActions.USER_PASSWORD_RESET,
+      CoreAuditActions.USER_UNLOCK,
+    ]).toEqual([
+      'org.user.create',
+      'org.user.update',
+      'org.user.resign',
+      'org.user.resignDate.update',
+      'org.user.rehire',
+      'org.user.password.reset',
+      'org.user.unlock',
+    ])
+    expect(coreAuditCatalog.labelOf('org.user.resignDate.update')).toBe('퇴사일 정정')
+    expect(coreAuditCatalog.labelOf('org.user.password.reset')).toBe('비밀번호 초기화')
+    expect(coreAuditCatalog.labelOf('org.user.unlock')).toBe('잠금 해제')
+  })
 })
 
 describe('defineAuditCatalog', () => {
@@ -50,7 +73,7 @@ describe('defineAuditCatalog', () => {
   it('코어 + 프로젝트를 합치고 코어 라벨을 덮어쓴다', () => {
     expect(catalog.AuditActions.BOARD_POST_CREATE).toBe('board.post.create')
     expect(catalog.AuditActions.AUTH_LOGOUT).toBe('auth.logout')
-    expect(catalog.ACTION_VALUES).toHaveLength(19)
+    expect(catalog.ACTION_VALUES).toHaveLength(26)
     expect(catalog.TARGET_VALUES).toEqual(['user', 'session', 'role', 'post'])
     expect(catalog.labelOf('board.post.create')).toBe('게시글 작성')
     expect(catalog.labelOf('auth.logout')).toBe('나가기')

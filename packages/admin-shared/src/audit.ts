@@ -6,7 +6,7 @@ import { createQuerySchema } from './pagination.js'
 // 정본: hangang-home packages/shared/src/constants/audit.const.ts(액션 · 라벨 · 대상) + 이 패키지 error-codes.ts
 //       `defineErrorCodes`(코어 + 프로젝트 병합 틀)
 // 바꾼 점:
-//  - 코어 액션은 인증 · 세션(2c) · 역할(2d). 사용자 · 팀 · IP 액션은 2d-2~2f 가 더한다. 프로젝트 액션은 `defineAuditCatalog`.
+//  - 코어 액션은 인증 · 세션(2c) · 역할 · 사용자(2d). 팀 · IP 액션은 2e · 2f 가 더한다. 프로젝트 액션은 `defineAuditCatalog`.
 //  - `session.revoke.others` 를 더했다(gise "다른 세션 모두").
 //  - 행의 행위자는 `actorUserNo`(2c 스펙 B5). `action` 은 열린 문자열 — 새 판이 쓴 행도 옛 화면이 읽는다(gise).
 //  - 🔴 `.refine()` 을 걸지 않는다(3b §11 R1) — 기간 순서는 서버가 본다(2c 스펙 B14).
@@ -33,6 +33,13 @@ export const CoreAuditActions = {
   ROLE_UPDATE: 'org.role.update',
   ROLE_DELETE: 'org.role.delete',
   ROLE_MOVE: 'org.role.move',
+  USER_CREATE: 'org.user.create',
+  USER_UPDATE: 'org.user.update',
+  USER_RESIGN: 'org.user.resign',
+  USER_RESIGN_DATE_UPDATE: 'org.user.resignDate.update',
+  USER_REHIRE: 'org.user.rehire',
+  USER_PASSWORD_RESET: 'org.user.password.reset',
+  USER_UNLOCK: 'org.user.unlock',
 } as const
 
 export type CoreAuditAction = (typeof CoreAuditActions)[keyof typeof CoreAuditActions]
@@ -61,6 +68,13 @@ export const CORE_AUDIT_ACTION_LABELS: Readonly<Record<CoreAuditAction, string>>
   'org.role.update': '역할 수정',
   'org.role.delete': '역할 삭제',
   'org.role.move': '역할 표시 순서 변경',
+  'org.user.create': '사용자 생성',
+  'org.user.update': '사용자 수정',
+  'org.user.resign': '퇴사 처리',
+  'org.user.resignDate.update': '퇴사일 정정',
+  'org.user.rehire': '재입사 처리',
+  'org.user.password.reset': '비밀번호 초기화',
+  'org.user.unlock': '잠금 해제',
 })
 
 export const CORE_AUDIT_TARGET_LABELS: Readonly<Record<CoreAuditTarget, string>> = Object.freeze({

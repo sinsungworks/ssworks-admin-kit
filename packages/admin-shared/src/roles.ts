@@ -16,8 +16,8 @@ import { z } from 'zod'
 // 🔴 `'*'`(전체 권한)는 `permissions` 안에서 정확히 `['*']` 하나로만 쓴다. 스키마는 강제하지 않고 서버 정규화가
 //    맡는다(hangang `permissions.normalize.ts` 규칙 ①).
 
-/** hangang `maxlength` 64. Phase 2 컬럼 길이와 맞춘다. */
-const roleNameSchema = z.string().min(1).max(64)
+/** hangang `maxlength` 64. 🔴 앞뒤 공백을 뗀 뒤 잰다 — `" "` 는 이름이 아니다(2d 스펙 §14 R5-4, 사용자 이름과 같은 규칙) */
+const roleNameSchema = z.string().trim().min(1).max(64)
 /** 🔴 Phase 0 §4 "쓰기 보호는 revision 기본". 수정 · 삭제 성공마다 서버가 올린다. 이동은 올리지 않는다. */
 const revisionSchema = z.number().int().min(0)
 

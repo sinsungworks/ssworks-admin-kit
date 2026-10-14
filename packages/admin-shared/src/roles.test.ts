@@ -32,6 +32,19 @@ describe('adminRoleSchema', () => {
     expect(adminRoleSchema.safeParse({ ...ROLE, roleName: 'a'.repeat(65) }).success).toBe(false)
   })
 
+  it('🔴 roleName 은 앞뒤 공백을 떼고 잰다 — 공백뿐이면 거부(2d 스펙 §14 R5-4)', () => {
+    expect(
+      adminRoleCreateSchema.parse({ roleName: '  운영자 ', isDefault: false, permissions: [] })
+        .roleName,
+    ).toBe('운영자')
+    expect(
+      adminRoleCreateSchema.safeParse({ roleName: ' ', isDefault: false, permissions: [] }).success,
+    ).toBe(false)
+    expect(adminRoleUpdateSchema.parse({ revision: 0, roleName: '관리자 ' }).roleName).toBe(
+      '관리자',
+    )
+  })
+
   it('roleNo 는 bigint 다 — 와이어의 "BigInt(n)" 래퍼를 parseJSON 이 되살린 값', () => {
     expect(adminRoleSchema.safeParse({ ...ROLE, roleNo: 1 }).success).toBe(false)
   })
