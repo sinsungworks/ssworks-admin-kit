@@ -1,5 +1,6 @@
 import type { FactoryProvider, ModuleMetadata } from '@nestjs/common'
 import type { ErrorCodeTable, PasswordPolicy } from '@ssworks/admin-shared'
+import type { AdminAuditOptions } from './audit/options.js'
 import type { AdminAuthOptions } from './auth/options.js'
 import type { AdminPermissionMap } from './auth/permission-slots.js'
 import type { AdminDbConnection } from './database/connection.js'
@@ -21,6 +22,8 @@ export interface AdminServerOptions {
    * 🔴 import 한 기능 모듈의 슬롯이 없거나 모르는 슬롯이 있으면 기동에서 멈춘다.
    */
   permissions?: AdminPermissionMap
+  /** `AdminAuditModule` 이 읽는다 — 카탈로그 · 더할 비밀 키(2c 스펙 §4-1) */
+  audit?: AdminAuditOptions
 }
 
 /** 정적 옵션 — `RouterModule` 이 모듈 정의 시점의 값을 요구한다(스펙 F2). */

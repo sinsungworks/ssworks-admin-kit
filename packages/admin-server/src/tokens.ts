@@ -37,5 +37,8 @@ export const PERMISSION_SLOT = 'admin-kit:permission-slot'
 /** `@Audit()` 이 남기는 메타데이터 키(2c) */
 export const AUDIT_META = 'admin-kit:audit'
 
+/** 내부 — 해석된 감사 설정(`ResolvedAuditConfig`). `AdminAuditModule` 이 코어 옵션의 `audit` 로 만든다 */
+export const ADMIN_AUDIT_CONFIG = Symbol('ADMIN_AUDIT_CONFIG')
+
 /** 내부 — `AdminAuthModule.withRepository` 가 넣는 교체 구현. AUTH_REPOSITORY 팩토리가 있으면 쓴다(스펙 B6) */
 export const CUSTOM_AUTH_REPOSITORY = Symbol('CUSTOM_AUTH_REPOSITORY')
