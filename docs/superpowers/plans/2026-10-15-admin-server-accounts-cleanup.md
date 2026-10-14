@@ -676,7 +676,7 @@ pnpm --filter @ssworks/admin-server test:db roles.service
 
 Expected:
 
-- `super-admin` — `withSuperAdminSurvival` 을 쓰는 다섯이 `TypeError: write is not a function`(옛 시그니처가 객체를 함수로 부른다).
+- `super-admin` — `withSuperAdminSurvival` 을 쓰는 넷(잠금 단계 · 409 · 하나가 남으면 · write skew)이 `TypeError: write is not a function`(옛 시그니처가 객체를 함수로 부른다)으로 실패. "센티넬 행이 없으면" 은 옛 구현에서도 가드가 먼저 던져 통과한다.
 - `users.employment` — r1 이 `resignDate: '2025-12-31'` 을 받아 실패.
 - `users.snapshot` — ON 두 테스트가 409 `ERR_COMMON_CONFLICT`(원인 `ER_CHECKREAD`)로, OFF 역할 변경이 `teamName: 'snap-old-OFF'` 로 실패. OFF 퇴사는 통과할 수 있다(옛 순서에서도 OFF 는 기다렸다 성공 — 보는 열이 같다).
 - `roles.snapshot` — ON 두 테스트가 409 로 실패, OFF 는 통과할 수 있다.
@@ -1202,7 +1202,8 @@ import { AdminRolesService } from './roles.service.js'
 // 🔴 역할 인덱스 둘(idx_roles_display_order · idx_roles_is_default — 장 0001, 2d-3 스펙 ③ I1)이 역할 쓰기의 잠금을 그
 //    행으로 좁히는지 직접 잰다. 원시 연결이 상관없는 역할 행 하나(held)만 쥔 채 쓰기가 잠금 대기에 들어가면 전 행을 훑어
 //    잠근 것이다(인덱스가 없을 때 — 2d-3 스펙 §14 R1-7). 2e-1 teams.guard.db.test.ts 의 "잠금 대기 관찰" 모양.
-//    🔴 사용자는 만들지 않는다. held 는 순서 맨 앞 · 기본 아님이고 뒤 테스트들은 held 를 건드리지 않는다.
+//    🔴 사용자는 만들지 않는다. held 는 순서 맨 앞 · 기본 아님 · **끝 아님**(뒤에 idx-tail 을 둔다 — held 가 끝 행이면 만들기의
+//    끝 행 잠금이 정당하게 held 를 기다린다)이고 뒤 테스트들은 held 를 건드리지 않는다.
 
 let t: TestDatabase
 let service: AdminRolesService
@@ -1214,6 +1215,7 @@ beforeAll(async () => {
   service = new AdminRolesService(t.db, accountsConfig(), undefined)
   held = (await service.create({ roleName: 'idx-held', isDefault: false, permissions: [] }, root))
     .roleNo
+  await service.create({ roleName: 'idx-tail', isDefault: false, permissions: [] }, root)
 })
 
 afterAll(async () => {
