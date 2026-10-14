@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
-import type { Kysely, Transaction } from 'kysely'
+import type { SortCondition } from '@ssworks/admin-shared'
+import { sql, type Kysely, type SqlBool, type Transaction } from 'kysely'
+import { likeContains } from '../database/like.js'
 import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase, AdminSessionRevokeReason } from '../database/types.js'
 import { KYSELY } from '../tokens.js'
@@ -10,7 +12,8 @@ import { KYSELY } from '../tokens.js'
 //  - 🔴 회전이 한 트랜잭션이다(스펙 B3) — 정본 둘은 폐기 · INSERT · 링크를 따로 보내 INSERT 가 죽으면 그 기기가 되돌릴 수
 //    없이 로그아웃됐다.
 //  - 메타를 코드 포인트 단위로 자른다 — UTF-16 으로 자르면 이모지 서로게이트 반쪽이 남는다.
-//  - 패키지 내부다(스펙 ⑤ A1) — 교체 대상이 아니다. 2c 가 목록 메서드를 더한다.
+//  - 패키지 내부다(스펙 ⑤ A1) — 교체 대상이 아니다. 2c 가 목록 · 조건부 폐기를 더했다(2c 스펙 §5-6) — gise
+//    listLiveSessionsOfUser · revokeOwnOtherSessionsInTransaction + axion activeSessionsQuery(검색).
 
 export interface AdminSessionRow {
   sessionNo: bigint
@@ -49,6 +52,43 @@ const SESSION_COLUMNS = [
   'revokedReason',
   'revokedAt',
   'replacedBySessionNo',
+] as const
+
+export type AdminSessionSortColumn = 'lastAccessAt' | 'loginAt' | 'expireAt'
+
+/** 목록 행 — 세션 라우트가 isCurrent 를 붙여 낸다. 🔴 refreshTokenHash 는 어느 목록 select 에도 없다(hangang) */
+export interface AdminSessionMeta {
+  sessionNo: bigint
+  userAgent: string | null
+  ipAddress: string | null
+  loginAt: Date
+  lastAccessAt: Date
+  expireAt: Date
+}
+
+export interface AdminSessionListRow extends AdminSessionMeta {
+  userNo: bigint
+  userId: string
+  userName: string
+}
+
+export interface LiveSessionQuery {
+  now: Date
+  /** 앞뒤 공백을 뗀 검색어 — 비었으면 넘기지 않는다(조건 없음) */
+  keyword?: string
+  userNo?: bigint
+  sort: readonly SortCondition<AdminSessionSortColumn>[]
+  offset: number
+  limit: number
+}
+
+const META_COLUMNS = [
+  's.sessionNo',
+  's.userAgent',
+  's.ipAddress',
+  's.loginAt',
+  's.lastAccessAt',
+  's.expireAt',
 ] as const
 
 /** 🔴 자르지 않으면 회전 중 INSERT 가 죽는다(hangang A6). 코드 포인트 단위 — 서로게이트 반쪽을 남기지 않는다. */
@@ -149,12 +189,19 @@ export class AdminSessionStore {
     return Number(result.numUpdatedRows)
   }
 
-  /** 🔴 그 사용자의 살아 있는 행만 바꾼다 — 'rotated' · 'terminated' 사유는 사후 분석 정보라 남긴다(hangang R34). */
+  /**
+   * 🔴 그 사용자의 살아 있는 행만 바꾼다 — 'rotated' · 'terminated' 사유는 사후 분석 정보라 남긴다(hangang R34).
+   * `liveOnly` 면 이미 만료된 행도 건드리지 않는다 — 세션 라우트의 끊은 개수에 죽은 행을 세지 않는다(2c 스펙 B9).
+   */
   async revokeAllOfUser(
     userNo: bigint,
     reason: AdminSessionRevokeReason,
     now: Date,
-    options: { exceptSessionNo?: bigint; trx?: Transaction<AdminDatabase> } = {},
+    options: {
+      exceptSessionNo?: bigint
+      trx?: Transaction<AdminDatabase>
+      liveOnly?: boolean
+    } = {},
   ): Promise<number> {
     const run = (db: Kysely<AdminDatabase>) => {
       let query = db
@@ -165,9 +212,84 @@ export class AdminSessionStore {
       if (options.exceptSessionNo != null) {
         query = query.where('sessionNo', '!=', options.exceptSessionNo)
       }
+      if (options.liveOnly === true) query = query.where('expireAt', '>', now)
       return query.executeTakeFirst()
     }
     const result = options.trx ? await run(options.trx) : await runQuery(() => run(this.db))
+    return Number(result.numUpdatedRows)
+  }
+
+  /**
+   * 살아 있는 세션 전체 목록(2c 스펙 §5-6) — 사용자 JOIN · 검색어 · 사용자 필터 · 정렬 · 쪽.
+   * "살아 있음" = isRevoked = false AND expireAt > now. 🔴 코어 users 의 userId · userName 을 직접 JOIN 한다(2c 스펙 B4).
+   */
+  listLive(query: LiveSessionQuery): Promise<{ rows: AdminSessionListRow[]; total: bigint }> {
+    return runQuery(async () => {
+      let base = this.db
+        .selectFrom('sessions as s')
+        .innerJoin('users as u', 'u.userNo', 's.userNo')
+        .where('s.isRevoked', '=', false)
+        .where('s.expireAt', '>', query.now)
+      if (query.keyword) {
+        const pattern = likeContains(query.keyword)
+        base = base.where((eb) =>
+          eb.or([
+            sql<SqlBool>`${sql.ref('u.userId')} like ${pattern} escape '!'`,
+            sql<SqlBool>`${sql.ref('u.userName')} like ${pattern} escape '!'`,
+          ]),
+        )
+      }
+      if (query.userNo != null) base = base.where('s.userNo', '=', query.userNo)
+
+      const counted = await base
+        .select((eb) => eb.fn.countAll<number | string | bigint>().as('n'))
+        .executeTakeFirstOrThrow()
+      let rows = base.select([...META_COLUMNS, 's.userNo', 'u.userId', 'u.userName'])
+      for (const { column, order } of query.sort) rows = rows.orderBy(`s.${column}`, order)
+      const result = await rows
+        .orderBy('s.sessionNo', 'desc')
+        .limit(query.limit)
+        .offset(query.offset)
+        .execute()
+      return { rows: result, total: BigInt(counted.n) }
+    })
+  }
+
+  /** 그 사용자의 살아 있는 세션 전량(3c §10 — 상한 없음), 마지막 활동 내림차순 */
+  listLiveOfUser(userNo: bigint, now: Date): Promise<AdminSessionMeta[]> {
+    return runQuery(() =>
+      this.db
+        .selectFrom('sessions as s')
+        .select(META_COLUMNS)
+        .where('s.userNo', '=', userNo)
+        .where('s.isRevoked', '=', false)
+        .where('s.expireAt', '>', now)
+        .orderBy('s.lastAccessAt', 'desc')
+        .orderBy('s.sessionNo', 'desc')
+        .execute(),
+    )
+  }
+
+  /**
+   * 살아 있는 세션 하나를 'terminated' 로 끊는다(2c 세션 라우트). `userNo` 를 주면 그 사용자의 것만이다.
+   * 🔴 조건부 UPDATE 한 문장이다 — 남의 · 없는 · 끝난 · 방금 회전한 세션이 모두 같은 0 이 된다(존재를 드러내지 않는다,
+   *    2c 스펙 공통 3). 회전과 겹치면 InnoDB 잠금 읽기가 가른다.
+   */
+  async revokeLive(
+    sessionNo: bigint,
+    now: Date,
+    options: { userNo?: bigint } = {},
+  ): Promise<number> {
+    const result = await runQuery(() => {
+      let query = this.db
+        .updateTable('sessions')
+        .set({ isRevoked: true, revokedReason: 'terminated', revokedAt: now })
+        .where('sessionNo', '=', sessionNo)
+        .where('isRevoked', '=', false)
+        .where('expireAt', '>', now)
+      if (options.userNo != null) query = query.where('userNo', '=', options.userNo)
+      return query.executeTakeFirst()
+    })
     return Number(result.numUpdatedRows)
   }
 }

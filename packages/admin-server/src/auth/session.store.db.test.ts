@@ -187,3 +187,142 @@ describe('revoke · revokeAllOfUser', () => {
     expect((await store.findByNo(drop))?.revokedReason).toBe('terminated')
   })
 })
+
+const DESC = [{ column: 'lastAccessAt', order: 'desc' }] as const
+
+describe('listLive(2c 스펙 §5-6)', () => {
+  it('🔴 살아 있는 행만 — 폐기 · 만료 · expireAt 이 지금과 같은 행은 빠진다(Review Focus 4)', async () => {
+    const user = await seedUser(t.db, { roleNo, userId: 'live-only' })
+    const now = second(new Date())
+    const live = await store.create(input(user.userNo))
+    const revoked = await store.create(input(user.userNo))
+    await store.revoke(revoked, 'terminated', now)
+    await store.create(input(user.userNo, { expireAt: new Date(now.getTime() - 1000) }))
+    await store.create(input(user.userNo, { expireAt: now }))
+
+    const { rows, total } = await store.listLive({
+      now,
+      userNo: user.userNo,
+      sort: DESC,
+      offset: 0,
+      limit: 20,
+    })
+    expect(rows.map((row) => row.sessionNo)).toEqual([live])
+    expect(total).toBe(1n)
+    expect(rows[0]).toMatchObject({
+      userNo: user.userNo,
+      userId: 'live-only',
+      userAgent: 'UA/1',
+      ipAddress: '10.0.0.1',
+    })
+    // 🔴 refresh 토큰 해시는 어느 목록에도 나가지 않는다(hangang)
+    expect(rows[0]).not.toHaveProperty('refreshTokenHash')
+  })
+
+  it('🔴 검색어 — 아이디 · 이름 부분일치, % _ ! 는 글자 그대로, 대소문자 무시(Review Focus 2)', async () => {
+    const now = second(new Date())
+    for (const [userId, userName] of [
+      ['kw%1', '가'],
+      ['kwx1', '나'],
+      ['kw_1', '다'],
+      ['kwy1', '라'],
+      ['kw!1', '마'],
+      ['KWZ9', '홍길동'],
+    ] as const) {
+      const user = await seedUser(t.db, { roleNo, userId, userName })
+      await store.create(input(user.userNo))
+    }
+    const ids = async (keyword: string) =>
+      (await store.listLive({ now, keyword, sort: DESC, offset: 0, limit: 100 })).rows
+        .map((row) => row.userId)
+        .sort()
+
+    expect(await ids('%')).toEqual(['kw%1'])
+    expect(await ids('_')).toEqual(['kw_1'])
+    expect(await ids('!')).toEqual(['kw!1'])
+    expect(await ids('kwz')).toEqual(['KWZ9'])
+    expect(await ids('길동')).toEqual(['KWZ9'])
+  })
+
+  it('정렬 · 같은 값은 sessionNo 내림차순 · 쪽 · 전체 개수', async () => {
+    const user = await seedUser(t.db, { roleNo })
+    const base = second(new Date())
+    const earlier = new Date(base.getTime() - 60_000)
+    const older = await store.create(input(user.userNo, { now: earlier, loginAt: earlier }))
+    const tieA = await store.create(input(user.userNo, { now: base }))
+    const tieB = await store.create(input(user.userNo, { now: base }))
+    const list = (order: 'asc' | 'desc', offset = 0, limit = 10) =>
+      store.listLive({
+        now: base,
+        userNo: user.userNo,
+        sort: [{ column: 'lastAccessAt', order }],
+        offset,
+        limit,
+      })
+
+    expect((await list('desc')).rows.map((row) => row.sessionNo)).toEqual([tieB, tieA, older])
+    expect((await list('asc')).rows.map((row) => row.sessionNo)).toEqual([older, tieB, tieA])
+    const page = await list('desc', 1, 1)
+    expect(page.rows.map((row) => row.sessionNo)).toEqual([tieA])
+    expect(page.total).toBe(3n)
+  })
+})
+
+describe('listLiveOfUser', () => {
+  it('그 사용자의 살아 있는 행만, 마지막 활동 내림차순', async () => {
+    const me = await seedUser(t.db, { roleNo })
+    const other = await seedUser(t.db, { roleNo })
+    const now = second(new Date())
+    const a = await store.create(input(me.userNo, { now: new Date(now.getTime() - 1000) }))
+    const b = await store.create(input(me.userNo, { now }))
+    await store.create(input(other.userNo))
+    const dead = await store.create(input(me.userNo))
+    await store.revoke(dead, 'terminated', now)
+
+    expect((await store.listLiveOfUser(me.userNo, now)).map((row) => row.sessionNo)).toEqual([b, a])
+  })
+})
+
+describe('revokeLive', () => {
+  it('🔴 살아 있는 행만 terminated 로 — 남의 것 · 두 번째 · 만료는 0', async () => {
+    const me = await seedUser(t.db, { roleNo })
+    const other = await seedUser(t.db, { roleNo })
+    const now = second(new Date())
+    const mine = await store.create(input(me.userNo))
+
+    expect(await store.revokeLive(mine, now, { userNo: other.userNo })).toBe(0)
+    expect(await store.revokeLive(mine, now, { userNo: me.userNo })).toBe(1)
+    expect(await store.revokeLive(mine, now)).toBe(0)
+    expect(await store.findByNo(mine)).toMatchObject({
+      isRevoked: true,
+      revokedReason: 'terminated',
+      revokedAt: now,
+    })
+
+    const expired = await store.create(input(me.userNo, { expireAt: now }))
+    expect(await store.revokeLive(expired, now)).toBe(0)
+    expect((await store.findByNo(expired))?.isRevoked).toBe(false)
+  })
+})
+
+describe('revokeAllOfUser — liveOnly(2c 스펙 B9)', () => {
+  it('만료된 행은 세지도 바꾸지도 않고 exceptSessionNo 는 남긴다', async () => {
+    const me = await seedUser(t.db, { roleNo })
+    const now = second(new Date())
+    const keep = await store.create(input(me.userNo))
+    const other = await store.create(input(me.userNo))
+    const expired = await store.create(
+      input(me.userNo, { expireAt: new Date(now.getTime() - 1000) }),
+    )
+
+    expect(
+      await store.revokeAllOfUser(me.userNo, 'terminated', now, {
+        exceptSessionNo: keep,
+        liveOnly: true,
+      }),
+    ).toBe(1)
+    expect((await store.findByNo(other))?.revokedReason).toBe('terminated')
+    expect((await store.findByNo(keep))?.isRevoked).toBe(false)
+    expect((await store.findByNo(expired))?.isRevoked).toBe(false)
+  })
+})
