@@ -1,14 +1,14 @@
 import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
-import type { Kysely } from 'kysely'
 import { describe, expect, it } from 'vitest'
+import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import type { AdminPrincipal } from '../auth/principal.js'
 import type {
   AdminSessionListRow,
   AdminSessionMeta,
   AdminSessionStore,
+  AdminSessionTarget,
   LiveSessionQuery,
 } from '../auth/session.store.js'
-import type { AdminDatabase } from '../database/types.js'
 import { SESSION_MESSAGES } from './errors.js'
 import { adminSessionListQuerySchema } from './sessions.query.js'
 import { AdminSessionsService } from './sessions.service.js'
@@ -68,13 +68,21 @@ class FakeStore {
   async listLiveOfUser() {
     return [meta(9n), meta(10n)]
   }
+
+  owner: AdminSessionTarget | null = { userNo: 4n, roleNo: 2n, permissions: ['org.users:read'] }
+  target: AdminSessionTarget | null = { userNo: 4n, roleNo: 2n, permissions: ['org.users:read'] }
+
+  async findLiveOwner() {
+    return this.owner
+  }
+
+  async findUserTarget() {
+    return this.target
+  }
 }
 
 function service(store: FakeStore): AdminSessionsService {
-  return new AdminSessionsService(
-    store as unknown as AdminSessionStore,
-    undefined as unknown as Kysely<AdminDatabase>,
-  )
+  return new AdminSessionsService(store as unknown as AdminSessionStore)
 }
 
 async function rejection(run: () => Promise<unknown>): Promise<BusinessError> {
@@ -84,6 +92,52 @@ async function rejection(run: () => Promise<unknown>): Promise<BusinessError> {
 }
 
 describe('AdminSessionsService', () => {
+  const narrow: AdminPrincipal = { ...principal, userNo: 5n, permissions: ['org.users:read'] }
+
+  it('🔴 세션 주인이 나보다 넓으면 403 — UPDATE 를 보내지 않는다(2c ⑪ D1)', async () => {
+    const store = new FakeStore()
+    store.owner = { userNo: 4n, roleNo: 1n, permissions: ['*'] }
+    const error = await rejection(() => service(store).revoke(11n, narrow))
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+    expect(error.message).toBe(ACCOUNT_MESSAGES.higherAccountSessions)
+    expect(error.details).toEqual({ outside: ['*'] })
+    expect(store.revokeLiveCalls).toEqual([])
+  })
+
+  it('주인이 없으면(끝난 · 없는 세션) 판정 없이 같은 404', async () => {
+    const store = new FakeStore()
+    store.owner = null
+    const error = await rejection(() => service(store).revoke(11n, narrow))
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_NOT_FOUND)
+    expect(error.message).toBe(SESSION_MESSAGES.notFound)
+    expect(store.revokeLiveCalls).toEqual([])
+  })
+
+  it('사용자 전체 — 없는 사용자 404 ERR_NO_USER, 넓은 사용자 403, 덮으면 끊는다', async () => {
+    const missing = new FakeStore()
+    missing.target = null
+    expect((await rejection(() => service(missing).revokeUser(4n, narrow))).code).toBe(
+      CommonErrorCodes.ERR_NO_USER,
+    )
+    const wide = new FakeStore()
+    wide.target = { userNo: 4n, roleNo: 1n, permissions: ['*'] }
+    expect((await rejection(() => service(wide).revokeUser(4n, narrow))).message).toBe(
+      ACCOUNT_MESSAGES.higherAccountSessions,
+    )
+    expect(wide.revokeAllCalls).toEqual([])
+    const ok = new FakeStore()
+    expect(await service(ok).revokeUser(4n, narrow)).toBe(2)
+    expect(ok.revokeAllCalls).toEqual([
+      { userNo: 4n, reason: 'terminated', options: { liveOnly: true } },
+    ])
+  })
+
+  it('깨진 권한 열은 빈 권한으로 본다 — 인증 가드와 같은 fail-closed(그 계정은 아무것도 못 한다)', async () => {
+    const store = new FakeStore()
+    store.owner = { userNo: 4n, roleNo: 1n, permissions: '{broken' }
+    await expect(service(store).revoke(11n, narrow)).resolves.toBeUndefined()
+  })
+
   it('🔴 지금 세션이면 UPDATE 를 보내지 않고 400 — 관리자 하나 · 내 세션 하나 둘 다', async () => {
     const store = new FakeStore()
     for (const run of [

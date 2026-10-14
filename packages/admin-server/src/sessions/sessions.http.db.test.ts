@@ -11,6 +11,7 @@ import {
 import request, { type Response } from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
 import { bootAdminApp } from '../test-support/admin-app.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
@@ -270,5 +271,38 @@ describe('다른 세션 모두', () => {
     expect(
       mineSchema.parse(data(await here.get('/admin/sessions/me').expect(200))).items,
     ).toHaveLength(1)
+  })
+})
+
+describe('권한 상승 검사(2d 스펙 §5-5 — 2c ⑪ D1)', () => {
+  it('🔴 나보다 넓은 계정의 세션 하나 · 사용자 전체 끊기는 403 — 그 세션은 살아 있다', async () => {
+    const bossRole = await seedRole(t.db, { roleName: '세션 최고', permissions: ['*'] })
+    const boss = await seedUser(t.db, { roleNo: bossRole })
+    const bossAgent = await signIn(boss)
+    const bossNo = await currentSessionNo(bossAgent)
+    const agent = await signIn(await seedUser(t.db, { roleNo: managerRole }))
+
+    expect(
+      errorRespSchema.parse((await agent.delete(`/admin/sessions/${bossNo}`).expect(403)).body),
+    ).toMatchObject({
+      code: CommonErrorCodes.ERR_COMMON_FORBIDDEN,
+      message: ACCOUNT_MESSAGES.higherAccountSessions,
+      details: { outside: ['*'] },
+    })
+    expectError(
+      await agent.delete(`/admin/sessions/user/${boss.userNo}`),
+      403,
+      CommonErrorCodes.ERR_COMMON_FORBIDDEN,
+      ACCOUNT_MESSAGES.higherAccountSessions,
+    )
+    await bossAgent.get('/admin/auth/me').expect(200)
+  })
+
+  it('같은 역할의 동료 세션은 끊는다', async () => {
+    const agent = await signIn(await seedUser(t.db, { roleNo: managerRole }))
+    const peer = await signIn(await seedUser(t.db, { roleNo: managerRole }))
+    const peerNo = await currentSessionNo(peer)
+    await agent.delete(`/admin/sessions/${peerNo}`).expect(200)
+    expect((await peer.get('/admin/auth/me')).status).toBe(401)
   })
 })

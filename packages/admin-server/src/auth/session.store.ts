@@ -72,6 +72,13 @@ export interface AdminSessionListRow extends AdminSessionMeta {
   userName: string
 }
 
+/** 세션 끊기의 권한 상승 검사 대상(2d 스펙 §5-5). permissions 는 역할 열 그대로 — readPermissionsColumn 으로 읽는다 */
+export interface AdminSessionTarget {
+  userNo: bigint
+  roleNo: bigint
+  permissions: unknown
+}
+
 export interface LiveSessionQuery {
   now: Date
   /** 앞뒤 공백을 뗀 검색어 — 비었으면 넘기지 않는다(조건 없음) */
@@ -291,5 +298,34 @@ export class AdminSessionStore {
       return query.executeTakeFirst()
     })
     return Number(result.numUpdatedRows)
+  }
+
+  /** 살아 있는 세션의 주인과 그 역할 권한. 끝났거나 없으면 null(2d 스펙 §5-5 — 2c ⑪ D1) */
+  async findLiveOwner(sessionNo: bigint, now: Date): Promise<AdminSessionTarget | null> {
+    const row = await runQuery(() =>
+      this.db
+        .selectFrom('sessions as s')
+        .innerJoin('users as u', 'u.userNo', 's.userNo')
+        .innerJoin('roles as r', 'r.roleNo', 'u.roleNo')
+        .select(['s.userNo', 'u.roleNo', 'r.permissions'])
+        .where('s.sessionNo', '=', sessionNo)
+        .where('s.isRevoked', '=', false)
+        .where('s.expireAt', '>', now)
+        .executeTakeFirst(),
+    )
+    return row ?? null
+  }
+
+  /** 사용자와 그 역할 권한. 없으면 null */
+  async findUserTarget(userNo: bigint): Promise<AdminSessionTarget | null> {
+    const row = await runQuery(() =>
+      this.db
+        .selectFrom('users as u')
+        .innerJoin('roles as r', 'r.roleNo', 'u.roleNo')
+        .select(['u.userNo', 'u.roleNo', 'r.permissions'])
+        .where('u.userNo', '=', userNo)
+        .executeTakeFirst(),
+    )
+    return row ?? null
   }
 }

@@ -62,8 +62,12 @@ export class AdminSessionsController {
   @RequirePermissionSlot('sessions.manage')
   @Audit({ action: CoreAuditActions.SESSION_REVOKE_USER, targetType: CoreAuditTargets.USER })
   @Delete('user/:userNo')
-  async revokeUser(@Param('userNo', ParseBigIntPipe) userNo: bigint, @Req() req: Request) {
-    const revokedCount = await this.sessions.revokeUser(userNo)
+  async revokeUser(
+    @Param('userNo', ParseBigIntPipe) userNo: bigint,
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Req() req: Request,
+  ) {
+    const revokedCount = await this.sessions.revokeUser(userNo, admin)
     attachAuditMeta(req, { revokedCount })
     return { revokedCount }
   }

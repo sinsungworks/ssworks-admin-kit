@@ -326,3 +326,31 @@ describe('revokeAllOfUser — liveOnly(2c 스펙 B9)', () => {
     expect((await store.findByNo(expired))?.isRevoked).toBe(false)
   })
 })
+
+describe('findLiveOwner · findUserTarget(2d 스펙 §5-5)', () => {
+  it('살아 있는 세션의 주인과 그 역할 권한 — 끝난 · 없는 세션은 null', async () => {
+    const role = await seedRole(t.db, { roleName: 'owner-role', permissions: ['org.users:read'] })
+    const user = await seedUser(t.db, { roleNo: role })
+    const live = await store.create(input(user.userNo))
+    const dead = await store.create(input(user.userNo))
+    await store.revoke(dead, 'terminated', new Date())
+    expect(await store.findLiveOwner(live, new Date())).toEqual({
+      userNo: user.userNo,
+      roleNo: role,
+      permissions: ['org.users:read'],
+    })
+    expect(await store.findLiveOwner(dead, new Date())).toBeNull()
+    expect(await store.findLiveOwner(999_999n, new Date())).toBeNull()
+  })
+
+  it('사용자와 그 역할 권한 — 없는 사용자는 null', async () => {
+    const role = await seedRole(t.db, { roleName: 'target-role', permissions: ['*'] })
+    const user = await seedUser(t.db, { roleNo: role })
+    expect(await store.findUserTarget(user.userNo)).toEqual({
+      userNo: user.userNo,
+      roleNo: role,
+      permissions: ['*'],
+    })
+    expect(await store.findUserTarget(999_999n)).toBeNull()
+  })
+})
