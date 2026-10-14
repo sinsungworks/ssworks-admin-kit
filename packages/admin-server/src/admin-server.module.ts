@@ -11,6 +11,7 @@ import {
 import { APP_FILTER, APP_INTERCEPTOR, HttpAdapterHost, RouterModule } from '@nestjs/core'
 import { bigintJsonReplacer } from '@ssworks/admin-shared'
 import type { Kysely } from 'kysely'
+import { AdminAuditModule } from './audit/audit.module.js'
 import { AdminAuthModule } from './auth/admin-auth.module.js'
 import { createAdminKysely } from './database/kysely.js'
 import { AdminEnvelopeInterceptor } from './http/envelope.interceptor.js'
@@ -30,7 +31,7 @@ import { ADMIN_SERVER_OPTIONS, KYSELY } from './tokens.js'
  * (`@nestjs/core` router-module.js 실측). 같은 클래스의 동적 모듈(`withRepository`)에도 붙는다(2b 스펙 §14 R1-3).
  * 🔴 여기 오는 모듈 파일은 이 파일을 import 하지 않는다(순환) — 토큰은 tokens.ts 에서 가져온다.
  */
-const ADMIN_ROUTE_MODULES: readonly Type[] = [AdminAuthModule]
+const ADMIN_ROUTE_MODULES: readonly Type[] = [AdminAuthModule, AdminAuditModule]
 
 const DEFAULT_ROUTE_PREFIX = 'admin'
 
