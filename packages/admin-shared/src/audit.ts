@@ -6,7 +6,7 @@ import { createQuerySchema } from './pagination.js'
 // 정본: hangang-home packages/shared/src/constants/audit.const.ts(액션 · 라벨 · 대상) + 이 패키지 error-codes.ts
 //       `defineErrorCodes`(코어 + 프로젝트 병합 틀)
 // 바꾼 점:
-//  - 코어 액션은 인증 · 세션만(2c). 사용자 · 역할 · 팀 · IP 액션은 2d~2f 가 더한다. 프로젝트 액션은 `defineAuditCatalog`.
+//  - 코어 액션은 인증 · 세션(2c) · 역할(2d). 사용자 · 팀 · IP 액션은 2d-2~2f 가 더한다. 프로젝트 액션은 `defineAuditCatalog`.
 //  - `session.revoke.others` 를 더했다(gise "다른 세션 모두").
 //  - 행의 행위자는 `actorUserNo`(2c 스펙 B5). `action` 은 열린 문자열 — 새 판이 쓴 행도 옛 화면이 읽는다(gise).
 //  - 🔴 `.refine()` 을 걸지 않는다(3b §11 R1) — 기간 순서는 서버가 본다(2c 스펙 B14).
@@ -29,11 +29,15 @@ export const CoreAuditActions = {
   SESSION_REVOKE_USER: 'session.revoke.user',
   SESSION_REVOKE_SELF: 'session.revoke.self',
   SESSION_REVOKE_OTHERS: 'session.revoke.others',
+  ROLE_CREATE: 'org.role.create',
+  ROLE_UPDATE: 'org.role.update',
+  ROLE_DELETE: 'org.role.delete',
+  ROLE_MOVE: 'org.role.move',
 } as const
 
 export type CoreAuditAction = (typeof CoreAuditActions)[keyof typeof CoreAuditActions]
 
-export const CoreAuditTargets = { USER: 'user', SESSION: 'session' } as const
+export const CoreAuditTargets = { USER: 'user', SESSION: 'session', ROLE: 'role' } as const
 
 export type CoreAuditTarget = (typeof CoreAuditTargets)[keyof typeof CoreAuditTargets]
 
@@ -53,11 +57,16 @@ export const CORE_AUDIT_ACTION_LABELS: Readonly<Record<CoreAuditAction, string>>
   'session.revoke.user': '사용자 전 세션 강제 종료',
   'session.revoke.self': '본인 세션 종료',
   'session.revoke.others': '본인 다른 세션 모두 종료',
+  'org.role.create': '역할 생성',
+  'org.role.update': '역할 수정',
+  'org.role.delete': '역할 삭제',
+  'org.role.move': '역할 표시 순서 변경',
 })
 
 export const CORE_AUDIT_TARGET_LABELS: Readonly<Record<CoreAuditTarget, string>> = Object.freeze({
   user: '사용자',
   session: '세션',
+  role: '역할',
 })
 
 /**
