@@ -1,14 +1,25 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import type { AdminTeamCreate, AdminTeamNode, AdminTeamRename } from '@ssworks/admin-shared'
+import type {
+  AdminTeamCreate,
+  AdminTeamMoveBody,
+  AdminTeamNode,
+  AdminTeamRename,
+} from '@ssworks/admin-shared'
 import type { Kysely } from 'kysely'
 import { isDuplicateOf } from '../accounts/duplicate.js'
 import { GUARD_LOCK_TEAM_TREE, lockGuardRow } from '../database/guard-locks.js'
 import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { KYSELY } from '../tokens.js'
-import { duplicateTeamName } from './errors.js'
-import { closurePairs, type ClosureLink } from './move.js'
-import { lockAncestors, lockParentTeam, lockSiblings, lockTeamRow } from './team-locks.js'
+import { TEAM_MESSAGES, beforeTeamError, duplicateTeamName, moveCycle } from './errors.js'
+import { closurePairs, planTeamMove, type ClosureLink } from './move.js'
+import {
+  lockAncestors,
+  lockDescendants,
+  lockParentTeam,
+  lockSiblings,
+  lockTeamRow,
+} from './team-locks.js'
 import { buildTeamTree } from './tree.js'
 
 // 정본: hangang-home apps/api/src/modules/teams/teams.service.ts(트리 · 만들기 · 이름 · 이동 · 삭제 · A3 잠금 뒤 셈) ·
@@ -108,6 +119,86 @@ export class AdminTeamsService {
         return { before: { teamName: row.teamName } }
       }),
     )
+  }
+
+  /**
+   * 기준 형제 앞(null 이면 끝)으로 — 받는 형제 묶음을 0..n-1 로 다시 매긴다(⑤ O1 · B8). 상위 팀이 바뀌면 closure 를 앱이 셈한
+   * 쌍으로 다시 쓴다(B6). 검사 순서는 B10. 🔴 재인증 · revision 이 없다(3d §9).
+   */
+  async move(
+    teamNo: bigint,
+    body: AdminTeamMoveBody,
+  ): Promise<{ before: TeamPlacement; after: TeamPlacement }> {
+    if (body.beforeTeamNo === teamNo) throw beforeTeamError(TEAM_MESSAGES.beforeIsSelf)
+    return runWriteTransaction(this.db, async (trx) => {
+      // 🔴 첫 문장(① G1) — 서브트리 · 상위 팀 · 형제 읽기가 모두 앞선 팀 쓰기의 커밋 뒤를 본다
+      await lockGuardRow(trx, GUARD_LOCK_TEAM_TREE)
+      const target = await lockTeamRow(trx, teamNo)
+      const oldAncestors = await lockAncestors(trx, teamNo)
+      // 🔴 대상은 따로 넣는다 — closure 자기 행에 기대지 않는다(④ C1)
+      const subtree: ClosureLink[] = [
+        { teamNo, depth: 0 },
+        ...(await lockDescendants(trx, teamNo)).map((link) => ({
+          teamNo: link.teamNo,
+          depth: link.depth,
+        })),
+      ]
+      const parentTeamNo = body.parentTeamNo
+      // 🔴 자기 자신 · 하위 팀 아래로는 못 간다 — hangang 에 없던 검사(3d §9). 받아들이면 closure 가 순환 · 고립된다
+      if (parentTeamNo !== null && subtree.some((link) => link.teamNo === parentTeamNo)) {
+        throw moveCycle()
+      }
+      let newAncestors: ClosureLink[] = []
+      if (parentTeamNo !== null) {
+        await lockParentTeam(trx, parentTeamNo)
+        newAncestors = [
+          { teamNo: parentTeamNo, depth: 0 },
+          ...(await lockAncestors(trx, parentTeamNo)),
+        ]
+      }
+      const siblings = await lockSiblings(trx, parentTeamNo, teamNo)
+      const beforeTeamNo = body.beforeTeamNo
+      if (beforeTeamNo !== null && !siblings.some((sibling) => sibling.teamNo === beforeTeamNo)) {
+        throw beforeTeamError(TEAM_MESSAGES.beforeNotSibling)
+      }
+      const sameParent = parentTeamNo === target.parentTeamNo
+      const plan = planTeamMove(
+        siblings,
+        { teamNo, displayOrder: target.displayOrder },
+        beforeTeamNo,
+        sameParent,
+      )
+      const before: TeamPlacement = {
+        parentTeamNo: target.parentTeamNo,
+        displayOrder: target.displayOrder,
+      }
+      if (plan.unchanged) return { before, after: before }
+      if (!sameParent) {
+        // 옛 바깥 조상 × 서브트리를 지우고 새 조상 × 서브트리를 넣는다. 서브트리 안 쌍(자기 행 포함)은 그대로 둔다(B6)
+        const oldAncestorNos = oldAncestors.map((link) => link.teamNo)
+        if (oldAncestorNos.length > 0) {
+          await trx
+            .deleteFrom('teamClosure')
+            .where(
+              'descendantNo',
+              'in',
+              subtree.map((link) => link.teamNo),
+            )
+            .where('ancestorNo', 'in', oldAncestorNos)
+            .execute()
+        }
+        const rows = closurePairs(newAncestors, subtree)
+        if (rows.length > 0) await trx.insertInto('teamClosure').values(rows).execute()
+      }
+      for (const update of plan.updates) {
+        await trx
+          .updateTable('teams')
+          .set({ displayOrder: update.displayOrder })
+          .where('teamNo', '=', update.teamNo)
+          .execute()
+      }
+      return { before, after: { parentTeamNo, displayOrder: plan.targetOrder } }
+    })
   }
 
   /** 이름 UNIQUE 위반을 409 ERR_DUPLICATE_TEAM_NAME 으로(B12 — 제약 이름은 DB 의 snake_case, 2a R3) */
