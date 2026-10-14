@@ -312,6 +312,19 @@ describe('update', () => {
     expect(conflict.message).toBe(ACCOUNT_MESSAGES.noPeriodForJoin)
   })
 
+  it('🔴 오류 순서 — 권한 없는 사람이 없는 팀으로 바꾸면 400 teamNo 가 아니라 403(판정이 팀 잠금보다 먼저 — 2d-3 스펙 §5-3)', async () => {
+    const wide = await seedUser(t.db, { roleNo: wideRole, userId: 'u-order-wide' })
+    for (const body of [
+      { revision: 0, teamNo: 999_999n },
+      { revision: 0, roleNo: plainRole, teamNo: 999_999n },
+    ]) {
+      const error = await rejection(() => service.update(wide.userNo, body, manager))
+      expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+      expect(error.message).toBe(ACCOUNT_MESSAGES.higherAccount)
+    }
+    expect(await userRow(t.db, wide.userNo)).toMatchObject({ roleNo: wideRole, revision: 0 })
+  })
+
   it('없는 사용자 404 · 없는 역할 400 roleNo', async () => {
     expect((await rejection(() => service.update(999_999n, { revision: 0 }, root))).code).toBe(
       CommonErrorCodes.ERR_NO_USER,

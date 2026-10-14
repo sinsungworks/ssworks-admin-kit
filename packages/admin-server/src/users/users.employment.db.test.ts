@@ -256,9 +256,9 @@ describe('resign', () => {
     )
     if (!result.ok) throw result.error
     expect(result.value.meta).not.toHaveProperty('healedPeriod')
-    // 알려진 동작 — 감사 before 는 잔존 셈의 읽기 뷰(OFF)라 기다린 사이의 재입사를 못 본다. 판정 · 저장은 위처럼 맞다.
-    //   withSuperAdminSurvival 순서를 바꾸면(후속) 이 단언을 resignDate: null 로 바꾼다.
-    expect(result.value.before).toMatchObject({ resignDate: '2025-12-31' })
+    // 🔴 셈이 대상 잠금 뒤에 읽기 뷰를 연다 — before 가 기다린 사이의 재입사를 본다(2d-3 스펙 ① A · §14 R1-1).
+    //    셈을 잠금 단계 앞으로 되돌리면 '2025-12-31'(낡음)이 된다.
+    expect(result.value.before).toMatchObject({ resignDate: null })
     expect(
       (await periodsOf(t.db, user.userNo)).map((period) => [period.joinDate, period.resignDate]),
     ).toEqual([

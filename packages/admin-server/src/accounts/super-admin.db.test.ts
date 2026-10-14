@@ -3,6 +3,7 @@ import { createConnection } from 'mariadb'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { GUARD_MESSAGES } from '../database/guard-locks.js'
 import { seedRole, seedUser } from '../test-support/auth.js'
+import { whileHeld } from '../test-support/concurrency.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { testDbServer } from '../test-support/db-url.js'
 import { ACCOUNT_MESSAGES } from './errors.js'
@@ -97,6 +98,48 @@ describe('lockSuperAdminGuard', () => {
   })
 })
 
+describe('withSuperAdminSurvival — 잠금 단계(2d-3 스펙 ① A · C2)', () => {
+  it('🔴 잠금 단계가 기다린 사이 커밋된 대상의 변경을 쓰기 단계의 비잠금 읽기가 본다 — 셈이 잠금 단계 뒤에 읽기 뷰를 연다', async () => {
+    const role = await seedRole(t.db, { roleName: 'stage-plain', permissions: ['org.users:read'] })
+    const user = await seedUser(t.db, { roleNo: role })
+    const result = await whileHeld(
+      t,
+      async (connection) => {
+        await connection.query('select user_no from users where user_no = ? for update', [
+          user.userNo,
+        ])
+        await connection.query(
+          'update users set login_fail_count = login_fail_count + 1 where user_no = ?',
+          [user.userNo],
+        )
+      },
+      () =>
+        t.db.transaction().execute((trx) =>
+          withSuperAdminSurvival(trx, {
+            lock: () =>
+              trx
+                .selectFrom('users')
+                .select('userNo')
+                .where('userNo', '=', user.userNo)
+                .forUpdate()
+                .executeTakeFirstOrThrow(),
+            write: async (locked) => {
+              const row = await trx
+                .selectFrom('users')
+                .select('loginFailCount')
+                .where('userNo', '=', locked.userNo)
+                .executeTakeFirstOrThrow()
+              return row.loginFailCount
+            },
+          }),
+        ),
+    )
+    if (!result.ok) throw result.error
+    // 셈이 잠금 단계 앞이면 0(셈이 연 뷰는 원시 연결의 커밋 전이다 — 2d-3 스펙 §14 R1-1)
+    expect(result.value).toBe(1)
+  })
+})
+
 describe('withSuperAdminSurvival', () => {
   // 셈이 0 과 1 사이를 오가야 하므로 데이터베이스를 따로 쓴다.
   let u: TestDatabase
@@ -115,12 +158,15 @@ describe('withSuperAdminSurvival', () => {
     const error = await u.db
       .transaction()
       .execute((trx) =>
-        withSuperAdminSurvival(trx, async () => {
-          await trx
-            .updateTable('roles')
-            .set({ permissions: JSON.stringify(['org.users:read']) })
-            .where('roleNo', '=', role)
-            .execute()
+        withSuperAdminSurvival(trx, {
+          lock: async () => undefined,
+          write: async () => {
+            await trx
+              .updateTable('roles')
+              .set({ permissions: JSON.stringify(['org.users:read']) })
+              .where('roleNo', '=', role)
+              .execute()
+          },
         }),
       )
       .catch((caught: unknown) => caught)
@@ -135,36 +181,44 @@ describe('withSuperAdminSurvival', () => {
     expect(after.permissions).toEqual(['*'])
   })
 
-  it('하나가 남으면 통과하고 결과를 돌려준다', async () => {
+  it('하나가 남으면 통과하고 결과를 돌려준다 — lock() 의 값이 write 의 인자다', async () => {
     const role = await seedRole(u.db, { roleName: 'second-star', permissions: ['*'] })
     const user = await seedUser(u.db, { roleNo: role })
     await seedUser(u.db, { roleNo: role }) // 남을 한 명 — 앞 테스트가 남긴 상태에 기대지 않는다
     const result = await u.db.transaction().execute((trx) =>
-      withSuperAdminSurvival(trx, async () => {
-        await trx
-          .updateTable('users')
-          .set({ resignAt: new Date() })
-          .where('userNo', '=', user.userNo)
-          .execute()
-        return 'done'
+      withSuperAdminSurvival(trx, {
+        lock: async () => user.userNo,
+        write: async (userNo) => {
+          await trx
+            .updateTable('users')
+            .set({ resignAt: new Date() })
+            .where('userNo', '=', userNo)
+            .execute()
+          return 'done'
+        },
       }),
     )
     expect(result).toBe('done')
   })
 
-  it('센티넬 행이 없으면 500 ERR_COMMON_INTERNAL — 쓰기 전에 멈춘다', async () => {
+  it('센티넬 행이 없으면 500 ERR_COMMON_INTERNAL — 잠금 단계 · 쓰기 전에 멈춘다', async () => {
     await u.db.deleteFrom('guardLocks').where('lockName', '=', GUARD_LOCK_SUPER_ADMIN).execute()
-    let written = false
+    const reached: string[] = []
     try {
       const error = await u.db
         .transaction()
         .execute((trx) =>
-          withSuperAdminSurvival(trx, async () => {
-            written = true
+          withSuperAdminSurvival(trx, {
+            lock: async () => {
+              reached.push('lock')
+            },
+            write: async () => {
+              reached.push('write')
+            },
           }),
         )
         .catch((caught: unknown) => caught)
-      expect(written).toBe(false)
+      expect(reached).toEqual([])
       expect(error).toBeInstanceOf(BusinessError)
       expect((error as BusinessError).code).toBe(CommonErrorCodes.ERR_COMMON_INTERNAL)
       expect((error as BusinessError).message).toBe(GUARD_MESSAGES.missing)
@@ -208,12 +262,15 @@ describe('withSuperAdminSurvival 경합', () => {
       waiting = v.db
         .transaction()
         .execute((trx) =>
-          withSuperAdminSurvival(trx, async () => {
-            await trx
-              .updateTable('roles')
-              .set({ permissions: JSON.stringify([]) })
-              .where('roleNo', '=', roleB)
-              .execute()
+          withSuperAdminSurvival(trx, {
+            lock: async () => undefined,
+            write: async () => {
+              await trx
+                .updateTable('roles')
+                .set({ permissions: JSON.stringify([]) })
+                .where('roleNo', '=', roleB)
+                .execute()
+            },
           }),
         )
         .catch((caught: unknown) => caught)

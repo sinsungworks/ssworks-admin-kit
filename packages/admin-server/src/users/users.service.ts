@@ -24,7 +24,7 @@ import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import type { ResolvedUsersConfig } from '../accounts/options.js'
 import { permissionsOrEmpty } from '../accounts/permissions-column.js'
 import { reauthenticate } from '../accounts/reauth.js'
-import { withSuperAdminSurvival } from '../accounts/super-admin.js'
+import { withSuperAdminSurvival, type LockedWrite } from '../accounts/super-admin.js'
 import { generateTemporaryPassword } from '../accounts/temporary-password.js'
 import { hashPassword } from '../auth/password.js'
 import type { AdminPrincipal } from '../auth/principal.js'
@@ -41,7 +41,7 @@ import {
   reasonOf,
 } from './employment.js'
 import { fieldError, noUser, userConflict, userRevisionConflict } from './errors.js'
-import { lockGrantRole, lockTeam, lockUser, replaceTeam } from './user-locks.js'
+import { lockGrantRole, lockTeam, lockUser, replaceTeam, type LockedUser } from './user-locks.js'
 import { readUser, toUserView, userViewQuery, type AdminUserView } from './user-view.js'
 import { userListCondition, type AdminUserListQuery } from './users.query.js'
 
@@ -51,6 +51,8 @@ import { userListCondition, type AdminUserListQuery } from './users.query.js'
 //  - 목록은 팀 LEFT JOIN · 소속 전체 필터 · 마지막 구간 날짜(B9 · B10). 관리 쿼리는 코어 users 를 직접 읽는다(2c B4).
 //  - 쓰기는 대상 users ⋈ roles 를 잠그고 judgeAccountCommand 로 판정한다(② E1 · B8) — 정본 넷 중 서버 자기 보호는 gise 뿐.
 //  - 날짜 ↔ 효력 시각은 accounts/calendar.ts 하나(⑤ Z1).
+//  - 잔존으로 감싼 쓰기(역할을 바꾸는 수정 · 퇴사)는 잠금 단계(대상 · 줄 역할 · 팀 잠금 · 판정 · revision · 상태) 뒤에 셈한다
+//    (2d-3 스펙 ① A · C3) — before · item 이 낡지 않고 ON 에서 1020 이 아니다.
 // 🔴 재인증 · argon2 는 트랜잭션 밖 · 권한 가드 뒤(2b §4-7). 임시 비밀번호는 응답에만 — 감사 가방 · 로그에 넣지 않는다.
 
 /** 재직 이력 한 줄 — 날짜는 'YYYY-MM-DD' */
@@ -238,42 +240,52 @@ export class AdminUsersService {
     await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const actor = actorOf(principal)
     return runWriteTransaction(this.db, async (trx) => {
-      const write = async (): Promise<AdminUserView> => {
-        const target = await lockUser(trx, userNo)
-        const grant =
-          body.roleNo === undefined
-            ? undefined
-            : this.permissionsOf(await lockGrantRole(trx, body.roleNo))
-        // 🔴 판정이 revision 보다 먼저다 — 권한 없는 사람에게 revision 상태를 드러내지 않는다(B7)
-        judgeAccountCommand(actor, {
-          kind: 'user.update',
-          targetUserNo: userNo,
-          current: this.permissionsOf(target),
-          grant,
-        })
-        if (body.revision !== target.revision) throw userRevisionConflict()
-        // 🔴 잠금 순서는 users → roles → teams → (teamUserMap · 재직 이력) — create 와 같은 순서다. 이력(correctJoinDate)을
-        //    팀보다 먼저 잠그면 같은 팀에 계정을 만드는 create 와 교착한다(Task 8 리뷰).
-        if (body.teamNo != null) await lockTeam(trx, body.teamNo)
-        const before = await readUser(trx, userNo, timeZone)
-        if (body.joinDate !== undefined) await correctJoinDate(trx, userNo, body.joinDate)
-        if (body.teamNo !== undefined) await replaceTeam(trx, userNo, body.teamNo)
-        await trx
-          .updateTable('users')
-          .set((eb) => ({
-            ...(body.userName === undefined ? {} : { userName: body.userName }),
-            ...(body.roleNo === undefined ? {} : { roleNo: body.roleNo }),
-            ...(joinAt === undefined ? {} : { joinAt }),
-            revision: eb('revision', '+', 1),
-            updateAt: sql<Date>`current_timestamp`,
-          }))
-          .where('userNo', '=', userNo)
-          .execute()
-        return before
+      const steps: LockedWrite<LockedUser, AdminUserView> = {
+        // 🔴 잠금 읽기 · 판정만(2d-3 스펙 C2 · C3) — 대상 users ⋈ roles · 줄 역할 · 팀. 남이 이 사용자 잠금 없이 바꾸는 행(역할 —
+        //    이름 · 기본 · 이동, 팀 — 이름 · 이동)이라 셈(읽기 뷰) 뒤에 잠그면 스냅샷 격리 ON 에서 1020 이다(2e-1 이월).
+        //    잠금 순서는 users → roles → teams → (teamUserMap · 재직 이력) — create 와 같은 순서다. 이력을 팀보다 먼저 잠그면
+        //    같은 팀에 계정을 만드는 create 와 교착한다(Task 8 리뷰).
+        lock: async () => {
+          const target = await lockUser(trx, userNo)
+          const grant =
+            body.roleNo === undefined
+              ? undefined
+              : this.permissionsOf(await lockGrantRole(trx, body.roleNo))
+          // 🔴 판정이 revision 보다 먼저다 — 권한 없는 사람에게 revision 상태를 드러내지 않는다(B7)
+          judgeAccountCommand(actor, {
+            kind: 'user.update',
+            targetUserNo: userNo,
+            current: this.permissionsOf(target),
+            grant,
+          })
+          if (body.revision !== target.revision) throw userRevisionConflict()
+          if (body.teamNo != null) await lockTeam(trx, body.teamNo)
+          return target
+        },
+        // 셈이 연 읽기 뷰 — 잠근 행은 모두 최신이다(2d-3 스펙 §14 R1-1 · R1-5)
+        write: async () => {
+          const before = await readUser(trx, userNo, timeZone)
+          if (body.joinDate !== undefined) await correctJoinDate(trx, userNo, body.joinDate)
+          if (body.teamNo !== undefined) await replaceTeam(trx, userNo, body.teamNo)
+          await trx
+            .updateTable('users')
+            .set((eb) => ({
+              ...(body.userName === undefined ? {} : { userName: body.userName }),
+              ...(body.roleNo === undefined ? {} : { roleNo: body.roleNo }),
+              ...(joinAt === undefined ? {} : { joinAt }),
+              revision: eb('revision', '+', 1),
+              updateAt: sql<Date>`current_timestamp`,
+            }))
+            .where('userNo', '=', userNo)
+            .execute()
+          return before
+        },
       }
       // 🔴 역할을 바꾸는 수정만 잔존을 줄일 수 있다 — 센티넬이 트랜잭션의 첫 문장이 되게 감싼다(§5-3)
       const before =
-        body.roleNo === undefined ? await write() : await withSuperAdminSurvival(trx, write)
+        body.roleNo === undefined
+          ? await steps.write(await steps.lock())
+          : await withSuperAdminSurvival(trx, steps)
       // 🔴 같은 트랜잭션에서 읽는다 — 응답 · 감사 after 가 이 쓰기의 결과다(§14 R5-2)
       return { item: await readUser(trx, userNo, timeZone), before }
     })
@@ -296,55 +308,63 @@ export class AdminUsersService {
     const reason = reasonOf(body.reason)
     const now = new Date()
     return runWriteTransaction(this.db, (trx) =>
-      withSuperAdminSurvival(trx, async () => {
-        const target = await lockUser(trx, userNo)
-        // 🔴 판정이 상태보다 먼저(B7)
-        judgeAccountCommand(actor, {
-          kind: 'user.resign',
-          targetUserNo: userNo,
-          current: this.permissionsOf(target),
-        })
-        if (target.resignAt !== null) throw userConflict(ACCOUNT_MESSAGES.alreadyResigned)
-        // 감사 before 는 보기 읽기다 — 잔존 셈의 읽기 뷰라 OFF 에서 동시 쓰기를 못 볼 수 있다(user-view.ts 주석)
-        const before = await readUser(trx, userNo, timeZone)
-        const active = await lockActivePeriods(trx, userNo)
-        if (active.length > 1) throw userConflict(ACCOUNT_MESSAGES.periodCorrupted)
-        const healed = active[0] === undefined
-        const period =
-          active[0] ??
-          (await insertPeriod(trx, {
-            userNo,
-            joinDate: dateIn(target.joinAt, timeZone),
-            reason: null,
-            createdBy: null,
-          }))
-        if (body.resignDate < period.joinDate) {
-          throw fieldError('resignDate', ACCOUNT_MESSAGES.resignBeforeJoin)
-        }
-        await trx
-          .updateTable('userEmploymentPeriods')
-          .set({ resignAt: toDateColumn(body.resignDate), reason })
-          .where('periodNo', '=', period.periodNo)
-          .execute()
-        await trx
-          .updateTable('users')
-          .set((eb) => ({
-            resignAt: effective,
-            revision: eb('revision', '+', 1),
-            updateAt: sql<Date>`current_timestamp`,
-          }))
-          .where('userNo', '=', userNo)
-          .execute()
-        // 🔴 효력 시각이 이미 지났으면 같은 트랜잭션에서 끊는다 — 커밋되면 그 사용자의 다음 요청은 401(§14 R6-1)
-        const revokedCount =
-          effective.getTime() <= now.getTime()
-            ? await this.sessions.revokeAllOfUser(userNo, 'terminated', now, { trx })
-            : 0
-        return {
-          item: await readUser(trx, userNo, timeZone),
-          before,
-          meta: { reason, revokedCount, ...(healed ? { healedPeriod: true } : {}), timeZone },
-        }
+      withSuperAdminSurvival(trx, {
+        // 🔴 잠금 읽기 · 판정 · 상태 검사만(2d-3 스펙 C2 · C3)
+        lock: async () => {
+          const target = await lockUser(trx, userNo)
+          // 🔴 판정이 상태보다 먼저(B7)
+          judgeAccountCommand(actor, {
+            kind: 'user.resign',
+            targetUserNo: userNo,
+            current: this.permissionsOf(target),
+          })
+          if (target.resignAt !== null) throw userConflict(ACCOUNT_MESSAGES.alreadyResigned)
+          return target
+        },
+        // 셈이 연 읽기 뷰 — 대상 잠금을 기다린 사이의 커밋(재입사 · 로그인 실패)이 before 에 보인다(2d-3 스펙 §14 R1-1)
+        write: async (target) => {
+          const before = await readUser(trx, userNo, timeZone)
+          const active = await lockActivePeriods(trx, userNo)
+          if (active.length > 1) throw userConflict(ACCOUNT_MESSAGES.periodCorrupted)
+          const healed = active[0] === undefined
+          const period =
+            active[0] ??
+            (await insertPeriod(trx, {
+              userNo,
+              joinDate: dateIn(target.joinAt, timeZone),
+              reason: null,
+              createdBy: null,
+            }))
+          if (body.resignDate < period.joinDate) {
+            throw fieldError('resignDate', ACCOUNT_MESSAGES.resignBeforeJoin)
+          }
+          await trx
+            .updateTable('userEmploymentPeriods')
+            .set({ resignAt: toDateColumn(body.resignDate), reason })
+            .where('periodNo', '=', period.periodNo)
+            .execute()
+          await trx
+            .updateTable('users')
+            .set((eb) => ({
+              resignAt: effective,
+              revision: eb('revision', '+', 1),
+              updateAt: sql<Date>`current_timestamp`,
+            }))
+            .where('userNo', '=', userNo)
+            .execute()
+          // 🔴 효력 시각이 이미 지났으면 같은 트랜잭션에서 끊는다 — 커밋되면 그 사용자의 다음 요청은 401(§14 R6-1).
+          // 🔴 세션 폐기는 쓰기 단계다(2d-3 스펙 C5) — 잠금 단계로 올리면 대상의 refresh 회전과의 교착에서 퇴사가 희생자가
+          //    된다. ON 에서 대상 로그아웃이 셈과 폐기 사이에 커밋되면 1020 → 409 다시 시도(2d-3 스펙 §14 R1-4).
+          const revokedCount =
+            effective.getTime() <= now.getTime()
+              ? await this.sessions.revokeAllOfUser(userNo, 'terminated', now, { trx })
+              : 0
+          return {
+            item: await readUser(trx, userNo, timeZone),
+            before,
+            meta: { reason, revokedCount, ...(healed ? { healedPeriod: true } : {}), timeZone },
+          }
+        },
       }),
     )
   }

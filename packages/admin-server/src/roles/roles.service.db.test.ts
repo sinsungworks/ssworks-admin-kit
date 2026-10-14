@@ -262,6 +262,29 @@ describe('update', () => {
     expect(defaults).toEqual([])
   })
 
+  it('🔴 기본 켜기와 권한 변경을 함께 — 잔존 갈래에서도 다른 기본 역할을 끄고 clearedDefaults 를 돌려준다(2d-3 스펙 C4)', async () => {
+    const a = await service.create(
+      { roleName: 'flag-both-a', isDefault: true, permissions: [] },
+      root,
+    )
+    const b = await service.create(
+      { roleName: 'flag-both-b', isDefault: false, permissions: [] },
+      root,
+    )
+    const result = await service.update(
+      b.roleNo,
+      { revision: 0, isDefault: true, permissions: ['org.users:read'] },
+      root,
+    )
+    expect(result.clearedDefaults).toEqual([a.roleNo])
+    expect(result.item).toMatchObject({
+      isDefault: true,
+      permissions: ['org.users:read'],
+      revision: 1,
+    })
+    expect(await stored(a.roleNo)).toMatchObject({ isDefault: false, revision: 1 })
+  })
+
   it('🔴 만들기 · 수정의 결과는 같은 트랜잭션에서 읽는다(§14 R5-2) — 트랜잭션 밖 쿼리는 던지는 대역으로 잰다', async () => {
     const strict = new AdminRolesService(transactionOnly(t.db), accountsConfig(), undefined)
     const { roleNo } = await strict.create(

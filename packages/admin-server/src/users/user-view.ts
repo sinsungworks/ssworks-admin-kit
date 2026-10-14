@@ -11,13 +11,9 @@ import { noUser } from './errors.js'
 //  - lockUntil 은 미래일 때만(gise) — 지난 잠금은 잠금이 아니다. 해시 · 실패 카운터는 싣지 않는다.
 // 🔴 이 투영은 보기 읽기다(응답 item · 감사 before/after). 판정에 쓰지 않는다 — 판정은 잠금 읽기(user-locks.ts ·
 //    employment.ts)로 한다(§14 R5-6).
-//    잔존으로 감싼 쓰기(역할을 바꾸는 수정 · 퇴사)에서 쓰기 앞의 보기 읽기는 잔존 셈이 연 읽기 뷰를 쓴다.
-//    snapshot isolation OFF(11.4 기본)에서 대상 잠금을 기다린 사이 같은 사용자에 대한 다른 쓰기가 커밋되면,
-//    before 는 대상 자신의 열(resignDate · resignAt · revision …)까지 낡을 수 있다. 판정은 이 값을 쓰지 않는다.
-//    ON 이면 같은 경합은 409(ER_CHECKREAD)로 끝난다.
-//    이 트랜잭션이 쓴 행은 item · after 에 늘 보인다. 쓰지 않은 표(재직 구간 · 팀 · 역할 이름)는 같은 읽기 뷰라 OFF 에서
-//    낡을 수 있다.
-//    구조적 해결(withSuperAdminSurvival 순서를 "센티넬 → 대상 잠금 → 셈" 으로)은 후속이다(HANDOFF).
+//    잔존으로 감싼 쓰기(역할을 바꾸는 수정 · 퇴사)는 대상 · 줄 역할 · 팀을 잠근 **뒤에** 셈으로 읽기 뷰를 연다(2d-3 스펙
+//    ① A) — 쓰기 앞의 보기 읽기(before)도 잠근 행은 최신이다. 이 트랜잭션이 잠그지도 쓰지도 않은 행(다른 팀의 이름 등)은
+//    뷰가 열린 시점의 값이다.
 
 /** 응답 행 — 타입 별칭이라 감사 diff 의 `Record<string, unknown>` 자리에 들어간다 */
 export type AdminUserView = {
