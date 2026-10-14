@@ -24,6 +24,7 @@ import type {
 import { AdminRolesModule } from './roles/roles.module.js'
 import { AdminSessionsModule } from './sessions/sessions.module.js'
 import { ADMIN_SERVER_OPTIONS, KYSELY } from './tokens.js'
+import { AdminUsersModule } from './users/users.module.js'
 
 // 정본: hangang-home apps/api/src/app.module.ts(전역 필터 · 가드를 DI 로) · gise database.module.ts(onModuleDestroy)
 // 바꾼 점: 패키지 코어 모듈이다 — 기능 모듈은 쓰는 쪽 app.module.ts(B)가 골라 import 한다(Phase 2 결정 ④ R2).
@@ -38,6 +39,7 @@ const ADMIN_ROUTE_MODULES: readonly Type[] = [
   AdminAuditModule,
   AdminSessionsModule,
   AdminRolesModule,
+  AdminUsersModule,
 ]
 
 const DEFAULT_ROUTE_PREFIX = 'admin'

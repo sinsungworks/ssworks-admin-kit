@@ -56,3 +56,6 @@ export { AdminSessionsModule } from './sessions/sessions.module.js'
 // 역할 · 판정(PR 2d-1)
 export { AdminRolesModule } from './roles/roles.module.js'
 export type { AdminPermissionCatalog } from './accounts/options.js'
+
+// 사용자 · 계정(PR 2d-2)
+export { AdminUsersModule } from './users/users.module.js'

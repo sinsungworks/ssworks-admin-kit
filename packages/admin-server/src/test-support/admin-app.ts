@@ -6,12 +6,13 @@ import { AdminAuthModule } from '../auth/admin-auth.module.js'
 import type { AdminDbConnection } from '../database/connection.js'
 import { AdminRolesModule } from '../roles/roles.module.js'
 import { AdminSessionsModule } from '../sessions/sessions.module.js'
+import { AdminUsersModule } from '../users/users.module.js'
 import { TEST_CATALOG } from './accounts.js'
 import { AuditProbeModule } from './audit-probe.js'
 import { TEST_JWT_SECRET } from './auth.js'
 import { createHttpApp } from './http.js'
 
-// 테스트 전용 — 인증 · 감사 · 세션까지 붙인 앱(2c · 2d-1 역할). 운영 main.ts 와 같은 배선(configureAdminApp). 🔴 빌드에서 빠진다.
+// 테스트 전용 — 인증 · 감사 · 세션까지 붙인 앱(2c · 2d 역할 · 사용자). 운영 main.ts 와 같은 배선(configureAdminApp). 🔴 빌드에서 빠진다.
 
 export const TEST_PERMISSIONS = Object.freeze({
   'sessions.read': 'org.users:read',
@@ -34,6 +35,8 @@ export const TEST_AUDIT_CATALOG = defineAuditCatalog({
 export interface AdminAppOptions {
   /** 역할(2d-1) · 사용자(2d-2) 쓰기의 재인증. 기본 false */
   reauth?: boolean
+  /** 사용자 날짜의 기준 시간대. 기본 Asia/Seoul */
+  timeZone?: string
 }
 
 export function bootAdminApp(
@@ -48,12 +51,14 @@ export function bootAdminApp(
         permissions: TEST_PERMISSIONS,
         permissionCatalog: TEST_CATALOG,
         reauth: options.reauth ?? false,
+        ...(options.timeZone === undefined ? {} : { timeZone: options.timeZone }),
         audit: { catalog: TEST_AUDIT_CATALOG, secretKeys: ['apiKey'] },
       }),
       AdminAuthModule,
       AdminAuditModule,
       AdminSessionsModule,
       AdminRolesModule,
+      AdminUsersModule,
       AuditProbeModule,
     ],
   })
