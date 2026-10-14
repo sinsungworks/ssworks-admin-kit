@@ -10,8 +10,12 @@ import { noUser } from './errors.js'
 //  - 날짜는 마지막 재직 구간에서(B10 — 원천). 구간이 없는 시드 계정은 users.joinAt 의 기준 시간대 날짜.
 //  - lockUntil 은 미래일 때만(gise) — 지난 잠금은 잠금이 아니다. 해시 · 실패 카운터는 싣지 않는다.
 // 🔴 이 투영은 보기 읽기다(응답 item · 감사 before/after). 판정에 쓰지 않는다 — 판정은 잠금 읽기(user-locks.ts ·
-//    employment.ts)로 한다(§14 R5-6). 잔존으로 감싼 쓰기 안에서는 셈이 연 읽기 뷰를 보므로, 잠금을 기다린 사이 다른
-//    쓰기가 바꾼 곁가지(대표 팀 이름 등)가 낡을 수 있다 — 자기 쓰기는 늘 보인다.
+//    employment.ts)로 한다(§14 R5-6).
+//    잔존으로 감싼 쓰기(역할을 바꾸는 수정 · 퇴사)에서 쓰기 앞의 보기 읽기는 잔존 셈이 연 읽기 뷰를 쓴다.
+//    snapshot isolation OFF(11.4 기본)에서 대상 잠금을 기다린 사이 같은 사용자에 대한 다른 쓰기가 커밋되면,
+//    before 는 대상 자신의 열(resignDate · resignAt · revision …)까지 낡을 수 있다. 판정은 이 값을 쓰지 않는다.
+//    ON 이면 같은 경합은 409(ER_CHECKREAD)로 끝난다. 자기 쓰기 뒤의 item · after 는 늘 최신이다.
+//    구조적 해결(withSuperAdminSurvival 순서를 "센티넬 → 대상 잠금 → 셈" 으로)은 후속이다(HANDOFF).
 
 /** 응답 행 — 타입 별칭이라 감사 diff 의 `Record<string, unknown>` 자리에 들어간다 */
 export type AdminUserView = {

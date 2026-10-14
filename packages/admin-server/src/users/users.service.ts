@@ -295,6 +295,7 @@ export class AdminUsersService {
           current: this.permissionsOf(target),
         })
         if (target.resignAt !== null) throw userConflict(ACCOUNT_MESSAGES.alreadyResigned)
+        // 감사 before 는 보기 읽기다 — 잔존 셈의 읽기 뷰라 OFF 에서 동시 쓰기를 못 볼 수 있다(user-view.ts 주석)
         const before = await readUser(trx, userNo, timeZone)
         const active = await lockActivePeriods(trx, userNo)
         if (active.length > 1) throw userConflict(ACCOUNT_MESSAGES.periodCorrupted)
