@@ -21,6 +21,11 @@ describe('mapError', () => {
       '동시 처리 충돌입니다. 다시 시도해 주세요.',
     ],
     [
+      'ER_CHECKREAD',
+      CommonErrorCodes.ERR_COMMON_CONFLICT,
+      '동시 처리 충돌입니다. 다시 시도해 주세요.',
+    ],
+    [
       'ER_LOCK_WAIT_TIMEOUT',
       CommonErrorCodes.ERR_COMMON_TIMEOUT,
       '처리가 지연되고 있습니다. 다시 시도해 주세요.',

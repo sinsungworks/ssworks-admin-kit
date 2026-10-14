@@ -49,6 +49,8 @@ export function actorOf(principal: Pick<AdminPrincipal, 'userNo' | 'permissions'
 /** 덮지 못한 키(중복 없이). 행위자가 '*' 면 빈 배열, 대상이 '*' 면 '*' 가 들어간다 */
 export function outsideOf(granted: readonly string[], target: readonly string[]): string[] {
   if (granted.includes(ALL_PERMISSION)) return []
+  // 정규화 전 대상(['b', '*'])도 스펙 §5-2 대로 정확히 ['*'] 다
+  if (target.includes(ALL_PERMISSION)) return [ALL_PERMISSION]
   return [...new Set(target.filter((permission) => !granted.includes(permission)))]
 }
 

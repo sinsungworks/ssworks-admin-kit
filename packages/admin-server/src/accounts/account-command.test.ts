@@ -203,6 +203,10 @@ describe('outsideOf · actorOf', () => {
     expect(outsideOf([], ['*'])).toEqual(['*'])
   })
 
+  it("대상에 '*' 가 섞여 있으면(정규화 전) 정확히 ['*'] — 스펙 §5-2", () => {
+    expect(outsideOf(['a'], ['b', '*'])).toEqual(['*'])
+  })
+
   it('주체에서 userNo · permissions 만 꺼낸다', () => {
     expect(actorOf({ userNo: 5n, permissions: ['x'] })).toEqual({ userNo: 5n, permissions: ['x'] })
   })

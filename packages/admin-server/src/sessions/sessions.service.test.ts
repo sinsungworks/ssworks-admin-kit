@@ -1,5 +1,6 @@
+import { Logger } from '@nestjs/common'
 import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import type { AdminPrincipal } from '../auth/principal.js'
 import type {
@@ -135,7 +136,15 @@ describe('AdminSessionsService', () => {
   it('깨진 권한 열은 빈 권한으로 본다 — 인증 가드와 같은 fail-closed(그 계정은 아무것도 못 한다)', async () => {
     const store = new FakeStore()
     store.owner = { userNo: 4n, roleNo: 1n, permissions: '{broken' }
-    await expect(service(store).revoke(11n, narrow)).resolves.toBeUndefined()
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {})
+    try {
+      await expect(service(store).revoke(11n, narrow)).resolves.toBeUndefined()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0]?.[0])).toContain('역할 1 ')
+    } finally {
+      warn.mockRestore()
+    }
+    expect(store.revokeLiveCalls).toEqual([{ sessionNo: 11n, options: {} }])
   })
 
   it('🔴 지금 세션이면 UPDATE 를 보내지 않고 400 — 관리자 하나 · 내 세션 하나 둘 다', async () => {

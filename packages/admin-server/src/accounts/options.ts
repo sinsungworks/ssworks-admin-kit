@@ -27,9 +27,14 @@ export function resolveAccountsConfig(
   moduleName: string,
 ): ResolvedAccountsConfig {
   const catalog = options.permissionCatalog
-  if (!isCatalog(catalog)) {
+  if (catalog === undefined || catalog === null) {
     throw new Error(
       `${moduleName} 은 permissionCatalog 옵션이 있어야 한다 — admin-shared definePermissions() 결과를 AdminServerModule 옵션에 넘긴다.`,
+    )
+  }
+  if (!isCatalog(catalog)) {
+    throw new Error(
+      `${moduleName} 의 permissionCatalog 모양이 다르다 — admin-shared definePermissions() 결과인지, admin-shared 가 implies · normalize 를 내는 판인지(설치가 둘이 아닌지) 확인한다.`,
     )
   }
   if (options.reauth !== undefined && typeof options.reauth !== 'boolean') {

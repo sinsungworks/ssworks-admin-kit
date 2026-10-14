@@ -65,6 +65,13 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
   - 2d: 남의 세션을 끊을 때의 권한 상승 검사(⑪ D1 — `DELETE /sessions/:sessionNo` · `/sessions/user/:userNo`), 사용자 · 역할 슬롯을 `AdminPermissionSlot` · `ADMIN_PERMISSION_SLOTS` 에, 코어 감사 액션 `org.user.*` · `org.role.*` 를 admin-shared `CoreAuditActions` · 라벨에(개수 테스트를 함께 고친다). → **2d-1 에서 닫음**(세션 끊기 검사 · 역할 슬롯 · org.role.* — 사용자 슬롯 · org.user.* 는 2d-2), AuditOptions → AuditDeclaration
   - 2e · 2f: 팀 · 약관 · IP 슬롯과 액션(`org.team.*` · `setting.ipAccess.*`), IP 차단의 `access.blocked` 는 이미 감사 행이 된다.
   - 감사 화면(admin-ui 에 없다 — 템플릿 B 가 `adminAuditLogSchema` · `labelOf` 로), 보존 · 청소(B), 가드 거부(401 · 403)는 남지 않는다(⑧ F1).
+- **PR 2d-1 최종 리뷰가 넘긴 것 → 2d-2 스펙에서 정한다(2026-10-14)**
+  - M1: 카탈로그에서 빠진 키 · 새로 함의된 키를 아직 든 역할은 `'*'` 가 아닌 관리자의 지배 판정에서 실패한다(`details.outside` 가 화면에 없는 키를 가리킨다). `current` 를 `catalog.isPermission` 으로 거를지, "`'*'` 관리자가 다시 저장한다" 를 문서로 둘지 정한다.
+  - M2: `update` 는 `after` · `item` 을 커밋 뒤에 읽는다(스펙 §5-4). 2d-2 에서는 트랜잭션 안에서 읽는다.
+  - M3: `clearOtherDefaults` 로 꺼진 다른 역할은 감사 흔적이 없다. meta `clearedDefaults` 를 검토한다.
+  - M6: 서버는 역할 이름을 trim 하지 않는다. admin-shared `roles.ts` 의 `min(1)` 이 `" "` 를 받는다 — 나중 admin-shared 계약 변경으로 `.trim()` 을 더할 수 있다.
+  - displayOrder 동률: 동시 생성 둘이 같은 `MAX(displayOrder)+1` 을 받을 수 있고 뒤의 이동으로도 못 가른다. 싼 해법은 MAX 쿼리에 `forUpdate()`.
+  - 스냅샷 격리: 2d-2 사용자 쓰기는 셈 뒤에 `users ⋈ roles` 를 잠그고, 로그인은 센티넬 없이 `users` 를 쓴다. `innodb_snapshot_isolation=ON` 아래의 사용자 쓰기 DB 테스트를 하나 더한다.
 
 ## 작업 폴더 밖에 남은 것
 

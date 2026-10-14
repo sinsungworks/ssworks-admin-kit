@@ -30,9 +30,18 @@ const MAPPINGS: ReadonlyMap<string, { code: CommonErrorCode; message: string }> 
     'ER_NO_REFERENCED_ROW_2',
     { code: CommonErrorCodes.ERR_COMMON_BAD_REQUEST, message: '참조 대상이 없습니다.' },
   ],
-  // 🔴 데드락(1213) · 락 대기 초과(1205)는 긴 트랜잭션의 증상이다(hangang §8-5).
+  // 🔴 데드락(1213) · 락 대기 초과(1205)는 긴 트랜잭션의 증상이다(hangang §8-5). `ER_CHECKREAD`(1020, "Record has
+  //    changed since last read")도 같은 409 다시 시도다 — MariaDB 11.6.2+ 는 innodb_snapshot_isolation=ON 이 기본이라
+  //    (hangang-home 이 11.6.2 를 쓴다) 읽기 뷰가 열린 뒤 남이 바꾼 행을 잠금 읽기 · 스캔 UPDATE 하면 난다.
   [
     'ER_LOCK_DEADLOCK',
+    {
+      code: CommonErrorCodes.ERR_COMMON_CONFLICT,
+      message: '동시 처리 충돌입니다. 다시 시도해 주세요.',
+    },
+  ],
+  [
+    'ER_CHECKREAD',
     {
       code: CommonErrorCodes.ERR_COMMON_CONFLICT,
       message: '동시 처리 충돌입니다. 다시 시도해 주세요.',

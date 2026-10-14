@@ -24,9 +24,12 @@ describe('resolveAccountsConfig', () => {
     expect(() => resolveAccountsConfig({}, 'AdminRolesModule')).toThrow(
       'AdminRolesModule 은 permissionCatalog 옵션이 있어야 한다',
     )
+  })
+
+  it('🔴 카탈로그 모양이 다르면(normalize 없는 옛 admin-shared · 설치 둘) 모양이 다르다고 멈춘다', () => {
     expect(() =>
       resolveAccountsConfig({ permissionCatalog: { isPermission: () => true } as never }, 'M'),
-    ).toThrow('M 은 permissionCatalog 옵션이 있어야 한다')
+    ).toThrow('M 의 permissionCatalog 모양이 다르다')
   })
 
   it('🔴 슬롯 맵의 키가 카탈로그에 없으면 모아서 멈춘다(B12 — 오타가 조용히 403 이 되지 않게)', () => {
