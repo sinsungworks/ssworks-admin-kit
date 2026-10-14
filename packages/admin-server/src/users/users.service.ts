@@ -1,14 +1,30 @@
-import { Inject, Injectable, Optional } from '@nestjs/common'
-import { toListQuery, type Paginated } from '@ssworks/admin-shared'
-import type { Kysely } from 'kysely'
-import { fromDateColumn } from '../accounts/calendar.js'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
+import {
+  toListQuery,
+  type AdminUserCreate,
+  type AdminUserUpdate,
+  type Paginated,
+} from '@ssworks/admin-shared'
+import { sql, type Kysely } from 'kysely'
+import { actorOf, judgeAccountCommand } from '../accounts/account-command.js'
+import { fromDateColumn, startOfDayIn, todayIn } from '../accounts/calendar.js'
+import { isDuplicateOf } from '../accounts/duplicate.js'
+import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import type { ResolvedUsersConfig } from '../accounts/options.js'
+import { permissionsOrEmpty } from '../accounts/permissions-column.js'
+import { reauthenticate } from '../accounts/reauth.js'
+import { withSuperAdminSurvival } from '../accounts/super-admin.js'
+import { generateTemporaryPassword } from '../accounts/temporary-password.js'
+import { hashPassword } from '../auth/password.js'
+import type { AdminPrincipal } from '../auth/principal.js'
 import { AdminReauthService } from '../auth/reauth.service.js'
 import { AdminSessionStore } from '../auth/session.store.js'
-import { runQuery } from '../database/run.js'
+import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { ADMIN_ACCOUNTS_CONFIG, KYSELY } from '../tokens.js'
-import { noUser } from './errors.js'
+import { correctJoinDate, insertPeriod } from './employment.js'
+import { fieldError, noUser, userRevisionConflict } from './errors.js'
+import { lockGrantRole, lockTeam, lockUser, replaceTeam } from './user-locks.js'
 import { readUser, toUserView, userViewQuery, type AdminUserView } from './user-view.js'
 import { userListCondition, type AdminUserListQuery } from './users.query.js'
 
@@ -32,8 +48,18 @@ export type AdminEmploymentPeriodView = {
   createAt: Date
 }
 
+export interface AdminUserCreateBody extends AdminUserCreate {
+  currentPassword?: string
+}
+
+export interface AdminUserUpdateBody extends AdminUserUpdate {
+  currentPassword?: string
+}
+
 @Injectable()
 export class AdminUsersService {
+  private readonly logger = new Logger('AdminUsersService')
+
   constructor(
     @Inject(KYSELY) private readonly db: Kysely<AdminDatabase>,
     @Inject(ADMIN_ACCOUNTS_CONFIG) private readonly config: ResolvedUsersConfig,
@@ -107,5 +133,117 @@ export class AdminUsersService {
         })),
       }
     })
+  }
+  /**
+   * 계정 만들기 — 서버가 임시 비밀번호를 만든다(⑥ P1). 잔존을 늘리기만 해 센티넬을 잡지 않는다(§5-3).
+   * 🔴 임시 비밀번호는 돌려주기만 한다 — 저장은 해시, 감사 · 로그에는 남기지 않는다(공통 11).
+   */
+  async create(
+    body: AdminUserCreateBody,
+    principal: AdminPrincipal,
+  ): Promise<{ item: AdminUserView; temporaryPassword: string }> {
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
+    const temporaryPassword = generateTemporaryPassword()
+    // 🔴 argon2 는 트랜잭션 밖 — 해시가 행 잠금을 쥔 채 돌지 않게(2b §4-7)
+    const passwordHash = await hashPassword(temporaryPassword)
+    const timeZone = this.config.timeZone
+    const joinDate = body.joinDate ?? todayIn(timeZone)
+    const actor = actorOf(principal)
+    const item = await this.guardUserId(() =>
+      runWriteTransaction(this.db, async (trx) => {
+        const role = await lockGrantRole(trx, body.roleNo)
+        judgeAccountCommand(actor, { kind: 'user.create', grant: this.permissionsOf(role) })
+        if (body.teamNo !== null) await lockTeam(trx, body.teamNo)
+        const inserted = await trx
+          .insertInto('users')
+          .values({
+            userId: body.userId,
+            password: passwordHash,
+            userName: body.userName,
+            roleNo: body.roleNo,
+            joinAt: startOfDayIn(joinDate, timeZone),
+            isPasswordChangeRequired: true,
+          })
+          .executeTakeFirstOrThrow()
+        const userNo = inserted.insertId
+        if (userNo === undefined) throw new Error('users INSERT 가 insertId 를 돌려주지 않았다.')
+        if (body.teamNo !== null) {
+          await trx.insertInto('teamUserMap').values({ teamNo: body.teamNo, userNo }).execute()
+        }
+        await insertPeriod(trx, { userNo, joinDate, reason: null, createdBy: null })
+        // 🔴 같은 트랜잭션에서 읽는다(§14 R5-2)
+        return readUser(trx, userNo, timeZone)
+      }),
+    )
+    return { item, temporaryPassword }
+  }
+
+  /**
+   * 수정 — revision 필수(⑧ V1). 역할을 바꾸면 잔존을 줄일 수 있어 센티넬로 감싼다. 팀은 하나로 바꾸고(⑨ T1), 입사일은
+   * 마지막 구간을 정정한다.
+   */
+  async update(
+    userNo: bigint,
+    body: AdminUserUpdateBody,
+    principal: AdminPrincipal,
+  ): Promise<{ item: AdminUserView; before: AdminUserView }> {
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
+    const timeZone = this.config.timeZone
+    const actor = actorOf(principal)
+    return runWriteTransaction(this.db, async (trx) => {
+      const write = async (): Promise<AdminUserView> => {
+        const target = await lockUser(trx, userNo)
+        const grant =
+          body.roleNo === undefined
+            ? undefined
+            : this.permissionsOf(await lockGrantRole(trx, body.roleNo))
+        // 🔴 판정이 revision 보다 먼저다 — 권한 없는 사람에게 revision 상태를 드러내지 않는다(B7)
+        judgeAccountCommand(actor, {
+          kind: 'user.update',
+          targetUserNo: userNo,
+          current: this.permissionsOf(target),
+          grant,
+        })
+        if (body.revision !== target.revision) throw userRevisionConflict()
+        const before = await readUser(trx, userNo, timeZone)
+        if (body.joinDate !== undefined) await correctJoinDate(trx, userNo, body.joinDate)
+        if (body.teamNo !== undefined) await replaceTeam(trx, userNo, body.teamNo)
+        await trx
+          .updateTable('users')
+          .set((eb) => ({
+            ...(body.userName === undefined ? {} : { userName: body.userName }),
+            ...(body.roleNo === undefined ? {} : { roleNo: body.roleNo }),
+            ...(body.joinDate === undefined
+              ? {}
+              : { joinAt: startOfDayIn(body.joinDate, timeZone) }),
+            revision: eb('revision', '+', 1),
+            updateAt: sql<Date>`current_timestamp`,
+          }))
+          .where('userNo', '=', userNo)
+          .execute()
+        return before
+      }
+      // 🔴 역할을 바꾸는 수정만 잔존을 줄일 수 있다 — 센티넬이 트랜잭션의 첫 문장이 되게 감싼다(§5-3)
+      const before =
+        body.roleNo === undefined ? await write() : await withSuperAdminSurvival(trx, write)
+      // 🔴 같은 트랜잭션에서 읽는다 — 응답 · 감사 after 가 이 쓰기의 결과다(§14 R5-2)
+      return { item: await readUser(trx, userNo, timeZone), before }
+    })
+  }
+
+  /** 아이디 UNIQUE 위반을 400 userId 칸 오류로(B1 — 제약 이름으로 가른다, §14 R1-6) */
+  private async guardUserId<T>(run: () => Promise<T>): Promise<T> {
+    try {
+      return await run()
+    } catch (error) {
+      if (isDuplicateOf(error, 'uq_users_user_id')) {
+        throw fieldError('userId', ACCOUNT_MESSAGES.duplicateUserId)
+      }
+      throw error
+    }
+  }
+
+  private permissionsOf(row: { roleNo: bigint; permissions: unknown }): string[] {
+    return permissionsOrEmpty(row, this.logger)
   }
 }
