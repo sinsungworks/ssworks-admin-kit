@@ -127,3 +127,12 @@ export function toListQuery<T extends string>(parsed: {
     sort: parseSortConditions(parsed.sortBy, parsed.sortOrder),
   }
 }
+
+/**
+ * 쿼리스트링 boolean — `'true'` · `'false'`(또는 boolean)만. 🔴 `z.coerce.boolean()` 을 쓰지 않는다 — `Boolean('false')` 는
+ * true 다(crm · axion 결함). `'1'` · `'0'` · `''` 는 거부한다.
+ */
+export const queryBooleanSchema = z.union([
+  z.boolean(),
+  z.enum(['true', 'false']).transform((value) => value === 'true'),
+])

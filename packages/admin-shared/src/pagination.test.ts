@@ -5,6 +5,7 @@ import {
   createPaginationQuerySchema,
   createQuerySchema,
   parseSortConditions,
+  queryBooleanSchema,
   toListQuery,
 } from './pagination.js'
 
@@ -93,5 +94,25 @@ describe('createPaginatedRespSchema', () => {
       schema.parse({ items: [{ userNo: 1n }], total: 137n, page: 1, itemsPerPage: 20 }),
     ).toEqual({ items: [{ userNo: 1n }], total: 137n, page: 1, itemsPerPage: 20 })
     expect(() => schema.parse({ items: [], total: 137, page: 1, itemsPerPage: 20 })).toThrow()
+  })
+})
+
+describe('queryBooleanSchema', () => {
+  it("🔴 'true' · 'false' 만 — z.coerce.boolean() 은 'false' 를 참으로 읽는다(crm · axion 결함)", () => {
+    expect(queryBooleanSchema.parse('true')).toBe(true)
+    expect(queryBooleanSchema.parse('false')).toBe(false)
+    expect(queryBooleanSchema.parse(true)).toBe(true)
+    for (const value of ['1', '0', '', ' true', 'TRUE', 'yes']) {
+      expect(queryBooleanSchema.safeParse(value).success, value).toBe(false)
+    }
+  })
+
+  it('createQuerySchema 의 filter 에서 쓴다', () => {
+    const schema = createQuerySchema({
+      sortableColumns: ['createAt'] as const,
+      defaultSortColumn: 'createAt',
+      filterShape: { recursive: queryBooleanSchema },
+    })
+    expect(schema.parse({ filter: { recursive: 'false' } }).filter).toEqual({ recursive: false })
   })
 })
