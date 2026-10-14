@@ -47,7 +47,7 @@ export type {
 export { AdminReauthService } from './auth/reauth.service.js'
 
 // 세션 · 감사(PR 2c)
-export { Audit, type AuditOptions } from './audit/audit.decorator.js'
+export { Audit, type AuditDeclaration } from './audit/audit.decorator.js'
 export { attachAuditTarget, attachAuditMeta, attachAuditDiff } from './audit/audit-bag.js'
 export type { AdminAuditOptions } from './audit/options.js'
 export { AdminAuditModule } from './audit/audit.module.js'

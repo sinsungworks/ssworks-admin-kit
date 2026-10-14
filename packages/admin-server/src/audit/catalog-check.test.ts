@@ -1,8 +1,8 @@
 import { coreAuditCatalog, defineAuditCatalog } from '@ssworks/admin-shared'
 import { describe, expect, it } from 'vitest'
-import { findAuditProblems, type AuditDeclaration } from './catalog-check.js'
+import { findAuditProblems, type CollectedAuditDeclaration } from './catalog-check.js'
 
-const ok: AuditDeclaration = {
+const ok: CollectedAuditDeclaration = {
   controller: 'SessionsController',
   method: 'revoke',
   options: { action: 'session.revoke', targetType: 'session' },

@@ -1,7 +1,7 @@
 import type { Request } from 'express'
 import type { AdminPrincipal } from '../auth/principal.js'
 import { requestMetaOf } from '../auth/request-meta.js'
-import type { AuditOptions } from './audit.decorator.js'
+import type { AuditDeclaration } from './audit.decorator.js'
 import { readAuditBag } from './audit-bag.js'
 import { serializeAuditMeta } from './scrub.js'
 
@@ -117,7 +117,7 @@ export function clampErrorCode(code: string | null): string | null {
 export function buildAuditEntry(
   req: Request,
   principal: AdminPrincipal,
-  options: AuditOptions,
+  options: AuditDeclaration,
   outcome: AuditOutcome,
   secretKeys: ReadonlySet<string>,
 ): AuditInsert {

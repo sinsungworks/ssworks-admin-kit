@@ -13,7 +13,7 @@ import { getAdminPrincipal } from '../auth/principal.js'
 import { resolveErrorResponse } from '../http/error-response.js'
 import type { AdminServerOptions } from '../options.js'
 import { ADMIN_AUDIT_CONFIG, ADMIN_SERVER_OPTIONS, AUDIT_META } from '../tokens.js'
-import type { AuditOptions } from './audit.decorator.js'
+import type { AuditDeclaration } from './audit.decorator.js'
 import { AdminAuditService, reasonOf } from './audit.service.js'
 import { buildAuditEntry, type AuditOutcome } from './entry.js'
 import type { ResolvedAuditConfig } from './options.js'
@@ -37,7 +37,7 @@ export class AdminAuditInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') return next.handle()
-    const meta = this.reflector.getAllAndOverride<AuditOptions | undefined>(AUDIT_META, [
+    const meta = this.reflector.getAllAndOverride<AuditDeclaration | undefined>(AUDIT_META, [
       context.getHandler(),
       context.getClass(),
     ])
@@ -75,7 +75,7 @@ export class AdminAuditInterceptor implements NestInterceptor {
    */
   private async write(
     req: Request,
-    meta: AuditOptions,
+    meta: AuditDeclaration,
     outcome: () => AuditOutcome,
   ): Promise<void> {
     try {
