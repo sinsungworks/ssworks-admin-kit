@@ -1,6 +1,7 @@
 import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
 import { createConnection } from 'mariadb'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { GUARD_MESSAGES } from '../database/guard-locks.js'
 import { seedRole, seedUser } from '../test-support/auth.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { testDbServer } from '../test-support/db-url.js'
@@ -28,9 +29,13 @@ const count = (db: TestDatabase['db']) => db.transaction().execute((trx) => coun
 
 describe('센티넬 행', () => {
   it('장의 리터럴과 잠금 함수의 이름이 같다', async () => {
-    expect(await t.db.selectFrom('guardLocks').select('lockName').execute()).toEqual([
-      { lockName: GUARD_LOCK_SUPER_ADMIN },
-    ])
+    expect(
+      await t.db
+        .selectFrom('guardLocks')
+        .select('lockName')
+        .where('lockName', '=', GUARD_LOCK_SUPER_ADMIN)
+        .execute(),
+    ).toEqual([{ lockName: GUARD_LOCK_SUPER_ADMIN }])
   })
 })
 
@@ -148,7 +153,7 @@ describe('withSuperAdminSurvival', () => {
   })
 
   it('센티넬 행이 없으면 500 ERR_COMMON_INTERNAL — 쓰기 전에 멈춘다', async () => {
-    await u.db.deleteFrom('guardLocks').execute()
+    await u.db.deleteFrom('guardLocks').where('lockName', '=', GUARD_LOCK_SUPER_ADMIN).execute()
     let written = false
     try {
       const error = await u.db
@@ -162,7 +167,7 @@ describe('withSuperAdminSurvival', () => {
       expect(written).toBe(false)
       expect(error).toBeInstanceOf(BusinessError)
       expect((error as BusinessError).code).toBe(CommonErrorCodes.ERR_COMMON_INTERNAL)
-      expect((error as BusinessError).message).toBe(ACCOUNT_MESSAGES.guardMissing)
+      expect((error as BusinessError).message).toBe(GUARD_MESSAGES.missing)
     } finally {
       await u.db
         .insertInto('guardLocks')

@@ -13,7 +13,7 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 
 describe('ADMIN_MIGRATIONS', () => {
-  it('0001~0009 순서', () => {
+  it('0001~0010 순서', () => {
     expect(ADMIN_MIGRATIONS).toEqual([
       '0001_roles',
       '0002_users',
@@ -24,6 +24,7 @@ describe('ADMIN_MIGRATIONS', () => {
       '0007_sessions',
       '0008_audit_logs',
       '0009_guard_locks',
+      '0010_team_tree_lock',
     ])
   })
 
@@ -45,7 +46,10 @@ describe('ADMIN_MIGRATIONS', () => {
   })
 })
 
-const all = ADMIN_MIGRATIONS.map((id, index) => ({ id, file: `00${index + 1}_admin.ts` }))
+const all = ADMIN_MIGRATIONS.map((id, index) => ({
+  id,
+  file: `${String(index + 1).padStart(3, '0')}_admin.ts`,
+}))
 
 describe('findStubProblems', () => {
   it('다 있고 순서가 맞으면 문제 없음', () => {
@@ -62,9 +66,9 @@ describe('findStubProblems', () => {
     const swapped = [all[1]!, all[0]!, ...all.slice(2)]
     expect(findStubProblems(swapped)).toEqual([
       '파일 이름 순서가 장 순서와 다르다 — 지금: 0002_users, 0001_roles, 0003_teams, 0004_team_closure, ' +
-        '0005_team_user_map, 0006_user_employment_periods, 0007_sessions, 0008_audit_logs, 0009_guard_locks / 맞는 순서: 0001_roles, ' +
+        '0005_team_user_map, 0006_user_employment_periods, 0007_sessions, 0008_audit_logs, 0009_guard_locks, 0010_team_tree_lock / 맞는 순서: 0001_roles, ' +
         '0002_users, 0003_teams, 0004_team_closure, 0005_team_user_map, 0006_user_employment_periods, 0007_sessions, ' +
-        '0008_audit_logs, 0009_guard_locks',
+        '0008_audit_logs, 0009_guard_locks, 0010_team_tree_lock',
     ])
   })
 
@@ -96,7 +100,7 @@ describe('assertAdminMigrationStubs', () => {
   function writeStubs(ids: readonly string[]): void {
     ids.forEach((id, index) => {
       writeFileSync(
-        join(dir, `00${index + 1}_admin_${id.slice(5)}.migration.ts`),
+        join(dir, `${String(index + 1).padStart(3, '0')}_admin_${id.slice(5)}.migration.ts`),
         `export { up, down } from '@ssworks/admin-server/migrations/${id}'\n`,
       )
     })
@@ -128,6 +132,7 @@ describe('assertAdminMigrationStubs', () => {
       /빠진 장 0006_user_employment_periods\n- 빠진 장 0007_sessions\n- 빠진 장 0008_audit_logs/,
     )
     expect(() => assertAdminMigrationStubs(dir)).toThrow('빠진 장 0009_guard_locks')
+    expect(() => assertAdminMigrationStubs(dir)).toThrow('빠진 장 0010_team_tree_lock')
   })
 
   it('없는 폴더는 경로를 담아 던진다', () => {

@@ -32,5 +32,4 @@ export const ACCOUNT_MESSAGES = Object.freeze({
   roleInUse: '이 역할을 가진 계정이 있어 지울 수 없습니다. 계정의 역할을 먼저 바꾸세요.',
   lastSuperAdmin:
     '이 변경 뒤에는 전체 권한을 가진 재직 관리자가 한 명도 남지 않습니다. 먼저 다른 관리자에게 전체 권한 역할을 주세요.',
-  guardMissing: '동시성 보호 설정이 없어 처리할 수 없습니다.',
 })

@@ -1,5 +1,6 @@
 import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
 import { sql, type SqlBool, type Transaction } from 'kysely'
+import { lockGuardRow } from '../database/guard-locks.js'
 import type { AdminDatabase } from '../database/types.js'
 import { ACCOUNT_MESSAGES } from './errors.js'
 
@@ -19,18 +20,7 @@ import { ACCOUNT_MESSAGES } from './errors.js'
 export const GUARD_LOCK_SUPER_ADMIN = 'superAdminSurvival'
 
 export async function lockSuperAdminGuard(trx: Transaction<AdminDatabase>): Promise<void> {
-  const row = await trx
-    .selectFrom('guardLocks')
-    .select('lockName')
-    .where('lockName', '=', GUARD_LOCK_SUPER_ADMIN)
-    .forUpdate()
-    .executeTakeFirst()
-  if (row === undefined) {
-    // 🔴 장 0009 가 빠졌다 — 조용히 보호 없이 쓰지 않는다(hangang fail-loud). 스텁 검사가 먼저 막는다.
-    throw new BusinessError(CommonErrorCodes.ERR_COMMON_INTERNAL, ACCOUNT_MESSAGES.guardMissing, {
-      lockName: GUARD_LOCK_SUPER_ADMIN,
-    })
-  }
+  await lockGuardRow(trx, GUARD_LOCK_SUPER_ADMIN)
 }
 
 /** 재직(퇴사 예정도 뺀다) · 역할에 '*' 가 있는 사용자 수 */

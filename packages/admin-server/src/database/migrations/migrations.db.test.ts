@@ -154,10 +154,11 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
     }
   })
 
-  it('0009 — 센티넬 행이 하나다(lock_name PK)', async () => {
-    const rows = await t.db.selectFrom('guardLocks').selectAll().execute()
+  it('0009 · 0010 — 센티넬 행이 이름마다 하나다(lock_name PK)', async () => {
+    const rows = await t.db.selectFrom('guardLocks').selectAll().orderBy('lockName').execute()
     expect(rows).toEqual([
       { lockName: 'superAdminSurvival', description: expect.stringContaining('FOR UPDATE') },
+      { lockName: 'teamTree', description: expect.stringContaining('FOR UPDATE') },
     ])
   })
 })
