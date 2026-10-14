@@ -56,6 +56,8 @@ describe('resolvePermissionMap', () => {
       'roles.manage',
       'users.read',
       'users.manage',
+      'teams.read',
+      'teams.manage',
     ])
   })
 })

@@ -59,3 +59,5 @@ export type { AdminPermissionCatalog } from './accounts/options.js'
 
 // 사용자 · 계정(PR 2d-2)
 export { AdminUsersModule } from './users/users.module.js'
+
+export { AdminTeamsModule } from './teams/teams.module.js'

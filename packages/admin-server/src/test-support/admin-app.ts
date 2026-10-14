@@ -6,13 +6,14 @@ import { AdminAuthModule } from '../auth/admin-auth.module.js'
 import type { AdminDbConnection } from '../database/connection.js'
 import { AdminRolesModule } from '../roles/roles.module.js'
 import { AdminSessionsModule } from '../sessions/sessions.module.js'
+import { AdminTeamsModule } from '../teams/teams.module.js'
 import { AdminUsersModule } from '../users/users.module.js'
 import { TEST_CATALOG } from './accounts.js'
 import { AuditProbeModule } from './audit-probe.js'
 import { TEST_JWT_SECRET } from './auth.js'
 import { createHttpApp } from './http.js'
 
-// 테스트 전용 — 인증 · 감사 · 세션까지 붙인 앱(2c · 2d 역할 · 사용자). 운영 main.ts 와 같은 배선(configureAdminApp). 🔴 빌드에서 빠진다.
+// 테스트 전용 — 인증 · 감사 · 세션까지 붙인 앱(2c · 2d 역할 · 사용자 · 2e-1 팀). 운영 main.ts 와 같은 배선(configureAdminApp). 🔴 빌드에서 빠진다.
 
 export const TEST_PERMISSIONS = Object.freeze({
   'sessions.read': 'org.users:read',
@@ -22,6 +23,8 @@ export const TEST_PERMISSIONS = Object.freeze({
   'roles.manage': 'org.roles:write',
   'users.read': 'org.users:read',
   'users.manage': 'org.users:write',
+  'teams.read': 'org.teams:read',
+  'teams.manage': 'org.teams:write',
 })
 
 /** 프로브 라우트의 액션 — 쓰는 쪽 카탈로그 병합을 그대로 탄다 */
@@ -59,6 +62,7 @@ export function bootAdminApp(
       AdminSessionsModule,
       AdminRolesModule,
       AdminUsersModule,
+      AdminTeamsModule,
       AuditProbeModule,
     ],
   })

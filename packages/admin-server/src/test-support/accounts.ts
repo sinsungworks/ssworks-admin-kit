@@ -16,6 +16,8 @@ export const TEST_CATALOG = definePermissions(
     POSTS_READ: 'board.posts:read',
     POSTS_WRITE: 'board.posts:write',
     POSTS_DELETE: 'board.posts:delete',
+    TEAMS_READ: 'org.teams:read',
+    TEAMS_WRITE: 'org.teams:write',
   },
   {
     implies: {
@@ -23,6 +25,7 @@ export const TEST_CATALOG = definePermissions(
       'org.roles:write': ['org.roles:read'],
       'board.posts:write': ['board.posts:read'],
       'board.posts:delete': ['board.posts:write'],
+      'org.teams:write': ['org.teams:read'],
     },
   },
 )
