@@ -53,6 +53,13 @@ describe('CommonErrorCodes — 코어 코드 표', () => {
       CommonErrorCodes.ERR_COMMON_CONFLICT,
     )
   })
+
+  it('팀 전용 코드(2e) — 소속 있는 삭제 409 · 순환 이동 400(hangang 의 ERR_COMMON_CONFLICT 를 나눈다)', () => {
+    expect(CommonErrorCodes.ERR_TEAM_HAS_MEMBERS).toBe('ERR_TEAM_HAS_MEMBERS')
+    expect(CommonErrorCodes.ERR_TEAM_MOVE_CYCLE).toBe('ERR_TEAM_MOVE_CYCLE')
+    expect(COMMON_ERROR_STATUS[CommonErrorCodes.ERR_TEAM_HAS_MEMBERS]).toBe(409)
+    expect(COMMON_ERROR_STATUS[CommonErrorCodes.ERR_TEAM_MOVE_CYCLE]).toBe(400)
+  })
 })
 
 describe('defineErrorCodes — 프로젝트 코드 병합', () => {

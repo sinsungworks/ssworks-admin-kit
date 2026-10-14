@@ -12,13 +12,18 @@ import {
 } from './audit.js'
 
 describe('코어 카탈로그', () => {
-  it('🔴 액션 25 · 대상 3 · 라벨이 하나씩 — 개수는 이 테스트가 고정한다(산문의 개수는 낡는다)', () => {
-    expect(Object.values(CoreAuditActions)).toHaveLength(25)
-    expect(Object.values(CoreAuditTargets)).toEqual(['user', 'session', 'role'])
+  it('🔴 액션 29 · 대상 4 · 라벨이 하나씩 — 개수는 이 테스트가 고정한다(산문의 개수는 낡는다)', () => {
+    expect(Object.values(CoreAuditActions)).toHaveLength(29)
+    expect(Object.values(CoreAuditTargets)).toEqual(['user', 'session', 'role', 'team'])
     expect(Object.keys(CORE_AUDIT_ACTION_LABELS).sort()).toEqual(
       [...Object.values(CoreAuditActions)].sort(),
     )
-    expect(Object.keys(CORE_AUDIT_TARGET_LABELS).sort()).toEqual(['role', 'session', 'user'])
+    expect(Object.keys(CORE_AUDIT_TARGET_LABELS).sort()).toEqual([
+      'role',
+      'session',
+      'team',
+      'user',
+    ])
   })
 
   it('이름은 hangang 그대로 + session.revoke.others', () => {
@@ -60,6 +65,20 @@ describe('코어 카탈로그', () => {
     expect(coreAuditCatalog.labelOf('org.user.password.reset')).toBe('비밀번호 초기화')
     expect(coreAuditCatalog.labelOf('org.user.unlock')).toBe('잠금 해제')
   })
+
+  it('팀 액션(2e-1) — hangang 이름 org.team.* 와 라벨', () => {
+    expect([
+      CoreAuditActions.TEAM_CREATE,
+      CoreAuditActions.TEAM_UPDATE,
+      CoreAuditActions.TEAM_DELETE,
+      CoreAuditActions.TEAM_MOVE,
+    ]).toEqual(['org.team.create', 'org.team.update', 'org.team.delete', 'org.team.move'])
+    expect(coreAuditCatalog.labelOf('org.team.create')).toBe('팀 생성')
+    expect(coreAuditCatalog.labelOf('org.team.update')).toBe('팀 수정')
+    expect(coreAuditCatalog.labelOf('org.team.delete')).toBe('팀 삭제')
+    expect(coreAuditCatalog.labelOf('org.team.move')).toBe('팀 이동')
+    expect(coreAuditCatalog.targetLabelOf('team')).toBe('팀')
+  })
 })
 
 describe('defineAuditCatalog', () => {
@@ -73,8 +92,8 @@ describe('defineAuditCatalog', () => {
   it('코어 + 프로젝트를 합치고 코어 라벨을 덮어쓴다', () => {
     expect(catalog.AuditActions.BOARD_POST_CREATE).toBe('board.post.create')
     expect(catalog.AuditActions.AUTH_LOGOUT).toBe('auth.logout')
-    expect(catalog.ACTION_VALUES).toHaveLength(26)
-    expect(catalog.TARGET_VALUES).toEqual(['user', 'session', 'role', 'post'])
+    expect(catalog.ACTION_VALUES).toHaveLength(30)
+    expect(catalog.TARGET_VALUES).toEqual(['user', 'session', 'role', 'team', 'post'])
     expect(catalog.labelOf('board.post.create')).toBe('게시글 작성')
     expect(catalog.labelOf('auth.logout')).toBe('나가기')
     expect(catalog.targetLabelOf('post')).toBe('게시글')

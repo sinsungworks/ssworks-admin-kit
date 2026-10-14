@@ -75,6 +75,10 @@ export const CommonErrorCodes = {
   ERR_DUPLICATE_ROLE_NAME: 'ERR_DUPLICATE_ROLE_NAME',
   ERR_NO_TEAM: 'ERR_NO_TEAM',
   ERR_DUPLICATE_TEAM_NAME: 'ERR_DUPLICATE_TEAM_NAME',
+  /** 하위 팀까지 포함해 소속 계정이 있어 팀을 지울 수 없다 — `details.memberCount`(계정 수) */
+  ERR_TEAM_HAS_MEMBERS: 'ERR_TEAM_HAS_MEMBERS',
+  /** 팀을 자기 자신 · 하위 팀 아래로 옮기려 했다 — 클라이언트가 막지 못한 요청(400) */
+  ERR_TEAM_MOVE_CYCLE: 'ERR_TEAM_MOVE_CYCLE',
 } as const
 
 export type CommonErrorCode = (typeof CommonErrorCodes)[keyof typeof CommonErrorCodes]
@@ -122,6 +126,8 @@ export const COMMON_ERROR_STATUS: Record<CommonErrorCode, number> = {
   [CommonErrorCodes.ERR_DUPLICATE_ROLE_NAME]: 409,
   [CommonErrorCodes.ERR_NO_TEAM]: 404,
   [CommonErrorCodes.ERR_DUPLICATE_TEAM_NAME]: 409,
+  [CommonErrorCodes.ERR_TEAM_HAS_MEMBERS]: 409,
+  [CommonErrorCodes.ERR_TEAM_MOVE_CYCLE]: 400,
 }
 
 export interface ErrorCodeTable<T extends Record<string, string>> {
