@@ -11,11 +11,17 @@ import {
 class Routes {
   @RequirePermissionSlot('sessions.read')
   read() {}
+
+  @RequirePermissionSlot('roles.read', 'users.read' as never)
+  either() {}
 }
 
 describe('RequirePermissionSlot', () => {
-  it('슬롯 이름을 메타데이터로 남긴다', () => {
-    expect(Reflect.getMetadata(PERMISSION_SLOT, Routes.prototype.read)).toBe('sessions.read')
+  it('슬롯 이름을 얼린 배열 메타데이터로 남긴다', () => {
+    expect(Reflect.getMetadata(PERMISSION_SLOT, Routes.prototype.read)).toEqual(['sessions.read'])
+    const either = Reflect.getMetadata(PERMISSION_SLOT, Routes.prototype.either) as unknown[]
+    expect(either).toEqual(['roles.read', 'users.read'])
+    expect(Object.isFrozen(either)).toBe(true)
   })
 })
 
@@ -41,8 +47,14 @@ describe('resolvePermissionMap', () => {
     }
   })
 
-  it('2c 의 슬롯은 셋', () => {
-    expect(ADMIN_PERMISSION_SLOTS).toEqual(['sessions.read', 'sessions.manage', 'auditLogs.read'])
+  it('슬롯은 다섯 — 2c 셋 + 역할 둘(2d-1)', () => {
+    expect(ADMIN_PERMISSION_SLOTS).toEqual([
+      'sessions.read',
+      'sessions.manage',
+      'auditLogs.read',
+      'roles.read',
+      'roles.manage',
+    ])
   })
 })
 

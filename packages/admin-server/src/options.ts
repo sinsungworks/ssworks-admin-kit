@@ -1,5 +1,6 @@
 import type { FactoryProvider, ModuleMetadata } from '@nestjs/common'
 import type { ErrorCodeTable, PasswordPolicy } from '@ssworks/admin-shared'
+import type { AdminPermissionCatalog } from './accounts/options.js'
 import type { AdminAuditOptions } from './audit/options.js'
 import type { AdminAuthOptions } from './auth/options.js'
 import type { AdminPermissionMap } from './auth/permission-slots.js'
@@ -24,6 +25,13 @@ export interface AdminServerOptions {
   permissions?: AdminPermissionMap
   /** `AdminAuditModule` 이 읽는다 — 카탈로그 · 더할 비밀 키(2c 스펙 §4-1) */
   audit?: AdminAuditOptions
+  /**
+   * 프로젝트 권한 카탈로그(admin-shared `definePermissions()` 결과 — 2d 스펙 ① C1). 역할 정규화 · 권한 키 검증이 쓴다.
+   * 🔴 `AdminRolesModule` · `AdminUsersModule` 을 쓰면 필수 — 없으면 기동에서 멈춘다. 슬롯 맵의 키도 이 카탈로그 안이어야 한다.
+   */
+  permissionCatalog?: AdminPermissionCatalog
+  /** 기본 false. 켜면 역할 · 사용자 쓰기가 본문 `currentPassword` 로 재인증한다(2d 스펙 ⑦ R1 · Phase 0 §4 #4) */
+  reauth?: boolean
 }
 
 /** 정적 옵션 — `RouterModule` 이 모듈 정의 시점의 값을 요구한다(스펙 F2). */

@@ -29,6 +29,7 @@ import { getAdminPrincipal } from './principal.js'
 //  - 판정은 admin-shared hasPermission · hasAnyPermission('*' 정확 일치 — 화면과 같은 함수).
 //  - failClosed: false 과도기 옵션(Phase 0 §4 #5). rpc · ws 만 통과, 그 밖의 비HTTP 는 401(스펙 §14 R4 · R10).
 //  - 패키지 라우트의 권한 슬롯(2c 스펙 ① P1)은 권한 선언과 같은 층이다 — 슬롯 · @RequirePermissions 가 함께면 AND.
+//  - 슬롯 여럿은 "하나라도"(2d 스펙 B13).
 
 @Injectable()
 export class AdminPermissionGuard implements CanActivate {
@@ -63,7 +64,7 @@ export class AdminPermissionGuard implements CanActivate {
       )
     }
 
-    const slot = this.reflector.getAllAndOverride<AdminPermissionSlot | undefined>(
+    const slots = this.reflector.getAllAndOverride<readonly AdminPermissionSlot[] | undefined>(
       PERMISSION_SLOT,
       targets,
     )
@@ -72,14 +73,15 @@ export class AdminPermissionGuard implements CanActivate {
       targets,
     )
     const anyOf = this.reflector.getAllAndOverride<string[] | undefined>(ANY_PERMISSIONS, targets)
+    const hasSlots = slots != null && slots.length > 0
     const hasRequired = required != null && required.length > 0
     const hasAnyOf = anyOf != null && anyOf.length > 0
 
-    if (slot != null || hasRequired || hasAnyOf) {
-      if (slot != null) {
-        // 🔴 이어지지 않은 슬롯은 '*' 도 막는다 — 기동 검사(assertPermissionSlots)를 피한 조합의 방어선이다(2c 스펙 §4-1).
-        const key = this.config.permissions[slot]
-        if (key == null || !hasPermission(principal.permissions, key)) throw forbidden()
+    if (hasSlots || hasRequired || hasAnyOf) {
+      // 🔴 이어지지 않은 슬롯은 '*' 도 거짓 — 기동 검사(assertPermissionSlots)를 피한 조합의 방어선이다(2c 스펙 §4-1).
+      //    여럿이면 하나라도 이어져 있고 그 키를 가져야 통과다(2d 스펙 B13).
+      if (hasSlots && !slots.some((slot) => this.grantsSlot(principal.permissions, slot))) {
+        throw forbidden()
       }
       if (hasRequired && !hasPermission(principal.permissions, ...required)) throw forbidden()
       if (hasAnyOf && !hasAnyPermission(principal.permissions, ...anyOf)) throw forbidden()
@@ -96,6 +98,11 @@ export class AdminPermissionGuard implements CanActivate {
       AUTH_MESSAGES.noPermissionDeclared,
       { reason: 'no-permission-declared' },
     )
+  }
+
+  private grantsSlot(granted: readonly string[], slot: AdminPermissionSlot): boolean {
+    const key = this.config.permissions[slot]
+    return key != null && hasPermission(granted, key)
   }
 }
 

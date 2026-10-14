@@ -5,23 +5,29 @@ import { PERMISSION_SLOT } from '../tokens.js'
 //   (hangang org.users:read · gise account.session:manage · axion sessions:read · crm setting.session:read).
 // 🔴 패키지는 권한 키를 하드코딩하지 않는다 — 슬롯 이름만 선언하고 키는 AdminServerOptions.permissions 가 준다.
 
-/** 2c 의 셋. 2d~2f 가 늘린다 — 유니온이 늘어나는 것은 하위 호환이다 */
-export type AdminPermissionSlot = 'sessions.read' | 'sessions.manage' | 'auditLogs.read'
+/** 2c 의 셋 + 2d-1 의 역할 둘. 2d-2~2f 가 늘린다 — 유니온이 늘어나는 것은 하위 호환이다 */
+export type AdminPermissionSlot =
+  'sessions.read' | 'sessions.manage' | 'auditLogs.read' | 'roles.read' | 'roles.manage'
 
 export const ADMIN_PERMISSION_SLOTS: readonly AdminPermissionSlot[] = Object.freeze([
   'sessions.read',
   'sessions.manage',
   'auditLogs.read',
+  'roles.read',
+  'roles.manage',
 ])
 
 export type AdminPermissionMap = Partial<Record<AdminPermissionSlot, string>>
 
 /**
  * 내부 — 패키지 라우트가 권한 슬롯을 선언한다. index 에 내지 않는다.
+ * 여럿이면 "하나라도"(2d 스펙 B13 — 역할 목록은 `roles.read` ∨ `users.read`). 이어지지 않은 슬롯은 거짓으로 센다.
  * 🔴 권한 선언과 같은 층이라 `@SelfOnly` 보다 먼저 판정한다(2b 스펙 §14 R3).
  */
-export function RequirePermissionSlot(slot: AdminPermissionSlot): CustomDecorator<string> {
-  return SetMetadata(PERMISSION_SLOT, slot)
+export function RequirePermissionSlot(
+  ...slots: [AdminPermissionSlot, ...AdminPermissionSlot[]]
+): CustomDecorator<string> {
+  return SetMetadata(PERMISSION_SLOT, Object.freeze([...slots]))
 }
 
 /** 코어 옵션의 `permissions` 를 해석한다. 🔴 모르는 슬롯(오타) · 빈 키는 기동에서 멈춘다 — 조용히 무시되면 403 만 남는다 */

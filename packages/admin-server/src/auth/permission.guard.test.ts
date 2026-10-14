@@ -108,6 +108,12 @@ class SlotRoutes {
   @RequirePermissionSlot('sessions.manage')
   @RequirePermissions('user:write')
   both() {}
+
+  @RequirePermissionSlot('roles.read', 'sessions.read')
+  either() {}
+
+  @RequirePermissionSlot('roles.manage', 'auditLogs.read')
+  eitherUnmapped() {}
 }
 
 @SelfOnly()
@@ -268,6 +274,22 @@ describe('AdminPermissionGuard — 권한 슬롯(2c 스펙 ① P1)', () => {
         context(slotRoutes, 'both', principal(['org.users:write', 'user:write'])),
       ),
     ).toBe(true)
+  })
+
+  it('슬롯 여럿은 "하나라도"(2d 스펙 B13) — 이어진 슬롯 하나만 가져도 통과', () => {
+    expect(
+      slotGuard().canActivate(context(slotRoutes, 'either', principal(['org.users:read']))),
+    ).toBe(true)
+    expect(() =>
+      slotGuard().canActivate(context(slotRoutes, 'either', principal(['user:read']))),
+    ).toThrow(BusinessError)
+  })
+
+  it("🔴 이어지지 않은 슬롯은 '*' 에게도 거짓 — 여럿이 다 이어지지 않으면 403", () => {
+    const error = rejection(() =>
+      slotGuard().canActivate(context(slotRoutes, 'eitherUnmapped', principal(['*']))),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
   })
 
   it('셋째 인자가 없으면 슬롯 맵은 비어 있다(2b 호출부 그대로)', () => {

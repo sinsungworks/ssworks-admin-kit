@@ -42,3 +42,6 @@ export const ADMIN_AUDIT_CONFIG = Symbol('ADMIN_AUDIT_CONFIG')
 
 /** 내부 — `AdminAuthModule.withRepository` 가 넣는 교체 구현. AUTH_REPOSITORY 팩토리가 있으면 쓴다(스펙 B6) */
 export const CUSTOM_AUTH_REPOSITORY = Symbol('CUSTOM_AUTH_REPOSITORY')
+
+/** 내부 — 해석된 계정 설정(`ResolvedAccountsConfig`). 역할 · 사용자 모듈이 코어 옵션의 `permissionCatalog` · `reauth` 로 만든다(2d) */
+export const ADMIN_ACCOUNTS_CONFIG = Symbol('ADMIN_ACCOUNTS_CONFIG')
