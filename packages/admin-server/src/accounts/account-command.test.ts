@@ -130,10 +130,11 @@ describe('judgeAccountCommand — 사용자 · 세션', () => {
     ).not.toThrow()
   })
 
-  it("🔴 자기 계정의 퇴사 · 퇴사일 · 초기화 · 잠금 해제는 403 selfAccount — 덮기보다 먼저('*' 행위자도)", () => {
+  it("🔴 자기 계정의 퇴사 · 퇴사일 · 재입사 · 초기화 · 잠금 해제는 403 selfAccount — 덮기보다 먼저('*' 행위자도)", () => {
     for (const kind of [
       'user.resign',
       'user.resignDate',
+      'user.rehire',
       'user.passwordReset',
       'user.unlock',
     ] as const) {
@@ -153,18 +154,17 @@ describe('judgeAccountCommand — 사용자 · 세션', () => {
     }
   })
 
-  it('user.rehire — 자기 계정 허용(퇴사 예정인 본인), 넓은 계정은 403', () => {
-    expect(() =>
+  it('🔴 user.rehire — 퇴사 예정인 본인도 403 selfAccount(자기 퇴사일 정정과 효과가 같다 — 2d-3 스펙 ④ S1)', () => {
+    const error = rejection(() =>
       judgeAccountCommand(manager, {
         kind: 'user.rehire',
         targetUserNo: manager.userNo,
         current: [],
       }),
-    ).not.toThrow()
-    expectForbidden(
-      () => judgeAccountCommand(manager, { kind: 'user.rehire', targetUserNo: 9n, current: ['*'] }),
-      ACCOUNT_MESSAGES.higherAccount,
     )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+    expect(error.message).toBe(ACCOUNT_MESSAGES.selfAccount)
+    expect(error.details).toBeUndefined()
   })
 
   it('session.target — 세션 주인의 역할을 덮어야 한다, 본인은 늘 통과', () => {

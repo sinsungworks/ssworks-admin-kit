@@ -422,7 +422,7 @@ export class AdminUsersService {
     })
   }
 
-  /** 재입사 — 잔존 잠금 없음(셈을 늘리기만 한다). 본인도 된다(B16 — 퇴사 예정인 본인) */
+  /** 재입사 — 잔존 잠금 없음(셈을 늘리기만 한다). 본인은 403(2d-3 스펙 ④ S1 — 2d B16 정정) */
   async rehire(
     userNo: bigint,
     body: AdminUserRehireBody,

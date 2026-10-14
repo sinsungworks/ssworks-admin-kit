@@ -10,8 +10,9 @@ import { ACCOUNT_MESSAGES } from './errors.js'
 // 정본: ssworks-gise-home apps/api/src/modules/accounts/account-policy.ts `judgeAccountCommand` · `judgeSessionTarget`
 // 바꾼 점:
 //  - 스냅숏 전체가 아니라 서비스가 잠그고 읽은 권한 집합을 명령에 싣는다 — 전량 잠금을 쓰지 않는다(2d 스펙 ④ G1).
-//  - 자기 계정은 되돌릴 수 없는 넷만 막는다(③ SF1). 자기 역할의 권한 수정은 허용한다(3b onSelfRoleSaved) — 마지막
-//    관리자는 잔존 검사(super-admin.ts)가 지킨다.
+//  - 자기 계정은 되돌릴 수 없는 넷(퇴사 · 퇴사일 · 초기화 · 잠금 해제)과 재입사를 막는다(③ SF1 · 2d-3 스펙 ④ S1 — 퇴사
+//    예정인 본인의 자기 재입사는 자기 퇴사일 정정과 효과가 같다). 자기 역할의 권한 수정은 허용한다(3b onSelfRoleSaved) —
+//    마지막 관리자는 잔존 검사(super-admin.ts)가 지킨다.
 //  - 역할 수정은 permissions 가 있을 때만 덮기를 본다(3b §9 — 넓은 역할의 이름은 고칠 수 있다).
 //  - revision · 쓰는 중 · 마지막 관리자는 여기서 보지 않는다 — 잠근 행과 셈을 가진 서비스가 본다(2d 스펙 B7).
 //  - 403 에 details.outside(덮지 못한 키 — hangang 화면이 문구를 만들던 모양).
@@ -34,9 +35,8 @@ export type AccountCommand =
       current: readonly string[]
       grant?: readonly string[]
     }
-  | { kind: 'user.rehire'; targetUserNo: bigint; current: readonly string[] }
   | {
-      kind: 'user.resign' | 'user.resignDate' | 'user.passwordReset' | 'user.unlock'
+      kind: 'user.resign' | 'user.resignDate' | 'user.rehire' | 'user.passwordReset' | 'user.unlock'
       targetUserNo: bigint
       current: readonly string[]
     }
@@ -82,14 +82,13 @@ export function judgeAccountCommand(actor: AccountActor, command: AccountCommand
       demand(command.current, ACCOUNT_MESSAGES.higherAccount)
       if (command.grant !== undefined) demand(command.grant, ACCOUNT_MESSAGES.higherRoleToGrant)
       return
-    case 'user.rehire':
-      demand(command.current, ACCOUNT_MESSAGES.higherAccount)
-      return
     case 'user.resign':
     case 'user.resignDate':
+    case 'user.rehire':
     case 'user.passwordReset':
     case 'user.unlock':
       // 🔴 되돌릴 수 없는 넷 — 자기 퇴사는 그 즉시 로그아웃되고, 자기 초기화는 임시 비밀번호를 보기 전에 세션이 끊긴다(hangang 화면 문구).
+      //    재입사도 — 퇴사 예정인 본인이 자기 퇴사를 거두는 길이다(2d-3 스펙 ④ S1).
       if (command.targetUserNo === actor.userNo) {
         throw new BusinessError(CommonErrorCodes.ERR_COMMON_FORBIDDEN, ACCOUNT_MESSAGES.selfAccount)
       }

@@ -377,7 +377,7 @@ describe('퇴사 · 퇴사일 · 재입사', () => {
     expectError(await victim.get('/admin/auth/me'), 403, CommonErrorCodes.ERR_RESIGNED_USER)
   })
 
-  it('본인 퇴사 403 selfAccount · 넓은 계정 403 details.outside', async () => {
+  it('본인 퇴사 · 재입사 403 selfAccount(details 없음) · 넓은 계정 403 details.outside', async () => {
     const agent = await signIn(manager)
     expectError(
       await sendJson(agent.post(`/admin/users/${manager.userNo}/resign`), { resignDate: day(1) }),
@@ -385,6 +385,13 @@ describe('퇴사 · 퇴사일 · 재입사', () => {
       CommonErrorCodes.ERR_COMMON_FORBIDDEN,
       ACCOUNT_MESSAGES.selfAccount,
     )
+    const selfRehire = expectError(
+      await sendJson(agent.post(`/admin/users/${manager.userNo}/rehire`), { joinDate: day(1) }),
+      403,
+      CommonErrorCodes.ERR_COMMON_FORBIDDEN,
+      ACCOUNT_MESSAGES.selfAccount,
+    )
+    expect(selfRehire.details).toBeUndefined()
     const wide = expectError(
       await sendJson(agent.post(`/admin/users/${boss.userNo}/resign`), { resignDate: day(1) }),
       403,

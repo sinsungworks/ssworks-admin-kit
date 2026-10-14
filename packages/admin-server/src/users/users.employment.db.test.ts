@@ -375,7 +375,7 @@ describe('rehire', () => {
     expect((await userRow(t.db, user.userNo)).joinAt.toISOString()).toBe('2026-03-31T15:00:00.000Z')
   })
 
-  it('재직 중 409 · 활성 구간이 남아 있으면 409 · 본인도 된다(B16) · 넓은 계정 403', async () => {
+  it('재직 중 409 · 활성 구간이 남아 있으면 409 · 🔴 본인은 403(퇴사 예정 · 재직 중 모두 — 2d-3 스펙 ④ S1) · 넓은 계정 403', async () => {
     const active = await employee('h-active')
     expect(
       (await rejection(() => service.rehire(active.userNo, { joinDate: day(1) }, root))).message,
@@ -392,14 +392,16 @@ describe('rehire', () => {
     ).toBe(ACCOUNT_MESSAGES.activePeriodExists)
 
     const me = await employee('h-self')
+    const self = testPrincipal(me.userNo, ['org.users:read', 'org.users:write'])
+    // 재직 중인 본인 — 판정이 상태(409 notResignedForRehire)보다 먼저다(B7)
+    const selfActive = await rejection(() => service.rehire(me.userNo, { joinDate: day(11) }, self))
+    expect(selfActive.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+    expect(selfActive.message).toBe(ACCOUNT_MESSAGES.selfAccount)
+    // 퇴사 예정인 본인 — 자기 재입사로 퇴사를 거두지 못한다
     await service.resign(me.userNo, { resignDate: day(10) }, root)
-    await expect(
-      service.rehire(
-        me.userNo,
-        { joinDate: day(11) },
-        testPrincipal(me.userNo, ['org.users:read', 'org.users:write']),
-      ),
-    ).resolves.toBeDefined()
+    const pending = await rejection(() => service.rehire(me.userNo, { joinDate: day(11) }, self))
+    expect(pending.message).toBe(ACCOUNT_MESSAGES.selfAccount)
+    expect((await userRow(t.db, me.userNo)).revision).toBe(1)
 
     const wide = await seedUser(t.db, {
       roleNo: wideRole,
