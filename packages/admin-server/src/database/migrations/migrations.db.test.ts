@@ -140,6 +140,8 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
     `.execute(t.db)
     const names = result.rows.map((row) => row.indexName)
     for (const expected of [
+      'idx_roles_display_order',
+      'idx_roles_is_default',
       'idx_team_closure_descendant',
       'idx_team_user_map_user',
       'idx_user_employment_periods_user_join',

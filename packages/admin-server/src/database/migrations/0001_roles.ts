@@ -6,6 +6,8 @@ import { JSON_BIN, TABLE_OPTIONS, UTF8_CI, comment } from './_shared.js'
 //  - roleName UNIQUE 를 첫 장에서 건다(hangang 은 014 에서 중복 진단 뒤). 새 스키마라 진단할 기존 행이 없다.
 //  - `revision` 을 더했다 — Phase 0 §4 #4(쓰기 보호 revision 기본). 수정 · 삭제 성공마다 서비스가 올리고 이동은 올리지
 //    않는다(3b §9).
+//  - 순서 · 기본 표시 인덱스 둘을 더했다(2d-3 스펙 ③ I1) — 미발행 장을 고쳤다(2d-2 의 0002 정정과 같은 길). 인덱스가 없는
+//    DB 도 2d-2 와 같이 돈다(전 행 잠금일 뿐 — 빠지면 500 인 가드 행과 다르다).
 //  - 인자 타입은 `Kysely<unknown>`(스펙 R2). 🔴 현재의 Database 타입에 묶지 않는다 — 마이그레이션은 얼어붙은 이력이다.
 // 🔴 순서상 첫째다 — users 가 이 테이블을 FK 로 참조한다.
 
@@ -43,6 +45,15 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addUniqueConstraint('uqRolesRoleName', ['roleName'])
     .modifyEnd(TABLE_OPTIONS)
     .execute()
+
+  // 🔴 만들기의 순서 셈(끝 행 FOR UPDATE) · 이동의 구간 UPDATE · 다른 기본 역할 찾기가 이 인덱스로 그 행만 잠근다. 없으면 전 행을
+  //    훑어 잠가 사용자 역할 변경 · 다른 역할 쓰기와 교착한다(2d-3 스펙 §14 R1-7 ~ R1-9 — 역할 몇 개뿐인 표에서도 인덱스를 탄다).
+  await db.schema
+    .createIndex('idxRolesDisplayOrder')
+    .on('roles')
+    .columns(['displayOrder'])
+    .execute()
+  await db.schema.createIndex('idxRolesIsDefault').on('roles').columns(['isDefault']).execute()
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {

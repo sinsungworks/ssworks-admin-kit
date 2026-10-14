@@ -28,8 +28,8 @@ import { planRoleMove } from './move.js'
 //  - 수정의 응답 item · 감사 after 는 같은 트랜잭션에서 읽는다(§14 R5-2 — 커밋 뒤에 읽으면 그 사이 남의 쓰기가 섞였다).
 //  - 잔존으로 감싼 수정 · 삭제는 잠금 단계(역할 · 다른 기본 역할 잠금 · 판정 · revision) 뒤에 셈한다(2d-3 스펙 ① A · C3) —
 //    역할 이동이 그 사이 역할 행을 바꿔도 ON 에서 1020 이 아니다.
-//  - 새 역할의 displayOrder 는 MAX … FOR UPDATE 로 셈한다(§14 R5-5 · R7-4 — 동시 만들기가 같은 값을 받으면 이동으로도 못
-//    가른다).
+//  - 새 역할의 displayOrder 는 끝 행 + 1 — 인덱스 끝 한 행을 FOR UPDATE 로 읽는다(§14 R5-5 · R7-4 — 동시 만들기가 같은 값을
+//    받으면 이동으로도 못 가른다. 2d-3 스펙 C6 — 다른 역할 행은 잠그지 않는다).
 // 🔴 재인증(argon2)은 트랜잭션 밖 · 권한 가드 뒤(2b §4-7).
 
 export type AdminRoleView = {
@@ -128,10 +128,13 @@ export class AdminRolesService {
       runWriteTransaction(this.db, async (trx) => {
         const clearedDefaults = body.isDefault ? await lockOtherDefaults(trx, null) : []
         await clearDefaults(trx, clearedDefaults)
-        // 🔴 FOR UPDATE — 동시 만들기 둘이 같은 MAX 를 읽으면 순서 값이 겹친다(§14 R5-5 · R7-4)
+        // 🔴 FOR UPDATE — 동시 만들기 둘이 같은 끝 값을 읽으면 순서 값이 겹친다(§14 R5-5 · R7-4). 🔴 idx_roles_display_order 의
+        //    끝 한 행만 잠근다 — MAX(…) 는 옵티마이저가 "optimized away" 로 읽어 잠금이 그 동작에 기댄다(2d-3 스펙 C6 · §14 R1-8)
         const top = await trx
           .selectFrom('roles')
-          .select((eb) => eb.fn.max('displayOrder').as('maxOrder'))
+          .select('displayOrder')
+          .orderBy('displayOrder', 'desc')
+          .limit(1)
           .forUpdate()
           .executeTakeFirst()
         const result = await trx
@@ -140,7 +143,7 @@ export class AdminRolesService {
             roleName: body.roleName,
             permissions: JSON.stringify(next),
             isDefault: body.isDefault,
-            displayOrder: Number(top?.maxOrder ?? 0) + 1,
+            displayOrder: (top?.displayOrder ?? 0) + 1,
           })
           .executeTakeFirstOrThrow()
         if (result.insertId === undefined) {

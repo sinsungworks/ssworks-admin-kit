@@ -56,6 +56,16 @@ function outsideQuotes(statement: string): string {
   return statement.replace(/'(?:[^']|'')*'/g, "''").replace(/`[^`]*`/g, '``')
 }
 
+describe('0001_roles', () => {
+  it('🔴 순서 · 기본 표시 인덱스 둘 — 역할 쓰기가 전 행을 잠그지 않게(2d-3 스펙 ③ I1)', async () => {
+    const statements = await capture((db) => roles.up(db))
+    expect(statements).toContain(
+      'create index `idx_roles_display_order` on `roles` (`display_order`)',
+    )
+    expect(statements).toContain('create index `idx_roles_is_default` on `roles` (`is_default`)')
+  })
+})
+
 describe('0002_users', () => {
   it('🔴 resignAt 은 timestamp NULL 을 명시한다 — explicit_defaults_for_timestamp=OFF 에서 NOT NULL 이 되지 않게', async () => {
     const [statement] = await capture((db) => users.up(db))
