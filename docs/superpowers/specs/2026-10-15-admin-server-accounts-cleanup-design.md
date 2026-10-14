@@ -260,3 +260,15 @@ TDD — 실패하는 테스트부터. 구현자는 테스트를 먼저 만들고
 ## 14. 구현 중 정정
 
 §12 의 확인 결과와 구현 · 리뷰에서 바뀐 것을 `R<n>` 으로 더한다.
+
+- **R1 — §12 위험 실측(2026-10-15, 플랜 전, MariaDB 11.4.13 · `REPEATABLE-READ` · `innodb_snapshot_isolation` 세션 변수로 ON · OFF · 패키지 DB 하네스의 임시 프로브 두 파일 — 지웠다).** 설계를 바꾼 것은 없다. 경계 결정 ①~③ 을 실측으로 받쳤다. 서비스 대신 같은 문장 순서를 원시 연결로 돌려 옛 순서(센티넬 → 셈 → 대상 잠금)와 새 순서(센티넬 → 대상 잠금 → 셈)를 나란히 쟀다.
+  1. **(a1) 퇴사 ∥ 대상 로그인 실패**(원시 연결이 users 행을 쥐고 `login_fail_count + 1`). 옛 순서: OFF 는 성공하지만 셈 뒤 보기 읽기가 `login_fail_count = 0`(낡음 — R9-2 재현), ON 은 대상 잠금 읽기가 `ER_CHECKREAD`. 새 순서: OFF · ON 모두 성공하고 보기 읽기가 1(최신). 둘 다 대상 잠금에서 기다렸다(잠금 대기 관찰).
+  2. **(a2) 즉시 퇴사 ∥ refresh 회전 — 회전이 퇴사의 대상 잠금 뒤에 시작**(옛 세션 UPDATE → 새 세션 INSERT 가 FK 로 users S 를 기다림 → 퇴사의 세션 폐기가 옛 세션 행을 기다림). OFF · ON 모두 교착 1213 이고 희생자는 **회전**, 퇴사는 그대로 성공한다(2d R10-3 그대로 — 퇴사가 users · 구간을 먼저 바꿔 무겁다). C5(세션을 쓰기 단계에 남김)의 근거.
+  3. **(a2b) 회전이 먼저**(옛 UPDATE · 새 INSERT 로 users S 를 쥠). 퇴사가 대상 잠금에서 기다렸다 회전 커밋 뒤 성공, 폐기 1행(새 세션). ON 에서도 1020 없음.
+  4. **(a3) 셈 뒤 · 폐기 전에 대상 로그아웃 커밋**(세션 UPDATE 만, autocommit). OFF 성공(남은 1행 폐기), ON 은 퇴사의 세션 폐기 UPDATE 가 `ER_CHECKREAD` — `liveOnly` 조건이 있어도 없어도 같다. C5 가 받아들인 남는 경합이다(README "동시 쓰기 재시도").
+  5. **(b) 사용자 역할 변경 ∥ 같은 팀 이름 바꾸기 · 이동**(원시 연결이 `teamTree` 가드 · 팀 행을 쥐고 이름 또는 `display_order` 를 바꿈). 옛 순서: ON `ER_CHECKREAD`(2e-1 이월 재현), OFF 성공이지만 보기 읽기의 팀 이름이 바뀌기 전 값. 새 순서: OFF · ON 모두 성공하고 보기 읽기가 바뀐 이름 · 순서를 본다.
+  6. **(d) 역할 권한 수정 ∥ 그 역할 이동**(원시 연결이 역할 행을 쥐고 `display_order` 만 바꿈 — revision 안 올림). 옛 순서 ON `ER_CHECKREAD`, 새 순서 ON · OFF 성공.
+  7. **(c) 역할 인덱스 — 잠금 범위.** 인덱스가 없으면 역할 3 · 5 · 20 개 모두에서 네 쿼리(`ORDER BY displayOrder DESC LIMIT 1 FOR UPDATE` · `MAX(displayOrder) FOR UPDATE` · `WHERE isDefault = 1 [AND roleNo != ?] FOR UPDATE` · 이동 구간 UPDATE)가 EXPLAIN `ALL`(구간 UPDATE 는 `index/PRIMARY`)이고 상관없는 역할 행 하나를 쥔 연결을 기다린다(1205). 인덱스 둘을 더하면 작은 표에서도 옵티마이저가 인덱스를 탄다 — 끝 행 셈 `index/idx_roles_display_order`, `MAX` `Select tables optimized away`, 기본 찾기 `ref/idx_roles_is_default`, 구간 UPDATE `range/idx_roles_display_order` — 그리고 상관없는 행을 기다리지 않는다. 끝 행 셈 · `MAX` 둘 다 끝 행(M)을 쥔 연결은 기다린다(끝 행을 잠근다). 기본 찾기는 기본 역할 행을 쥔 연결을 기다린다.
+  8. **(c) 동시 만들기 둘**(A 가 셈 · INSERT 를 쥔 채 B 가 같은 셈) — 인덱스 유무 · 두 쿼리 모양 · 빈 표 · 행 하나 · 다섯 모두 B 가 기다렸다 A 의 값 + 1 을 받는다(겹침 없음). `MAX … FOR UPDATE` 도 인덱스에서 끝 행을 잠그지만, C6 은 옵티마이저의 "optimized away" 에 기대지 않는 끝 행 셈을 그대로 쓴다.
+  9. **(c) 교착 재현.** D1 만들기 ∥ 사용자 역할 변경(사용자가 지금 역할 A 를 쥐고 끝 역할 M 을 줄 역할로): 인덱스 없음 → 1213(사용자 쪽 희생), 인덱스 → 만들기가 기다리지 않고 둘 다 성공. D2 기본 켜기(R 을 쥐고 다른 기본 찾기) ∥ 사용자 역할 변경(지금 역할 A ≠ 기본 D 를 쥐고 R 을 줄 역할로): 인덱스 없음 → 1213, 인덱스 → 교착 없음(사용자가 R 을 기다릴 뿐). 사용자의 지금 역할이 기본 역할 D 면 인덱스가 있어도 1213 — §11 이 받아들인 남는 경합이다.
+  10. **(d) 타입.** `LockedWrite<L, T>` 를 받는 함수에 객체 리터럴 `{ lock, write }` 를 넘기면 `write` 의 인자가 `lock` 의 결과 타입(`LockedUser` 등)으로 추론되고, 어긋난 인자 타입은 tsc 오류다(`@ts-expect-error` 로 확인) — admin-server `tsc --noEmit` 초록.
