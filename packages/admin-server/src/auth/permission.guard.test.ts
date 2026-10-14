@@ -13,6 +13,7 @@ import {
 import { AUTH_MESSAGES } from './errors.js'
 import { resolveAuthConfig } from './options.js'
 import { AdminPermissionGuard } from './permission.guard.js'
+import { RequirePermissionSlot } from './permission-slots.js'
 import type { AdminPrincipal } from './principal.js'
 
 class Routes {
@@ -96,6 +97,37 @@ function rejection(run: () => unknown): BusinessError {
 
 const routes = new Routes()
 const selfOnlyRoutes = new SelfOnlyRoutes()
+
+class SlotRoutes {
+  @RequirePermissionSlot('sessions.read')
+  read() {}
+
+  @RequirePermissionSlot('auditLogs.read')
+  unmapped() {}
+
+  @RequirePermissionSlot('sessions.manage')
+  @RequirePermissions('user:write')
+  both() {}
+}
+
+@SelfOnly()
+class SelfOnlySlotRoutes {
+  @RequirePermissionSlot('sessions.read')
+  read() {}
+}
+
+const slotRoutes = new SlotRoutes()
+const selfOnlySlotRoutes = new SelfOnlySlotRoutes()
+
+function slotGuard(): AdminPermissionGuard {
+  return new AdminPermissionGuard(
+    new Reflector(),
+    resolveAuthConfig({ jwtSecret: 's'.repeat(32) }, undefined, {
+      'sessions.read': 'org.users:read',
+      'sessions.manage': 'org.users:write',
+    }),
+  )
+}
 
 describe('AdminPermissionGuard', () => {
   it('🔴 rpc · ws 컨텍스트만 통과(스펙 §14 R4 · R10)', () => {
@@ -194,5 +226,51 @@ describe('AdminPermissionGuard', () => {
     expect(guard().canActivate(context(selfOnlyRoutes, 'audit', principal(['audit:read'])))).toBe(
       true,
     )
+  })
+})
+
+describe('AdminPermissionGuard — 권한 슬롯(2c 스펙 ① P1)', () => {
+  it('맵이 이은 키를 가진 주체는 통과, 없으면 403', () => {
+    expect(
+      slotGuard().canActivate(context(slotRoutes, 'read', principal(['org.users:read']))),
+    ).toBe(true)
+    const error = rejection(() =>
+      slotGuard().canActivate(context(slotRoutes, 'read', principal(['user:read']))),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+    expect(error.message).toBe(AUTH_MESSAGES.forbidden)
+  })
+
+  it("'*' 는 이어진 슬롯을 통과한다", () => {
+    expect(slotGuard().canActivate(context(slotRoutes, 'read', principal(['*'])))).toBe(true)
+  })
+
+  it("🔴 이어지지 않은 슬롯은 '*' 도 403 — 기동 검사를 피한 조합의 방어선", () => {
+    const error = rejection(() =>
+      slotGuard().canActivate(context(slotRoutes, 'unmapped', principal(['*']))),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+  })
+
+  it('🔴 슬롯은 클래스 @SelfOnly 보다 먼저다', () => {
+    const error = rejection(() =>
+      slotGuard().canActivate(context(selfOnlySlotRoutes, 'read', principal([]))),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+  })
+
+  it('슬롯과 @RequirePermissions 는 AND', () => {
+    expect(() =>
+      slotGuard().canActivate(context(slotRoutes, 'both', principal(['org.users:write']))),
+    ).toThrow(BusinessError)
+    expect(
+      slotGuard().canActivate(
+        context(slotRoutes, 'both', principal(['org.users:write', 'user:write'])),
+      ),
+    ).toBe(true)
+  })
+
+  it('셋째 인자가 없으면 슬롯 맵은 비어 있다(2b 호출부 그대로)', () => {
+    expect(resolveAuthConfig({ jwtSecret: 's'.repeat(32) }, undefined).permissions).toEqual({})
   })
 })

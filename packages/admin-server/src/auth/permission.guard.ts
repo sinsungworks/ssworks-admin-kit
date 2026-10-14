@@ -13,10 +13,12 @@ import {
   ANY_PERMISSIONS,
   IS_PUBLIC,
   IS_SELF_ONLY,
+  PERMISSION_SLOT,
   REQUIRED_PERMISSIONS,
 } from '../tokens.js'
 import { AUTH_MESSAGES } from './errors.js'
 import type { ResolvedAuthConfig } from './options.js'
+import type { AdminPermissionSlot } from './permission-slots.js'
 import { getAdminPrincipal } from './principal.js'
 
 // 정본: hangang-home apps/api/src/core/guards/permission.guard.ts(fail-closed · @SelfOnly 명시 통과 · AND/OR)
@@ -26,6 +28,7 @@ import { getAdminPrincipal } from './principal.js'
 //  - 강제 변경 계정은 허용 표시가 있는 라우트만(gise — 권한을 빈 배열로 보는 것만으로는 @SelfOnly 라우트가 열린다).
 //  - 판정은 admin-shared hasPermission · hasAnyPermission('*' 정확 일치 — 화면과 같은 함수).
 //  - failClosed: false 과도기 옵션(Phase 0 §4 #5). rpc · ws 만 통과, 그 밖의 비HTTP 는 401(스펙 §14 R4 · R10).
+//  - 패키지 라우트의 권한 슬롯(2c 스펙 ① P1)은 권한 선언과 같은 층이다 — 슬롯 · @RequirePermissions 가 함께면 AND.
 
 @Injectable()
 export class AdminPermissionGuard implements CanActivate {
@@ -60,6 +63,10 @@ export class AdminPermissionGuard implements CanActivate {
       )
     }
 
+    const slot = this.reflector.getAllAndOverride<AdminPermissionSlot | undefined>(
+      PERMISSION_SLOT,
+      targets,
+    )
     const required = this.reflector.getAllAndOverride<string[] | undefined>(
       REQUIRED_PERMISSIONS,
       targets,
@@ -68,7 +75,12 @@ export class AdminPermissionGuard implements CanActivate {
     const hasRequired = required != null && required.length > 0
     const hasAnyOf = anyOf != null && anyOf.length > 0
 
-    if (hasRequired || hasAnyOf) {
+    if (slot != null || hasRequired || hasAnyOf) {
+      if (slot != null) {
+        // 🔴 이어지지 않은 슬롯은 '*' 도 막는다 — 기동 검사(assertPermissionSlots)를 피한 조합의 방어선이다(2c 스펙 §4-1).
+        const key = this.config.permissions[slot]
+        if (key == null || !hasPermission(principal.permissions, key)) throw forbidden()
+      }
       if (hasRequired && !hasPermission(principal.permissions, ...required)) throw forbidden()
       if (hasAnyOf && !hasAnyPermission(principal.permissions, ...anyOf)) throw forbidden()
       return true

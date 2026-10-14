@@ -40,7 +40,7 @@ const providers: Provider[] = [
   {
     provide: ADMIN_AUTH_CONFIG,
     useFactory: (options: AdminServerOptions): ResolvedAuthConfig => {
-      const config = resolveAuthConfig(options.auth, options.passwordPolicy)
+      const config = resolveAuthConfig(options.auth, options.passwordPolicy, options.permissions)
       if (!config.failClosed) {
         new Logger('AdminAuthModule').warn(
           'auth.failClosed 가 false 다 — 권한 선언이 없는 라우트가 인증만으로 통과한다(이식 과도기 옵션).',

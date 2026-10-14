@@ -1,5 +1,6 @@
 import { definePasswordPolicy, type PasswordPolicy } from '@ssworks/admin-shared'
 import { DEFAULT_LOCKOUT, type LoginLockout } from './login-policy.js'
+import { resolvePermissionMap, type AdminPermissionMap } from './permission-slots.js'
 
 // 정본: 없음 — Phase 0 §3-2 표의 `auth` · `cookies` · `permissions` 행을 실제로 갈렸던 값만 남겨 옵션으로 만들었다
 //   (스펙 §4-1). 해석 · 검증을 순수 함수 하나에 모은다 — 잘못된 설정은 첫 기동에서 드러난다.
@@ -52,6 +53,7 @@ export interface ResolvedAuthConfig {
   cookies: ResolvedAuthCookies
   failClosed: boolean
   passwordPolicy: PasswordPolicy
+  permissions: Readonly<AdminPermissionMap>
 }
 
 export const MIN_JWT_SECRET_LENGTH = 32
@@ -79,11 +81,12 @@ function cookieName(name: string, value: string | undefined, fallback: string): 
 }
 
 /**
- * 코어 옵션의 `auth` · `passwordPolicy` 를 해석한다. 🔴 메시지에는 옵션 이름만 담는다 — 비밀키 값을 싣지 않는다.
+ * 코어 옵션의 `auth` · `passwordPolicy` · `permissions` 를 해석한다. 🔴 메시지에는 옵션 이름만 담는다 — 비밀키 값을 싣지 않는다.
  */
 export function resolveAuthConfig(
   auth: AdminAuthOptions | undefined,
   passwordPolicy: PasswordPolicy | undefined,
+  permissions?: AdminPermissionMap,
 ): ResolvedAuthConfig {
   if (auth == null) {
     throw new Error(
@@ -139,5 +142,6 @@ export function resolveAuthConfig(
     },
     failClosed: auth.failClosed ?? true,
     passwordPolicy: passwordPolicy ?? definePasswordPolicy(),
+    permissions: resolvePermissionMap(permissions),
   }
 }
