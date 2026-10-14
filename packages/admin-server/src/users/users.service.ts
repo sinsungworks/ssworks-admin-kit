@@ -134,6 +134,7 @@ export class AdminUsersService {
       }
     })
   }
+
   /**
    * 계정 만들기 — 서버가 임시 비밀번호를 만든다(⑥ P1). 잔존을 늘리기만 해 센티넬을 잡지 않는다(§5-3).
    * 🔴 임시 비밀번호는 돌려주기만 한다 — 저장은 해시, 감사 · 로그에는 남기지 않는다(공통 11).
@@ -205,6 +206,9 @@ export class AdminUsersService {
           grant,
         })
         if (body.revision !== target.revision) throw userRevisionConflict()
+        // 🔴 잠금 순서는 users → roles → teams → (teamUserMap · 재직 이력) — create 와 같은 순서다. 이력(correctJoinDate)을
+        //    팀보다 먼저 잠그면 같은 팀에 계정을 만드는 create 와 교착한다(Task 8 리뷰).
+        if (body.teamNo != null) await lockTeam(trx, body.teamNo)
         const before = await readUser(trx, userNo, timeZone)
         if (body.joinDate !== undefined) await correctJoinDate(trx, userNo, body.joinDate)
         if (body.teamNo !== undefined) await replaceTeam(trx, userNo, body.teamNo)
