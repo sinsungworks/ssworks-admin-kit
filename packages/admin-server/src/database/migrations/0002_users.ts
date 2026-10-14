@@ -5,7 +5,9 @@ import { TABLE_OPTIONS, UTF8_CI, comment } from './_shared.js'
 // 바꾼 점:
 //  - `password` 를 varchar(255) 로 — hangang 은 char(128). argon2id 인코딩은 97자 안팎이나 매개변수가 바뀌면 는다(gise).
 //    이름은 hangang · crm · axion 의 `password` — 기본 AUTH_REPOSITORY(2b)가 기대는 이름이다.
-//  - `revision` 을 더했다(Phase 0 §4 #4). 쓰는 법은 2d 가 정한다.
+//  - `revision` 을 더했다(Phase 0 §4 #4). 수정 · 퇴사 · 퇴사일 정정 · 재입사가 올린다(2d 스펙 ⑧ V1).
+//  - 🔴 `updateAt` 에 ON UPDATE 를 두지 않는다(2d 스펙 ⑧ U1) — 로그인 실패 · 잠금 · 본인 비밀번호 변경마다 "수정일" 이
+//    움직였다. revision 이 오르는 쓰기가 `current_timestamp` 로 같이 쓴다. 미발행이라 장을 고쳤다(2a ⑥ V1).
 // 🔴 roleNo 는 NOT NULL + FK restrict(스펙 F15) — 직책 없는 계정이 생기지 않고, 쓰는 중인 역할 삭제는 DB 가 막는다.
 // 🔴 `resignAt` 은 `timestamp NULL` 을 명시한다 — `explicit_defaults_for_timestamp=OFF`(MariaDB 10.9 이하 기본)에서는 수식어 없는 `timestamp` 가
 //    NOT NULL DEFAULT '0000-00-00 00:00:00' 이 되어 `resign_at IS NULL` 이 거짓이고 NULL 대입이 현재 시각을 쓴다. hangang 002 에도 같은 잠복 버그가 있다.
@@ -50,9 +52,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
       col.unsigned().notNull().defaultTo(0).modifyEnd(comment('낙관적 잠금')),
     )
     .addColumn('createAt', 'timestamp', (col) => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
-    .addColumn('updateAt', 'timestamp', (col) =>
-      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`),
-    )
+    .addColumn('updateAt', 'timestamp', (col) => col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`))
     .addUniqueConstraint('uqUsersUserId', ['userId'])
     .addForeignKeyConstraint('fkUsersRole', ['roleNo'], 'roles', ['roleNo'], (cb) =>
       cb.onDelete('restrict').onUpdate('cascade'),

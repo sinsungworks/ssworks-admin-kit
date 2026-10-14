@@ -91,6 +91,8 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
     // 🔴 explicit_defaults_for_timestamp=OFF 에서도 NULL 허용(R10)
     expect(column('users', 'resign_at').isNullable).toBe('YES')
     expect(column('roles', 'update_at').extra.toLowerCase()).toContain('on update')
+    // 🔴 사용자 수정일은 revision 이 오를 때만 바뀐다(2d 스펙 ⑧ U1 · §14 R7-3)
+    expect(column('users', 'update_at').extra.toLowerCase()).not.toContain('on update')
     // 🔴 폐기 UPDATE 가 마지막 활동 시각을 바꾸지 않는다
     expect(column('sessions', 'last_access_at').extra.toLowerCase()).not.toContain('on update')
     expect(column('sessions', 'replaced_by_session_no').columnType).toBe('bigint(20) unsigned')

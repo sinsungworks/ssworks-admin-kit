@@ -222,3 +222,35 @@ describe('changePassword', () => {
     })
   })
 })
+
+describe('🔴 updateAt(2d 스펙 ⑧ U1)', () => {
+  it('로그인 실패 · 잠금 · 본인 비밀번호 변경이 "수정일" 을 움직이지 않는다', async () => {
+    const roleNo = await seedRole(t.db)
+    const user = await seedUser(t.db, { roleNo, userId: 'u1-update-at' })
+    const past = new Date('2020-01-01T00:00:00.000Z')
+    await t.db
+      .updateTable('users')
+      .set({ updateAt: past })
+      .where('userNo', '=', user.userNo)
+      .execute()
+
+    await repo.updateLoginState(user.userNo, () => ({
+      loginFailCount: 5,
+      lockUntil: new Date(Date.now() + 60_000),
+    }))
+    const credential = await repo.findCredentialByNo(user.userNo)
+    if (credential === null) throw new Error('자격 증명이 없다')
+    await runWriteTransaction(t.db, (trx) =>
+      repo.changePassword(trx, user.userNo, credential.passwordHash, 'replaced-hash'),
+    )
+
+    const row = await t.db
+      .selectFrom('users')
+      .select(['updateAt', 'loginFailCount', 'password'])
+      .where('userNo', '=', user.userNo)
+      .executeTakeFirstOrThrow()
+    expect(row.password).toBe('replaced-hash')
+    expect(row.loginFailCount).toBe(0)
+    expect(row.updateAt.toISOString()).toBe(past.toISOString())
+  })
+})

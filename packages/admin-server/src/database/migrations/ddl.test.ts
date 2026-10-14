@@ -59,6 +59,14 @@ describe('0002_users', () => {
     const [statement] = await capture((db) => users.up(db))
     expect(statement).toContain('`resign_at` timestamp null')
   })
+
+  it('🔴 updateAt 에 ON UPDATE 가 없다(2d 스펙 ⑧ U1) — 로그인 실패 · 비밀번호 변경이 "수정일" 을 움직이지 않게', async () => {
+    const [statement = ''] = await capture((db) => users.up(db))
+    const start = statement.indexOf('`update_at`')
+    const updateAt = statement.slice(start, statement.indexOf('constraint', start)).toLowerCase()
+    expect(updateAt).toContain('default current_timestamp')
+    expect(updateAt).not.toContain('on update')
+  })
 })
 
 describe('0008_audit_logs', () => {

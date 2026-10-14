@@ -1,7 +1,7 @@
 import type { ColumnType, Generated } from 'kysely'
 
 // 정본: hangang-home apps/api/src/core/database/tables/users.table.ts
-// 바꾼 점: `revision` 추가. `resignAt` 은 효력 시각이다(2b 스펙 ④ R1 — hangang 은 날짜였다).
+// 바꾼 점: `revision` 추가. `resignAt` 은 효력 시각이다(2b 스펙 ④ R1 — hangang 은 날짜였다). updateAt 은 revision 과 함께 쓴다(2d ⑧ U1).
 
 export interface AdminUsersTable {
   userNo: Generated<bigint>
@@ -20,5 +20,9 @@ export interface AdminUsersTable {
   lockUntil: Date | null
   revision: Generated<number>
   createAt: ColumnType<Date, never, never>
-  updateAt: ColumnType<Date, never, never>
+  /**
+   * 편집 폼이 보이는 값이 바뀐 시각 — revision 이 오르는 쓰기(수정 · 퇴사 · 퇴사일 · 재입사)가 `current_timestamp` 로 같이
+   * 쓴다(2d 스펙 ⑧ U1 · §14 R6-2). 🔴 ON UPDATE 가 없다 — 로그인 실패 · 잠금 · 비밀번호 변경은 바꾸지 않는다.
+   */
+  updateAt: ColumnType<Date, never, Date>
 }
