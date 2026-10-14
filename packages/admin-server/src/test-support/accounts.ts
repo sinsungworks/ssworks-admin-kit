@@ -1,4 +1,5 @@
 import { BusinessError, CommonErrorCodes, definePermissions } from '@ssworks/admin-shared'
+import type { Kysely } from 'kysely'
 import type { ResolvedAccountsConfig, ResolvedUsersConfig } from '../accounts/options.js'
 import type { AdminPrincipal } from '../auth/principal.js'
 
@@ -61,4 +62,35 @@ export class FakeReauth {
       throw new BusinessError(CommonErrorCodes.ERR_REAUTH_REQUIRED, '비밀번호가 올바르지 않습니다.')
     }
   }
+}
+
+/** 트랜잭션 밖에서 쿼리를 시작하는 메서드들 — 서비스가 쓰기의 결과를 커밋 뒤에 읽으면 여기서 걸린다 */
+const OUTSIDE_TRANSACTION = new Set([
+  'selectFrom',
+  'selectNoFrom',
+  'insertInto',
+  'replaceInto',
+  'updateTable',
+  'deleteFrom',
+  'mergeInto',
+  'with',
+])
+
+/**
+ * 🔴 쓰기의 결과는 그 트랜잭션에서 읽는다(2d 스펙 §14 R5-2)를 재는 대역 — `transaction()` 은 그대로 통과하고, 트랜잭션 밖에서
+ *    쿼리를 시작하면 던진다. 읽기 메서드(list 등)를 부르는 테스트에는 쓰지 않는다.
+ */
+export function transactionOnly<DB>(db: Kysely<DB>): Kysely<DB> {
+  return new Proxy(db, {
+    get(target, key) {
+      if (typeof key === 'string' && OUTSIDE_TRANSACTION.has(key)) {
+        throw new Error(`트랜잭션 밖에서 ${key} 를 불렀다 — 쓰기의 결과는 그 트랜잭션에서 읽는다`)
+      }
+      // 🔴 수신자를 원본으로 — Kysely 는 #private 필드를 쓴다. 프록시를 this 로 넘기면 게터가 던진다.
+      const value: unknown = Reflect.get(target, key, target)
+      return typeof value === 'function'
+        ? (value as (...args: unknown[]) => unknown).bind(target)
+        : value
+    },
+  })
 }

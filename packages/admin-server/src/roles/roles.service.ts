@@ -5,7 +5,8 @@ import { actorOf, judgeAccountCommand } from '../accounts/account-command.js'
 import { isDuplicateOf } from '../accounts/duplicate.js'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import type { ResolvedAccountsConfig } from '../accounts/options.js'
-import { readPermissionsColumn } from '../accounts/permissions-column.js'
+import { permissionsOrEmpty } from '../accounts/permissions-column.js'
+import { reauthenticate } from '../accounts/reauth.js'
 import { withSuperAdminSurvival } from '../accounts/super-admin.js'
 import type { AdminPrincipal } from '../auth/principal.js'
 import { AdminReauthService } from '../auth/reauth.service.js'
@@ -21,8 +22,12 @@ import { planRoleMove } from './move.js'
 //  - 목록은 전량(3b §9 — hangang 은 쪽을 나눴다). 권한은 저장된 그대로 낸다(2d 스펙 B6).
 //  - 정규화는 카탈로그 normalize(① C1), 권한 상승은 지배 판정(② E1 — hangang 은 새 집합만 봤다).
 //  - 수정 · 삭제는 revision(gise). 이동은 revision 을 받지도 올리지도 않는다(3b D1).
-//  - 기본 역할은 하나 — 만들기에서도 끈다(axion 은 수정에서만 껐다, ⑫ D1).
+//  - 기본 역할은 하나 — 만들기에서도 끈다(axion 은 수정에서만 껐다, ⑫ D1). 끈 역할 번호를 돌려준다 — 감사 meta
+//    clearedDefaults(§14 R5-3).
 //  - 이름 중복은 제약 이름으로 가려 400 roleName 필드 오류(B1 — hangang 은 사전 검사였고 경합 때 일반 코드로 샜다).
+//  - 수정의 응답 item · 감사 after 는 같은 트랜잭션에서 읽는다(§14 R5-2 — 커밋 뒤에 읽으면 그 사이 남의 쓰기가 섞였다).
+//  - 새 역할의 displayOrder 는 MAX … FOR UPDATE 로 셈한다(§14 R5-5 · R7-4 — 동시 만들기가 같은 값을 받으면 이동으로도 못
+//    가른다).
 // 🔴 재인증(argon2)은 트랜잭션 밖 · 권한 가드 뒤(2b §4-7).
 
 export type AdminRoleView = {
@@ -107,17 +112,19 @@ export class AdminRolesService {
   async create(
     body: AdminRoleCreateBody,
     principal: AdminPrincipal,
-  ): Promise<{ roleNo: bigint; after: RoleAuditView }> {
-    await this.reauth(principal, body.currentPassword)
+  ): Promise<{ roleNo: bigint; after: RoleAuditView; clearedDefaults: bigint[] }> {
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const next = this.config.catalog.normalize(body.permissions)
     judgeAccountCommand(actorOf(principal), { kind: 'role.create', next })
     // 만들기는 잔존을 늘리기만 한다 — 센티넬을 잡지 않는다(§5-3).
-    const roleNo = await this.guardRoleName(() =>
+    const created = await this.guardRoleName(() =>
       runWriteTransaction(this.db, async (trx) => {
-        if (body.isDefault) await clearOtherDefaults(trx, null)
+        const clearedDefaults = body.isDefault ? await clearOtherDefaults(trx, null) : []
+        // 🔴 FOR UPDATE — 동시 만들기 둘이 같은 MAX 를 읽으면 순서 값이 겹친다(§14 R5-5 · R7-4)
         const top = await trx
           .selectFrom('roles')
           .select((eb) => eb.fn.max('displayOrder').as('maxOrder'))
+          .forUpdate()
           .executeTakeFirst()
         const result = await trx
           .insertInto('roles')
@@ -131,11 +138,11 @@ export class AdminRolesService {
         if (result.insertId === undefined) {
           throw new Error('roles INSERT 가 insertId 를 돌려주지 않았다.')
         }
-        return result.insertId
+        return { roleNo: result.insertId, clearedDefaults }
       }),
     )
     return {
-      roleNo,
+      ...created,
       after: { roleName: body.roleName, isDefault: body.isDefault, permissions: next },
     }
   }
@@ -144,14 +151,19 @@ export class AdminRolesService {
     roleNo: bigint,
     body: AdminRoleUpdateBody,
     principal: AdminPrincipal,
-  ): Promise<{ item: AdminRoleView; before: RoleAuditView; after: RoleAuditView }> {
-    await this.reauth(principal, body.currentPassword)
+  ): Promise<{
+    item: AdminRoleView
+    before: RoleAuditView
+    after: RoleAuditView
+    clearedDefaults: bigint[]
+  }> {
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const next =
       body.permissions === undefined ? undefined : this.config.catalog.normalize(body.permissions)
     const actor = actorOf(principal)
-    const before = await this.guardRoleName(() =>
+    return this.guardRoleName(() =>
       runWriteTransaction(this.db, async (trx) => {
-        const write = async (): Promise<RoleAuditView> => {
+        const write = async (): Promise<{ before: RoleAuditView; clearedDefaults: bigint[] }> => {
           const row = await lockRole(trx, roleNo)
           const current = this.permissionsOf(row)
           // 🔴 판정이 revision 보다 먼저다 — 권한 없는 사람에게 revision 상태를 드러내지 않는다(2d 스펙 B7).
@@ -162,7 +174,8 @@ export class AdminRolesService {
               ACCOUNT_MESSAGES.roleRevisionMismatch,
             )
           }
-          if (body.isDefault === true && !row.isDefault) await clearOtherDefaults(trx, roleNo)
+          const clearedDefaults =
+            body.isDefault === true && !row.isDefault ? await clearOtherDefaults(trx, roleNo) : []
           await trx
             .updateTable('roles')
             .set((eb) => ({
@@ -173,18 +186,28 @@ export class AdminRolesService {
             }))
             .where('roleNo', '=', roleNo)
             .execute()
-          return { roleName: row.roleName, isDefault: row.isDefault, permissions: current }
+          return {
+            before: { roleName: row.roleName, isDefault: row.isDefault, permissions: current },
+            clearedDefaults,
+          }
         }
         // 🔴 권한을 바꾸는 수정만 잔존을 줄일 수 있다 — 센티넬이 트랜잭션의 첫 문장이 되게 감싼다(§5-3).
-        return next === undefined ? write() : withSuperAdminSurvival(trx, write)
+        const { before, clearedDefaults } =
+          next === undefined ? await write() : await withSuperAdminSurvival(trx, write)
+        // 🔴 같은 트랜잭션에서 읽는다 — 응답 · 감사 after 가 이 쓰기의 결과다(§14 R5-2)
+        const item = this.view(await findRole(trx, roleNo))
+        return {
+          item,
+          before,
+          after: {
+            roleName: item.roleName,
+            isDefault: item.isDefault,
+            permissions: item.permissions,
+          },
+          clearedDefaults,
+        }
       }),
     )
-    const item = await this.findOne(roleNo)
-    return {
-      item,
-      before,
-      after: { roleName: item.roleName, isDefault: item.isDefault, permissions: item.permissions },
-    }
   }
 
   /** 🔴 재인증 · revision 없음(3b D1 — 순서는 내용이 아니다). 대상 행을 잠그고 구간을 옮긴다 */
@@ -225,7 +248,7 @@ export class AdminRolesService {
     body: AdminRoleRemoveBody,
     principal: AdminPrincipal,
   ): Promise<{ before: RoleAuditView }> {
-    await this.reauth(principal, body.currentPassword)
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const actor = actorOf(principal)
     // 🔴 쓰는 중 검사가 먼저라 잔존은 지금은 닿지 않는 방어선이다(hangang · 2d 스펙 B11). 쓰는 중 검사가 스냅숏 때문에 놓친
     //    배정은 FK restrict 가 받친다 — mapError 가 같은 409 ERR_COMMON_IN_USE 로 바꾼다(2a F15).
@@ -256,27 +279,6 @@ export class AdminRolesService {
     return { before }
   }
 
-  private async findOne(roleNo: bigint): Promise<AdminRoleView> {
-    const row = await runQuery(() =>
-      this.db
-        .selectFrom('roles')
-        .select(ROLE_COLUMNS)
-        .where('roleNo', '=', roleNo)
-        .executeTakeFirst(),
-    )
-    if (row === undefined) throw noRole()
-    return this.view(row)
-  }
-
-  private async reauth(principal: AdminPrincipal, password: string | undefined): Promise<void> {
-    if (!this.config.reauth) return
-    if (this.reauthService === undefined) {
-      // 모듈 기동 검사(assertAuthModuleRegistered)가 막았어야 한다 — 수동 조립의 방어선.
-      throw new Error('AdminReauthService 가 없다 — AdminAuthModule 을 import 한다.')
-    }
-    await this.reauthService.verify(principal, password ?? '')
-  }
-
   private async guardRoleName<T>(run: () => Promise<T>): Promise<T> {
     try {
       return await run()
@@ -292,10 +294,7 @@ export class AdminRolesService {
   }
 
   private permissionsOf(row: { roleNo: bigint; permissions: unknown }): string[] {
-    const parsed = readPermissionsColumn(row.permissions)
-    if (parsed !== null) return parsed
-    this.logger.warn(`역할 ${row.roleNo} 의 permissions 가 배열이 아니다 — 빈 권한으로 본다.`)
-    return []
+    return permissionsOrEmpty(row, this.logger)
   }
 
   private view(row: RoleRow): AdminRoleView {
@@ -321,17 +320,35 @@ async function lockRole(trx: Transaction<AdminDatabase>, roleNo: bigint): Promis
   return row
 }
 
-/** ⑫ D1 — 다른 기본 역할을 끄고 그 revision 을 올린다(내용이 바뀌었다 — 그 역할을 열어 둔 편집자는 409 를 받는다) */
+/** 트랜잭션 안의 보기 읽기 — 자기 쓰기가 보인다 */
+async function findRole(trx: Transaction<AdminDatabase>, roleNo: bigint): Promise<RoleRow> {
+  const row = await trx
+    .selectFrom('roles')
+    .select(ROLE_COLUMNS)
+    .where('roleNo', '=', roleNo)
+    .executeTakeFirst()
+  if (row === undefined) throw noRole()
+  return row
+}
+
+/**
+ * ⑫ D1 — 다른 기본 역할을 끄고 그 revision 을 올린다(내용이 바뀌었다 — 그 역할을 열어 둔 편집자는 409 를 받는다).
+ * 끈 역할 번호를 돌려준다(감사 meta clearedDefaults — §14 R5-3).
+ */
 async function clearOtherDefaults(
   trx: Transaction<AdminDatabase>,
   except: bigint | null,
-): Promise<void> {
-  let query = trx
+): Promise<bigint[]> {
+  let found = trx.selectFrom('roles').select('roleNo').where('isDefault', '=', true).forUpdate()
+  if (except !== null) found = found.where('roleNo', '!=', except)
+  const roleNos = (await found.execute()).map((row) => row.roleNo)
+  if (roleNos.length === 0) return []
+  await trx
     .updateTable('roles')
     .set((eb) => ({ isDefault: false, revision: eb('revision', '+', 1) }))
-    .where('isDefault', '=', true)
-  if (except !== null) query = query.where('roleNo', '!=', except)
-  await query.execute()
+    .where('roleNo', 'in', roleNos)
+    .execute()
+  return roleNos
 }
 
 function noRole(): BusinessError {

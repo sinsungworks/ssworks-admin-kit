@@ -126,6 +126,16 @@ describe('목록', () => {
       CommonErrorCodes.ERR_COMMON_FORBIDDEN,
     )
   })
+
+  it('🔴 users.read 만 있어도 목록을 읽는다(⑪ L1 — 사용자 폼의 역할 고르기)', async () => {
+    const readerRole = await seedRole(t.db, {
+      roleName: 'http-user-reader',
+      permissions: ['org.users:read'],
+    })
+    const reader = await seedUser(t.db, { roleNo: readerRole, userId: 'user-reader' })
+    const items = await roles(await signIn(reader))
+    expect(items.map((item) => item.roleName)).toContain('http-user-reader')
+  })
 })
 
 describe('만들기', () => {
@@ -519,6 +529,34 @@ describe('감사', () => {
       .orderBy('logNo', 'asc')
       .execute()
   }
+
+  it('기본 역할을 켜서 꺼진 역할은 meta.clearedDefaults 로 남는다(§14 R5-3) — 꺼진 것이 없으면 키도 없다', async () => {
+    const agent = await signIn(boss)
+    const first = await create(agent, {
+      roleName: 'audit-default-1',
+      isDefault: true,
+      permissions: [],
+    })
+    const second = await create(agent, {
+      roleName: 'audit-default-2',
+      isDefault: true,
+      permissions: [],
+    })
+    const [created] = await auditRows(CoreAuditActions.ROLE_CREATE, second)
+    expect(created?.meta).toMatchObject({ clearedDefaults: [String(first)] })
+
+    await agent.patch(`/admin/roles/${first}`).send({ revision: 1, isDefault: true }).expect(200)
+    const [updated] = await auditRows(CoreAuditActions.ROLE_UPDATE, first)
+    expect(updated?.meta).toMatchObject({ clearedDefaults: [String(second)] })
+
+    const plain = await create(agent, {
+      roleName: 'audit-plain',
+      isDefault: false,
+      permissions: [],
+    })
+    const [plainRow] = await auditRows(CoreAuditActions.ROLE_CREATE, plain)
+    expect(Object.keys(plainRow?.meta as Record<string, unknown>)).not.toContain('clearedDefaults')
+  })
 
   it('만들기 · 수정 · 이동 · 삭제가 행으로 — 대상 role · diff · meta', async () => {
     const agent = await signIn(boss)

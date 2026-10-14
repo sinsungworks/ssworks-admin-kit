@@ -24,8 +24,8 @@ import type {
 export class AdminRolesController {
   constructor(private readonly roles: AdminRolesService) {}
 
-  /** 전량 · displayOrder 순(3b §9). 2d-2 가 users.read 를 더한다(⑪ L1 — 사용자 폼의 역할 고르기) */
-  @RequirePermissionSlot('roles.read')
+  /** 전량 · displayOrder 순(3b §9). 🔴 users.read 도 연다(⑪ L1 — 사용자 폼의 역할 고르기). 맵에 없는 슬롯은 거짓(B13) */
+  @RequirePermissionSlot('roles.read', 'users.read')
   @Get()
   list() {
     return this.roles.list()
@@ -39,9 +39,10 @@ export class AdminRolesController {
     @CurrentAdmin() admin: AdminPrincipal,
     @Req() req: Request,
   ) {
-    const { roleNo, after } = await this.roles.create(body, admin)
+    const { roleNo, after, clearedDefaults } = await this.roles.create(body, admin)
     attachAuditTarget(req, roleNo)
     attachAuditDiff(req, null, after, ROLE_AUDIT_FIELDS)
+    if (clearedDefaults.length > 0) attachAuditMeta(req, { clearedDefaults })
     return { roleNo }
   }
 
@@ -67,8 +68,9 @@ export class AdminRolesController {
     @CurrentAdmin() admin: AdminPrincipal,
     @Req() req: Request,
   ) {
-    const { item, before, after } = await this.roles.update(roleNo, body, admin)
+    const { item, before, after, clearedDefaults } = await this.roles.update(roleNo, body, admin)
     attachAuditDiff(req, before, after, ROLE_AUDIT_FIELDS)
+    if (clearedDefaults.length > 0) attachAuditMeta(req, { clearedDefaults })
     return { item }
   }
 

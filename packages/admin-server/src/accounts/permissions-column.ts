@@ -16,3 +16,14 @@ export function readPermissionsColumn(value: unknown): string[] | null {
   if (!Array.isArray(parsed)) return null
   return parsed.filter((item): item is string => typeof item === 'string')
 }
+
+/** 판정에 쓰는 역할 권한. 🔴 깨졌으면 역할 번호만 담아 경고하고 [](2b findPrincipal 과 같은 fail-closed) */
+export function permissionsOrEmpty(
+  row: { roleNo: bigint; permissions: unknown },
+  logger: { warn(message: string): void },
+): string[] {
+  const parsed = readPermissionsColumn(row.permissions)
+  if (parsed !== null) return parsed
+  logger.warn(`역할 ${row.roleNo} 의 permissions 가 배열이 아니다 — 빈 권한으로 본다.`)
+  return []
+}

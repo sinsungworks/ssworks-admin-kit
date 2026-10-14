@@ -2,6 +2,7 @@ import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import { seedRole, seedUser } from '../test-support/auth.js'
+import { whileHeld } from '../test-support/concurrency.js'
 import { accountsConfig, testPrincipal } from '../test-support/accounts.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { AdminRolesService } from './roles.service.js'
@@ -106,5 +107,36 @@ describe('remove', () => {
   it("사용자 없는 '*' 역할은 지울 수 있다 — 잔존 셈이 바뀌지 않는다", async () => {
     const lonely = await seedRole(t.db, { roleName: 'remove-lonely-star', permissions: ['*'] })
     await expect(service.remove(lonely, { revision: 0 }, root)).resolves.toBeDefined()
+  })
+})
+
+describe('create — 동시 만들기(§14 R5-5 · R7-4)', () => {
+  it('🔴 커밋 전 다른 만들기가 있으면 그것을 기다렸다가 그 뒤 순서를 받는다 — 순서 값이 겹치지 않는다', async () => {
+    const top = await t.db
+      .selectFrom('roles')
+      .select((eb) => eb.fn.max('displayOrder').as('maxOrder'))
+      .executeTakeFirstOrThrow()
+    const held = Number(top.maxOrder ?? 0) + 1
+    const result = await whileHeld(
+      t,
+      (connection) =>
+        connection.query(
+          `insert into roles (role_name, permissions, display_order) values ('concurrent-held', '[]', ?)`,
+          [held],
+        ),
+      () =>
+        service.create({ roleName: 'concurrent-mine', isDefault: false, permissions: [] }, root),
+    )
+    if (!result.ok) throw result.error
+    const rows = await t.db
+      .selectFrom('roles')
+      .select(['roleName', 'displayOrder'])
+      .where('roleName', 'in', ['concurrent-held', 'concurrent-mine'])
+      .orderBy('displayOrder')
+      .execute()
+    expect(rows).toEqual([
+      { roleName: 'concurrent-held', displayOrder: held },
+      { roleName: 'concurrent-mine', displayOrder: held + 1 },
+    ])
   })
 })

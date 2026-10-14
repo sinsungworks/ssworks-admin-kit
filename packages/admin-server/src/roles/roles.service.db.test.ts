@@ -3,7 +3,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import type { AdminReauthService } from '../auth/reauth.service.js'
 import { seedRole, seedUser } from '../test-support/auth.js'
-import { FakeReauth, accountsConfig, testPrincipal } from '../test-support/accounts.js'
+import {
+  FakeReauth,
+  accountsConfig,
+  testPrincipal,
+  transactionOnly,
+} from '../test-support/accounts.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { AdminRolesService } from './roles.service.js'
 
@@ -137,6 +142,12 @@ describe('create', () => {
       { roleName: 'default-second', isDefault: true, permissions: [] },
       root,
     )
+    // 끈 역할 번호를 돌려준다 — 감사 meta clearedDefaults(§14 R5-3). first 를 만들 때 다른 기본 역할은 모두 꺼졌다
+    expect(second.clearedDefaults).toEqual([first.roleNo])
+    expect(
+      (await service.create({ roleName: 'default-plain', isDefault: false, permissions: [] }, root))
+        .clearedDefaults,
+    ).toEqual([])
     expect(await stored(first.roleNo)).toMatchObject({ isDefault: false, revision: 1 })
     expect(await stored(second.roleNo)).toMatchObject({ isDefault: true, revision: 0 })
     const defaults = await t.db
@@ -239,7 +250,8 @@ describe('update', () => {
   it('기본 역할을 켜면 다른 기본 역할을 끄고, 끄면 0개도 허용한다', async () => {
     const a = await service.create({ roleName: 'flag-a', isDefault: true, permissions: [] }, root)
     const b = await service.create({ roleName: 'flag-b', isDefault: false, permissions: [] }, root)
-    await service.update(b.roleNo, { revision: 0, isDefault: true }, root)
+    const switched = await service.update(b.roleNo, { revision: 0, isDefault: true }, root)
+    expect(switched.clearedDefaults).toEqual([a.roleNo])
     expect(await stored(a.roleNo)).toMatchObject({ isDefault: false })
     await service.update(b.roleNo, { revision: 1, isDefault: false }, root)
     const defaults = await t.db
@@ -248,6 +260,17 @@ describe('update', () => {
       .where('isDefault', '=', true)
       .execute()
     expect(defaults).toEqual([])
+  })
+
+  it('🔴 만들기 · 수정의 결과는 같은 트랜잭션에서 읽는다(§14 R5-2) — 트랜잭션 밖 쿼리는 던지는 대역으로 잰다', async () => {
+    const strict = new AdminRolesService(transactionOnly(t.db), accountsConfig(), undefined)
+    const { roleNo } = await strict.create(
+      { roleName: 'in-trx-role', isDefault: false, permissions: [] },
+      root,
+    )
+    const result = await strict.update(roleNo, { revision: 0, roleName: 'in-trx-role2' }, root)
+    expect(result.item).toMatchObject({ roleNo, roleName: 'in-trx-role2', revision: 1 })
+    expect(result.after.roleName).toBe('in-trx-role2')
   })
 
   it('없는 역할은 404 ERR_NO_ROLE', async () => {
