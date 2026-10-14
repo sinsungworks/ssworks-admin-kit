@@ -103,6 +103,26 @@ export {
   type AdminSessionRevokeResult,
 } from './sessions.js'
 
+export {
+  AUDIT_ACTION_MAX_LENGTH,
+  AUDIT_TARGET_TYPE_MAX_LENGTH,
+  CoreAuditActions,
+  CoreAuditTargets,
+  CORE_AUDIT_ACTION_LABELS,
+  CORE_AUDIT_TARGET_LABELS,
+  defineAuditCatalog,
+  coreAuditCatalog,
+  queryBigIntSchema,
+  adminAuditLogSchema,
+  adminAuditLogQuerySchema,
+  type CoreAuditAction,
+  type CoreAuditTarget,
+  type AuditCatalog,
+  type AuditCatalogInput,
+  type AdminAuditLog,
+  type AdminAuditLogQuery,
+} from './audit.js'
+
 export { describeUserAgent } from './user-agent.js'
 
 export {
