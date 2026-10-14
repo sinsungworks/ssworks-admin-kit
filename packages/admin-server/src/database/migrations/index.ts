@@ -9,6 +9,7 @@ import * as teamClosure from './0004_team_closure.js'
 import * as teamUserMap from './0005_team_user_map.js'
 import * as userEmploymentPeriods from './0006_user_employment_periods.js'
 import * as sessions from './0007_sessions.js'
+import * as auditLogs from './0008_audit_logs.js'
 
 // 코어 장 목록과 스텁 검사(Phase 2 결정 ③ S1).
 //
@@ -27,6 +28,7 @@ export const ADMIN_MIGRATIONS = [
   '0005_team_user_map',
   '0006_user_employment_periods',
   '0007_sessions',
+  '0008_audit_logs',
 ] as const
 
 export type AdminMigrationId = (typeof ADMIN_MIGRATIONS)[number]
@@ -39,6 +41,7 @@ const CHAPTERS: Readonly<Record<AdminMigrationId, Migration>> = {
   '0005_team_user_map': teamUserMap,
   '0006_user_employment_periods': userEmploymentPeriods,
   '0007_sessions': sessions,
+  '0008_audit_logs': auditLogs,
 }
 
 /** 패키지 테스트 하네스용 — 장 모듈을 Kysely `Migrator` provider 모양으로. 🔴 공개 API 가 아니다(쓰는 쪽은 스텁). */

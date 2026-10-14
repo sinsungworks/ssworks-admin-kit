@@ -5,6 +5,7 @@ import { createTestDatabase, type TestDatabase } from '../../test-support/db.js'
 import { ADMIN_MIGRATIONS } from './index.js'
 
 const CORE_TABLES = [
+  'audit_logs',
   'roles',
   'sessions',
   'team_closure',
@@ -93,6 +94,15 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
     expect(column('sessions', 'last_access_at').extra.toLowerCase()).not.toContain('on update')
     expect(column('sessions', 'replaced_by_session_no').columnType).toBe('bigint(20) unsigned')
     expect(column('sessions', 'user_agent').columnType).toBe('varchar(512)')
+    // 감사 장(2c 스펙 §4-8) — 행위자 · 세션 · IP 는 NULL 허용(⑥ TB2)
+    expect(column('audit_logs', 'action').collationName).toBe('utf8mb4_unicode_ci')
+    expect(column('audit_logs', 'error_code').collationName).toBe('ascii_bin')
+    expect(column('audit_logs', 'actor_user_no').isNullable).toBe('YES')
+    expect(column('audit_logs', 'session_no').isNullable).toBe('YES')
+    expect(column('audit_logs', 'ip').isNullable).toBe('YES')
+    expect(column('audit_logs', 'method').isNullable).toBe('NO')
+    expect(column('audit_logs', 'status_code').columnType).toBe('smallint(5) unsigned')
+    expect(column('audit_logs', 'user_agent').columnType).toBe('varchar(255)')
   })
 
   it('🔴 제약 이름은 snake_case(CamelCasePlugin 이 이름도 바꾼다 — 스펙 R3)', async () => {
@@ -133,6 +143,9 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
       'idx_user_employment_periods_active',
       'idx_sessions_user',
       'idx_sessions_expire_at',
+      'idx_audit_logs_actor',
+      'idx_audit_logs_target',
+      'idx_audit_logs_action',
     ]) {
       expect(names).toContain(expected)
     }

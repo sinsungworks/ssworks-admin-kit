@@ -8,6 +8,7 @@ import * as teamClosure from './0004_team_closure.js'
 import * as teamUserMap from './0005_team_user_map.js'
 import * as userEmploymentPeriods from './0006_user_employment_periods.js'
 import * as sessions from './0007_sessions.js'
+import * as auditLogs from './0008_audit_logs.js'
 
 // 🔴 마이그레이션 DDL 을 소스 문자열이 아니라 **컴파일된 SQL** 로 잰다(hangang migrations-ddl.test.ts).
 //    `sql` 템플릿 안의 식별자는 CamelCasePlugin 이 바꾸지 않는다 — hangang 037 이 그 자리에서 실제 DB 적용 때 죽었다.
@@ -23,6 +24,7 @@ const CHAPTERS: [string, Chapter][] = [
   ['0005_team_user_map', teamUserMap],
   ['0006_user_employment_periods', userEmploymentPeriods],
   ['0007_sessions', sessions],
+  ['0008_audit_logs', auditLogs],
 ]
 
 async function capture(run: (db: Kysely<unknown>) => Promise<void>): Promise<string[]> {
@@ -53,6 +55,19 @@ describe('0002_users', () => {
   it('🔴 resignAt 은 timestamp NULL 을 명시한다 — explicit_defaults_for_timestamp=OFF 에서 NOT NULL 이 되지 않게', async () => {
     const [statement] = await capture((db) => users.up(db))
     expect(statement).toContain('`resign_at` timestamp null')
+  })
+})
+
+describe('0008_audit_logs', () => {
+  it('🔴 users · sessions FK 가 없다 — 계정 삭제가 감사 흔적을 지우지 않게', async () => {
+    const statements = await capture((db) => auditLogs.up(db))
+    expect(statements.join(' ').toLowerCase()).not.toContain('foreign key')
+  })
+
+  it('status_code 는 smallint unsigned, meta 는 json + utf8mb4_bin', async () => {
+    const [statement] = await capture((db) => auditLogs.up(db))
+    expect(statement).toContain('`status_code` smallint unsigned not null')
+    expect(statement).toContain('`meta` json collate utf8mb4_bin')
   })
 })
 
