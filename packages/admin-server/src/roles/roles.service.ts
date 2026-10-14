@@ -28,8 +28,8 @@ import { planRoleMove } from './move.js'
 //  - 수정의 응답 item · 감사 after 는 같은 트랜잭션에서 읽는다(§14 R5-2 — 커밋 뒤에 읽으면 그 사이 남의 쓰기가 섞였다).
 //  - 잔존으로 감싼 수정 · 삭제는 잠금 단계(역할 · 다른 기본 역할 잠금 · 판정 · revision) 뒤에 셈한다(2d-3 스펙 ① A · C3) —
 //    역할 이동이 그 사이 역할 행을 바꿔도 ON 에서 1020 이 아니다.
-//  - 새 역할의 displayOrder 는 끝 행 + 1 — 인덱스 끝 한 행을 FOR UPDATE 로 읽는다(§14 R5-5 · R7-4 — 동시 만들기가 같은 값을
-//    받으면 이동으로도 못 가른다. 2d-3 스펙 C6 — 다른 역할 행은 잠그지 않는다).
+//  - 새 역할의 displayOrder 는 끝 행 + 1 — 인덱스 끝 행과 그 위 틈을 FOR UPDATE 로 읽는다(§14 R5-5 · R7-4 — 동시 만들기가
+//    같은 값을 받으면 이동으로도 못 가른다. 2d-3 스펙 C6 — 다른 역할 행은 잠그지 않는다).
 // 🔴 재인증(argon2)은 트랜잭션 밖 · 권한 가드 뒤(2b §4-7).
 
 export type AdminRoleView = {
@@ -129,7 +129,9 @@ export class AdminRolesService {
         const clearedDefaults = body.isDefault ? await lockOtherDefaults(trx, null) : []
         await clearDefaults(trx, clearedDefaults)
         // 🔴 FOR UPDATE — 동시 만들기 둘이 같은 끝 값을 읽으면 순서 값이 겹친다(§14 R5-5 · R7-4). 🔴 idx_roles_display_order 의
-        //    끝 한 행만 잠근다 — MAX(…) 는 옵티마이저가 "optimized away" 로 읽어 잠금이 그 동작에 기댄다(2d-3 스펙 C6 · §14 R1-8)
+        //    끝 행과 그 위 틈(supremum)만 잠그고 다른 역할 행은 잠그지 않는다(2d-3 스펙 C6). 두 만들기의 읽기가 서로의 INSERT 앞에
+        //    겹치면 한쪽은 교착(1213 → 409, 다시 시도)으로 끝난다 — 순서 값은 겹치지 않는다(2d-3 스펙 §14 R3).
+        //    MAX(…) 는 옵티마이저가 "optimized away" 로 읽어 잠금이 그 동작에 기댄다(2d-3 스펙 §14 R1-8)
         const top = await trx
           .selectFrom('roles')
           .select('displayOrder')

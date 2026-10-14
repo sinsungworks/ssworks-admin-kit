@@ -69,7 +69,7 @@ async function orderOf(roleNo: bigint): Promise<number> {
 }
 
 describe('🔴 역할 쓰기는 상관없는 역할 행을 기다리지 않는다(③ I1)', () => {
-  it('만들기 — 순서 셈이 인덱스 끝 한 행만 잠근다', async () => {
+  it('만들기 — 순서 셈이 상관없는 역할 행을 잠그지 않는다(인덱스 끝 행과 그 위 틈만)', async () => {
     const { waited, result } = await underHeldRole(() =>
       service.create({ roleName: 'idx-create', isDefault: false, permissions: [] }, root),
     )

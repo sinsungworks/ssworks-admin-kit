@@ -1,8 +1,10 @@
 import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
+import { createConnection } from 'mariadb'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import { seedRole, seedUser } from '../test-support/auth.js'
-import { whileHeld } from '../test-support/concurrency.js'
+import { lockWaitsIn, settle, sleep, whileHeld } from '../test-support/concurrency.js'
+import { testDbServer } from '../test-support/db-url.js'
 import { accountsConfig, testPrincipal } from '../test-support/accounts.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { AdminRolesService } from './roles.service.js'
@@ -138,5 +140,54 @@ describe('create — 동시 만들기(§14 R5-5 · R7-4)', () => {
       { roleName: 'concurrent-held', displayOrder: held },
       { roleName: 'concurrent-mine', displayOrder: held + 1 },
     ])
+  })
+
+  it('🔴 두 만들기의 순서 셈이 서로의 INSERT 앞에 겹쳐도 순서 값은 겹치지 않는다 — 진 쪽은 409 다시 시도(2d-3 스펙 §14 R3)', async () => {
+    const open = () => createConnection({ ...testDbServer(), database: t.name, timezone: 'Z' })
+    const holder = await open()
+    const observer = await open()
+    try {
+      await holder.beginTransaction()
+      const rows = await holder.query(
+        'select display_order from roles order by display_order desc limit 1 for update',
+      )
+      const held = Number(rows[0]?.display_order ?? 0) + 1
+      const pending = settle(
+        service.create({ roleName: 'overlap-mine', isDefault: false, permissions: [] }, root),
+      )
+      let waited = false
+      for (let i = 0; i < 100 && !waited; i += 1) {
+        waited = (await lockWaitsIn(observer, t.name)) > 0
+        if (!waited) await sleep(25)
+      }
+      expect(waited).toBe(true)
+      await holder
+        .query(`insert into roles (role_name, permissions, display_order) values (?, ?, ?)`, [
+          'overlap-held',
+          '[]',
+          held,
+        ])
+        .catch(() => undefined)
+      await holder.commit().catch(() => undefined)
+      const result = await pending
+      const existing = await t.db
+        .selectFrom('roles')
+        .select(['roleName', 'displayOrder'])
+        .where('roleName', 'in', ['overlap-held', 'overlap-mine'])
+        .execute()
+      const values = existing.map((row) => row.displayOrder)
+      expect(new Set(values).size).toBe(values.length)
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(BusinessError)
+        expect((result.error as BusinessError).code).toBe(CommonErrorCodes.ERR_COMMON_CONFLICT)
+        expect(existing.some((row) => row.roleName === 'overlap-mine')).toBe(false)
+      } else {
+        expect(existing.some((row) => row.roleName === 'overlap-mine')).toBe(true)
+      }
+    } finally {
+      await holder.rollback().catch(() => undefined)
+      await holder.end()
+      await observer.end()
+    }
   })
 })
