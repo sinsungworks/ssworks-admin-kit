@@ -6,6 +6,7 @@ import { ADMIN_MIGRATIONS } from './index.js'
 
 const CORE_TABLES = [
   'audit_logs',
+  'guard_locks',
   'roles',
   'sessions',
   'team_closure',
@@ -149,5 +150,12 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
     ]) {
       expect(names).toContain(expected)
     }
+  })
+
+  it('0009 — 센티넬 행이 하나다(lock_name PK)', async () => {
+    const rows = await t.db.selectFrom('guardLocks').selectAll().execute()
+    expect(rows).toEqual([
+      { lockName: 'superAdminSurvival', description: expect.stringContaining('FOR UPDATE') },
+    ])
   })
 })

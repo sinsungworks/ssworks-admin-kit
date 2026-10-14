@@ -10,6 +10,7 @@ import * as teamUserMap from './0005_team_user_map.js'
 import * as userEmploymentPeriods from './0006_user_employment_periods.js'
 import * as sessions from './0007_sessions.js'
 import * as auditLogs from './0008_audit_logs.js'
+import * as guardLocks from './0009_guard_locks.js'
 
 // 🔴 마이그레이션 DDL 을 소스 문자열이 아니라 **컴파일된 SQL** 로 잰다(hangang migrations-ddl.test.ts).
 //    `sql` 템플릿 안의 식별자는 CamelCasePlugin 이 바꾸지 않는다 — hangang 037 이 그 자리에서 실제 DB 적용 때 죽었다.
@@ -26,6 +27,7 @@ const CHAPTERS: [string, Chapter][] = [
   ['0006_user_employment_periods', userEmploymentPeriods],
   ['0007_sessions', sessions],
   ['0008_audit_logs', auditLogs],
+  ['0009_guard_locks', guardLocks],
 ]
 
 async function capture(run: (db: Kysely<unknown>) => Promise<void>): Promise<string[]> {
@@ -83,6 +85,14 @@ describe('0008_audit_logs', () => {
     const [statement] = await capture((db) => auditLogs.up(db))
     expect(statement).toContain('`status_code` smallint unsigned not null')
     expect(statement).toContain('`meta` json collate utf8mb4_bin')
+  })
+})
+
+describe('0009_guard_locks', () => {
+  it('테이블을 만들고 센티넬 행을 넣는다 — 한 장(hangang 012 · 013 을 합침)', async () => {
+    const statements = await capture((db) => guardLocks.up(db))
+    expect(statements[0]).toMatch(/^create table `guard_locks`/)
+    expect(statements.some((s) => s.startsWith('insert into `guard_locks`'))).toBe(true)
   })
 })
 

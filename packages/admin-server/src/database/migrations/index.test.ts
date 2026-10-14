@@ -13,7 +13,7 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 
 describe('ADMIN_MIGRATIONS', () => {
-  it('0001~0008 순서', () => {
+  it('0001~0009 순서', () => {
     expect(ADMIN_MIGRATIONS).toEqual([
       '0001_roles',
       '0002_users',
@@ -23,6 +23,7 @@ describe('ADMIN_MIGRATIONS', () => {
       '0006_user_employment_periods',
       '0007_sessions',
       '0008_audit_logs',
+      '0009_guard_locks',
     ])
   })
 
@@ -61,9 +62,9 @@ describe('findStubProblems', () => {
     const swapped = [all[1]!, all[0]!, ...all.slice(2)]
     expect(findStubProblems(swapped)).toEqual([
       '파일 이름 순서가 장 순서와 다르다 — 지금: 0002_users, 0001_roles, 0003_teams, 0004_team_closure, ' +
-        '0005_team_user_map, 0006_user_employment_periods, 0007_sessions, 0008_audit_logs / 맞는 순서: 0001_roles, ' +
+        '0005_team_user_map, 0006_user_employment_periods, 0007_sessions, 0008_audit_logs, 0009_guard_locks / 맞는 순서: 0001_roles, ' +
         '0002_users, 0003_teams, 0004_team_closure, 0005_team_user_map, 0006_user_employment_periods, 0007_sessions, ' +
-        '0008_audit_logs',
+        '0008_audit_logs, 0009_guard_locks',
     ])
   })
 
@@ -126,6 +127,7 @@ describe('assertAdminMigrationStubs', () => {
     expect(() => assertAdminMigrationStubs(dir)).toThrow(
       /빠진 장 0006_user_employment_periods\n- 빠진 장 0007_sessions\n- 빠진 장 0008_audit_logs/,
     )
+    expect(() => assertAdminMigrationStubs(dir)).toThrow('빠진 장 0009_guard_locks')
   })
 
   it('없는 폴더는 경로를 담아 던진다', () => {
