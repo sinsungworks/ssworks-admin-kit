@@ -159,3 +159,15 @@ export function resolveTimeZone(value: unknown): string {
     `timeZone 은 IANA 시간대 이름이어야 한다(예: 'Asia/Seoul' · 'UTC' — '+09:00' 같은 오프셋 표기는 안 된다). 받은 값: ${String(value)}`,
   )
 }
+
+/**
+ * MariaDB TIMESTAMP 열이 담는 순간의 범위 — 11.4 LTS 기준(11.5+ 는 상한이 2106 이지만 보수적으로 둔다).
+ * 🔴 users.joinAt · resignAt 은 TIMESTAMP 다. 날짜 계약(1000~9999년)보다 좁다 — 쓰기 전에 이 범위를 본다(최종 리뷰).
+ */
+export const TIMESTAMP_MIN = new Date('1970-01-01T00:00:01.000Z')
+export const TIMESTAMP_MAX = new Date('2038-01-19T03:14:07.000Z')
+
+export function fitsTimestampColumn(instant: Date): boolean {
+  const time = instant.getTime()
+  return time >= TIMESTAMP_MIN.getTime() && time <= TIMESTAMP_MAX.getTime()
+}

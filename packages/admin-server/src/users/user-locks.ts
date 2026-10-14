@@ -9,6 +9,7 @@ import { fieldError, noUser } from './errors.js'
 //   팀도 잠근다.
 // 🔴 사용자 쓰기 안의 결정 읽기는 모두 FOR UPDATE 다(2d 스펙 §14 R5-6 · R7-1 · R7-2) — 잔존으로 감싼 쓰기는 셈이 읽기 뷰를
 //    먼저 열어, 비잠금 읽기는 잠금을 기다린 사이 커밋된 쓰기를 못 본다(11.4 기본). 잠금 읽기는 늘 최신 행을 본다.
+//    단 스냅샷 격리 ON 에서 읽기 뷰가 이미 열린 뒤(잔존 셈 뒤) 그 행이 바뀌었으면 1020 → 409 다시 시도로 끝난다.
 
 export interface LockedUser {
   userNo: bigint

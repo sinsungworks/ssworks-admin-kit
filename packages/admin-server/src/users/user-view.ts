@@ -14,7 +14,9 @@ import { noUser } from './errors.js'
 //    잔존으로 감싼 쓰기(역할을 바꾸는 수정 · 퇴사)에서 쓰기 앞의 보기 읽기는 잔존 셈이 연 읽기 뷰를 쓴다.
 //    snapshot isolation OFF(11.4 기본)에서 대상 잠금을 기다린 사이 같은 사용자에 대한 다른 쓰기가 커밋되면,
 //    before 는 대상 자신의 열(resignDate · resignAt · revision …)까지 낡을 수 있다. 판정은 이 값을 쓰지 않는다.
-//    ON 이면 같은 경합은 409(ER_CHECKREAD)로 끝난다. 자기 쓰기 뒤의 item · after 는 늘 최신이다.
+//    ON 이면 같은 경합은 409(ER_CHECKREAD)로 끝난다.
+//    이 트랜잭션이 쓴 행은 item · after 에 늘 보인다. 쓰지 않은 표(재직 구간 · 팀 · 역할 이름)는 같은 읽기 뷰라 OFF 에서
+//    낡을 수 있다.
 //    구조적 해결(withSuperAdminSurvival 순서를 "센티넬 → 대상 잠금 → 셈" 으로)은 후속이다(HANDOFF).
 
 /** 응답 행 — 타입 별칭이라 감사 diff 의 `Record<string, unknown>` 자리에 들어간다 */

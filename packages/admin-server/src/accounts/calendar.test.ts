@@ -4,6 +4,9 @@ import {
   addDays,
   dateIn,
   effectiveResignAt,
+  TIMESTAMP_MAX,
+  TIMESTAMP_MIN,
+  fitsTimestampColumn,
   fromDateColumn,
   resolveTimeZone,
   startOfDayIn,
@@ -48,6 +51,19 @@ describe('startOfDayIn · effectiveResignAt', () => {
     expect(addDays('2026-03-01', -1)).toBe('2026-02-28')
     expect(iso(effectiveResignAt('2026-12-31', 'Asia/Seoul'))).toBe('2026-12-31T15:00:00.000Z')
     expect(iso(effectiveResignAt('2028-02-28', 'UTC'))).toBe('2028-02-29T00:00:00.000Z')
+  })
+})
+
+describe('fitsTimestampColumn', () => {
+  it('🔴 TIMESTAMP 범위 경계 — 1970-01-01 00:00:01Z ~ 2038-01-19 03:14:07Z(최종 리뷰 F1)', () => {
+    expect(fitsTimestampColumn(TIMESTAMP_MIN)).toBe(true)
+    expect(fitsTimestampColumn(TIMESTAMP_MAX)).toBe(true)
+    expect(fitsTimestampColumn(new Date(TIMESTAMP_MIN.getTime() - 1))).toBe(false)
+    expect(fitsTimestampColumn(new Date(TIMESTAMP_MAX.getTime() + 1))).toBe(false)
+    expect(fitsTimestampColumn(startOfDayIn('1970-01-01', 'Asia/Seoul'))).toBe(false)
+    expect(fitsTimestampColumn(startOfDayIn('1970-01-02', 'Asia/Seoul'))).toBe(true)
+    expect(fitsTimestampColumn(effectiveResignAt('2038-01-18', 'Asia/Seoul'))).toBe(true)
+    expect(fitsTimestampColumn(effectiveResignAt('2038-01-19', 'Asia/Seoul'))).toBe(false)
   })
 })
 

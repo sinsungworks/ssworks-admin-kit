@@ -14,6 +14,7 @@ export const ACCOUNT_MESSAGES = Object.freeze({
   alreadyResigned: '이미 퇴사 처리된 사용자입니다.',
   notResigned: '재직 중인 사용자는 퇴사일을 정정할 수 없습니다.',
   notResignedForRehire: '재직 중인 사용자는 재입사 처리할 수 없습니다.',
+  dateOutOfRange: '처리할 수 있는 날짜 범위(1970년 ~ 2038년 1월 18일)를 벗어났습니다.',
   activePeriodExists: '이미 활성 근무 이력이 있어 재입사 처리할 수 없습니다.',
   noPeriodForJoin: '근무 이력이 없어 입사일을 정정할 수 없습니다.',
   noPeriodForResign: '근무 이력이 없어 퇴사일을 정정할 수 없습니다.',

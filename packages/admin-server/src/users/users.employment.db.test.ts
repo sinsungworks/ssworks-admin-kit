@@ -122,6 +122,37 @@ describe('resign', () => {
     expect((await userRow(t.db, early.userNo)).resignAt).toBeNull()
   })
 
+  it('🔴 TIMESTAMP 범위 밖 날짜는 400 — 500 이 아니다(최종 리뷰 F1)', async () => {
+    const user = await employee('r-range')
+    const error = await rejection(() =>
+      service.resign(user.userNo, { resignDate: '2040-01-01' }, root),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
+    expect(error.details).toEqual(issue('resignDate', ACCOUNT_MESSAGES.dateOutOfRange))
+    expect((await userRow(t.db, user.userNo)).resignAt).toBeNull()
+    expect(await periodsOf(t.db, user.userNo)).toEqual([
+      {
+        joinDate: '2025-01-02',
+        resignDate: null,
+        reason: null,
+        recordedTimezone: 'UTC',
+        createdBy: null,
+      },
+    ])
+
+    const edge = await employee('r-range-edge')
+    const result = await service.resign(edge.userNo, { resignDate: '2038-01-18' }, root)
+    expect(result.item.resignAt?.toISOString()).toBe('2038-01-18T15:00:00.000Z')
+
+    const back = await employee('r-range-rehire')
+    await service.resign(back.userNo, { resignDate: '2026-03-31' }, root)
+    const rehired = await rejection(() =>
+      service.rehire(back.userNo, { joinDate: '2040-01-01' }, root),
+    )
+    expect(rehired.code).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
+    expect(rehired.details).toEqual(issue('joinDate', ACCOUNT_MESSAGES.dateOutOfRange))
+  })
+
   it('본인 403 selfAccount · 넓은 계정 403 higherAccount + outside · 이미 퇴사 409', async () => {
     const me = await employee('r-self')
     const self = await rejection(() =>
@@ -394,13 +425,19 @@ describe('잔존(자기 데이터베이스)', () => {
     await u?.drop()
   })
 
-  it('🔴 마지막 전체 권한 재직자를 퇴사(퇴사 예정 포함)시키면 409 lastSuperAdmin · 치유 구간도 롤백', async () => {
+  it('🔴 마지막 전체 권한 재직자를 퇴사(퇴사 예정 포함)시키면 409 lastSuperAdmin · 치유 구간도 롤백 · 세션 폐기도 롤백', async () => {
     const star = await seedRole(u.db, { roleName: 'only-star', permissions: ['*'] })
-    const last = await seedUser(u.db, { roleNo: star, userId: 'only-admin' })
-    const error = await rejection(() => survival.resign(last.userNo, { resignDate: day(30) }, root))
+    const last = await seedUser(u.db, {
+      roleNo: star,
+      userId: 'only-admin',
+      joinAt: new Date('2025-01-01T00:00:00.000Z'),
+    })
+    await seedSession(u.db, last.userNo)
+    const error = await rejection(() => survival.resign(last.userNo, { resignDate: day(-1) }, root))
     expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_CONFLICT)
     expect(error.message).toBe(ACCOUNT_MESSAGES.lastSuperAdmin)
     expect(await userRow(u.db, last.userNo)).toMatchObject({ resignAt: null, revision: 0 })
     expect(await periodsOf(u.db, last.userNo)).toEqual([])
+    expect(await liveSessionCount(u.db, last.userNo)).toBe(1)
   })
 })

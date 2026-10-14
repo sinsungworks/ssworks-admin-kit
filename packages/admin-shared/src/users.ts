@@ -17,7 +17,7 @@ export const USER_ID_MAX_LENGTH = 64
 export const USER_NAME_MAX_LENGTH = 64
 export const EMPLOYMENT_REASON_MAX_LENGTH = 255
 
-/** 연도 1000~9999(DATE 열 범위) · 월 · 일 두 자리 */
+/** 연도 1000~9999(DATE 열 범위) · 월 · 일 두 자리. 🔴 서버는 입사 · 효력 시각(TIMESTAMP)이 담기는 1970 ~ 2038-01 만 받는다(밖은 400) */
 const CALENDAR_DATE = /^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}$/
 
 function isCalendarDate(value: string): boolean {

@@ -130,6 +130,34 @@ describe('create', () => {
     ).toEqual([])
   })
 
+  it('🔴 TIMESTAMP 범위 밖 입사일은 400 — 500 이 아니다(최종 리뷰 F1) · 수정도 같다', async () => {
+    const error = await rejection(() =>
+      service.create(
+        {
+          userId: 'c-range',
+          userName: 'a',
+          roleNo: plainRole,
+          teamNo: null,
+          joinDate: '1969-06-01',
+        },
+        root,
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
+    expect(error.details).toEqual(issue('joinDate', ACCOUNT_MESSAGES.dateOutOfRange))
+    expect(
+      await t.db.selectFrom('users').select('userNo').where('userId', '=', 'c-range').execute(),
+    ).toEqual([])
+
+    const user = await fresh('c-range-update')
+    const updated = await rejection(() =>
+      service.update(user.userNo, { revision: 0, joinDate: '2040-01-01' }, root),
+    )
+    expect(updated.code).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
+    expect(updated.details).toEqual(issue('joinDate', ACCOUNT_MESSAGES.dateOutOfRange))
+    expect((await userRow(t.db, user.userNo)).revision).toBe(0)
+  })
+
   it('넓은 역할은 줄 수 없다 — 403 higherRoleToGrant + details.outside', async () => {
     const error = await rejection(() =>
       service.create({ userId: 'c-wide', userName: 'a', roleNo: wideRole, teamNo: null }, manager),

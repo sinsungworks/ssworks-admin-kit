@@ -13,6 +13,7 @@ import { actorOf, judgeAccountCommand } from '../accounts/account-command.js'
 import {
   dateIn,
   effectiveResignAt,
+  fitsTimestampColumn,
   fromDateColumn,
   startOfDayIn,
   toDateColumn,
@@ -183,12 +184,13 @@ export class AdminUsersService {
     body: AdminUserCreateBody,
     principal: AdminPrincipal,
   ): Promise<{ item: AdminUserView; temporaryPassword: string }> {
+    const timeZone = this.config.timeZone
+    const joinDate = body.joinDate ?? todayIn(timeZone)
+    const joinAt = storableInstant('joinDate', startOfDayIn(joinDate, timeZone))
     await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const temporaryPassword = generateTemporaryPassword()
     // 🔴 argon2 는 트랜잭션 밖 — 해시가 행 잠금을 쥔 채 돌지 않게(2b §4-7)
     const passwordHash = await hashPassword(temporaryPassword)
-    const timeZone = this.config.timeZone
-    const joinDate = body.joinDate ?? todayIn(timeZone)
     const actor = actorOf(principal)
     const item = await this.guardUserId(() =>
       runWriteTransaction(this.db, async (trx) => {
@@ -202,7 +204,7 @@ export class AdminUsersService {
             password: passwordHash,
             userName: body.userName,
             roleNo: body.roleNo,
-            joinAt: startOfDayIn(joinDate, timeZone),
+            joinAt,
             isPasswordChangeRequired: true,
           })
           .executeTakeFirstOrThrow()
@@ -228,8 +230,12 @@ export class AdminUsersService {
     body: AdminUserUpdateBody,
     principal: AdminPrincipal,
   ): Promise<{ item: AdminUserView; before: AdminUserView }> {
-    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const timeZone = this.config.timeZone
+    const joinAt =
+      body.joinDate === undefined
+        ? undefined
+        : storableInstant('joinDate', startOfDayIn(body.joinDate, timeZone))
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const actor = actorOf(principal)
     return runWriteTransaction(this.db, async (trx) => {
       const write = async (): Promise<AdminUserView> => {
@@ -257,9 +263,7 @@ export class AdminUsersService {
           .set((eb) => ({
             ...(body.userName === undefined ? {} : { userName: body.userName }),
             ...(body.roleNo === undefined ? {} : { roleNo: body.roleNo }),
-            ...(body.joinDate === undefined
-              ? {}
-              : { joinAt: startOfDayIn(body.joinDate, timeZone) }),
+            ...(joinAt === undefined ? {} : { joinAt }),
             revision: eb('revision', '+', 1),
             updateAt: sql<Date>`current_timestamp`,
           }))
@@ -285,8 +289,9 @@ export class AdminUsersService {
     body: AdminUserResignBody,
     principal: AdminPrincipal,
   ): Promise<UserEmploymentResult> {
-    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const timeZone = this.config.timeZone
+    const effective = storableInstant('resignDate', effectiveResignAt(body.resignDate, timeZone))
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const actor = actorOf(principal)
     const reason = reasonOf(body.reason)
     const now = new Date()
@@ -321,7 +326,6 @@ export class AdminUsersService {
           .set({ resignAt: toDateColumn(body.resignDate), reason })
           .where('periodNo', '=', period.periodNo)
           .execute()
-        const effective = effectiveResignAt(body.resignDate, timeZone)
         await trx
           .updateTable('users')
           .set((eb) => ({
@@ -354,8 +358,9 @@ export class AdminUsersService {
     body: AdminUserResignDateBody,
     principal: AdminPrincipal,
   ): Promise<UserEmploymentResult> {
-    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const timeZone = this.config.timeZone
+    const effective = storableInstant('resignDate', effectiveResignAt(body.resignDate, timeZone))
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const actor = actorOf(principal)
     const reason = body.reason === undefined ? undefined : reasonOf(body.reason)
     return runWriteTransaction(this.db, async (trx) => {
@@ -383,7 +388,7 @@ export class AdminUsersService {
       await trx
         .updateTable('users')
         .set((eb) => ({
-          resignAt: effectiveResignAt(body.resignDate, timeZone),
+          resignAt: effective,
           revision: eb('revision', '+', 1),
           updateAt: sql<Date>`current_timestamp`,
         }))
@@ -403,8 +408,9 @@ export class AdminUsersService {
     body: AdminUserRehireBody,
     principal: AdminPrincipal,
   ): Promise<UserEmploymentResult> {
-    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const timeZone = this.config.timeZone
+    const joinAt = storableInstant('joinDate', startOfDayIn(body.joinDate, timeZone))
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const actor = actorOf(principal)
     const reason = reasonOf(body.reason)
     return runWriteTransaction(this.db, async (trx) => {
@@ -433,7 +439,7 @@ export class AdminUsersService {
       await trx
         .updateTable('users')
         .set((eb) => ({
-          joinAt: startOfDayIn(body.joinDate, timeZone),
+          joinAt,
           resignAt: null,
           revision: eb('revision', '+', 1),
           updateAt: sql<Date>`current_timestamp`,
@@ -521,4 +527,13 @@ export class AdminUsersService {
   private permissionsOf(row: { roleNo: bigint; permissions: unknown }): string[] {
     return permissionsOrEmpty(row, this.logger)
   }
+}
+
+/**
+ * 🔴 users.joinAt · resignAt 은 TIMESTAMP 다(1970 ~ 2038-01-19). 셈한 순간이 그 밖이면 본문 칸 오류 400 — 그냥 쓰면
+ *    ER_TRUNCATED_WRONG_VALUE 가 500 으로 나가거나(엄격 모드) 0000-00-00 으로 조용히 저장된다(최종 리뷰).
+ */
+function storableInstant(field: 'joinDate' | 'resignDate', instant: Date): Date {
+  if (!fitsTimestampColumn(instant)) throw fieldError(field, ACCOUNT_MESSAGES.dateOutOfRange)
+  return instant
 }
