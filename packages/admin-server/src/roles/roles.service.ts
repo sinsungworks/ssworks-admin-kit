@@ -13,6 +13,7 @@ import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { validationError } from '../http/validation.js'
 import { ADMIN_ACCOUNTS_CONFIG, KYSELY } from '../tokens.js'
+import { planRoleMove } from './move.js'
 
 // 정본: hangang-home apps/api/src/modules/roles/roles.service.ts(목록 · 만들기 · 수정 · 이동 구간 재번호 · 쓰는 중 409 ·
 //       잔존 · 재인증) + ssworks-gise-home revision · 판정 + ssworks-axion-admin 기본 역할 배타
@@ -184,6 +185,75 @@ export class AdminRolesService {
       before,
       after: { roleName: item.roleName, isDefault: item.isDefault, permissions: item.permissions },
     }
+  }
+
+  /** 🔴 재인증 · revision 없음(3b D1 — 순서는 내용이 아니다). 대상 행을 잠그고 구간을 옮긴다 */
+  async move(roleNo: bigint, displayOrder: number): Promise<{ from: number; to: number }> {
+    return runWriteTransaction(this.db, async (trx) => {
+      const row = await lockRole(trx, roleNo)
+      const range = await trx
+        .selectFrom('roles')
+        .select((eb) => [eb.fn.min('displayOrder').as('lo'), eb.fn.max('displayOrder').as('hi')])
+        .executeTakeFirstOrThrow()
+      const plan = planRoleMove(
+        row.displayOrder,
+        displayOrder,
+        Number(range.lo ?? row.displayOrder),
+        Number(range.hi ?? row.displayOrder),
+      )
+      const shift = plan.shift
+      if (shift !== null) {
+        await trx
+          .updateTable('roles')
+          .set((eb) => ({ displayOrder: eb('displayOrder', shift.delta > 0 ? '+' : '-', 1) }))
+          .where('displayOrder', '>=', shift.min)
+          .where('displayOrder', '<=', shift.max)
+          .where('roleNo', '!=', roleNo)
+          .execute()
+        await trx
+          .updateTable('roles')
+          .set({ displayOrder: plan.to })
+          .where('roleNo', '=', roleNo)
+          .execute()
+      }
+      return { from: plan.from, to: plan.to }
+    })
+  }
+
+  async remove(
+    roleNo: bigint,
+    body: AdminRoleRemoveBody,
+    principal: AdminPrincipal,
+  ): Promise<{ before: RoleAuditView }> {
+    await this.reauth(principal, body.currentPassword)
+    const actor = actorOf(principal)
+    // 🔴 쓰는 중 검사가 먼저라 잔존은 지금은 닿지 않는 방어선이다(hangang · 2d 스펙 B11). 쓰는 중 검사가 스냅숏 때문에 놓친
+    //    배정은 FK restrict 가 받친다 — mapError 가 같은 409 ERR_COMMON_IN_USE 로 바꾼다(2a F15).
+    const before = await runWriteTransaction(this.db, (trx) =>
+      withSuperAdminSurvival(trx, async () => {
+        const row = await lockRole(trx, roleNo)
+        const current = this.permissionsOf(row)
+        judgeAccountCommand(actor, { kind: 'role.delete', current })
+        if (body.revision !== row.revision) {
+          throw new BusinessError(
+            CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT,
+            ACCOUNT_MESSAGES.roleRevisionMismatch,
+          )
+        }
+        const used = await trx
+          .selectFrom('users')
+          .select('userNo')
+          .where('roleNo', '=', roleNo)
+          .limit(1)
+          .executeTakeFirst()
+        if (used !== undefined) {
+          throw new BusinessError(CommonErrorCodes.ERR_COMMON_IN_USE, ACCOUNT_MESSAGES.roleInUse)
+        }
+        await trx.deleteFrom('roles').where('roleNo', '=', roleNo).execute()
+        return { roleName: row.roleName, isDefault: row.isDefault, permissions: current }
+      }),
+    )
+    return { before }
   }
 
   private async findOne(roleNo: bigint): Promise<AdminRoleView> {
