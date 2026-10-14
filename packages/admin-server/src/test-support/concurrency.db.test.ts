@@ -54,9 +54,10 @@ describe('whileHeld', () => {
   })
 
   it('기다리지 않는 during 은 끝나는 대로 커밋한다 — 커밋 전 값을 읽었다', async () => {
+    const before = await plainRead()
     const started = Date.now()
     const result = await whileHeld(t, holdWith('held-2'), plainRead)
-    expect(result).toEqual({ ok: true, value: 'held-1' })
+    expect(result).toEqual({ ok: true, value: before })
     expect(Date.now() - started).toBeLessThan(2000)
     expect(await plainRead()).toBe('held-2')
   })
