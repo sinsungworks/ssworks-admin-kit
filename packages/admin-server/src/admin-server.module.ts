@@ -21,6 +21,7 @@ import type {
   AdminServerOptions,
   AdminServerStaticOptions,
 } from './options.js'
+import { AdminSessionsModule } from './sessions/sessions.module.js'
 import { ADMIN_SERVER_OPTIONS, KYSELY } from './tokens.js'
 
 // 정본: hangang-home apps/api/src/app.module.ts(전역 필터 · 가드를 DI 로) · gise database.module.ts(onModuleDestroy)
@@ -31,7 +32,11 @@ import { ADMIN_SERVER_OPTIONS, KYSELY } from './tokens.js'
  * (`@nestjs/core` router-module.js 실측). 같은 클래스의 동적 모듈(`withRepository`)에도 붙는다(2b 스펙 §14 R1-3).
  * 🔴 여기 오는 모듈 파일은 이 파일을 import 하지 않는다(순환) — 토큰은 tokens.ts 에서 가져온다.
  */
-const ADMIN_ROUTE_MODULES: readonly Type[] = [AdminAuthModule, AdminAuditModule]
+const ADMIN_ROUTE_MODULES: readonly Type[] = [
+  AdminAuthModule,
+  AdminAuditModule,
+  AdminSessionsModule,
+]
 
 const DEFAULT_ROUTE_PREFIX = 'admin'
 
