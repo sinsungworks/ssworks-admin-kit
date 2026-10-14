@@ -8,12 +8,12 @@
 
 관리자 페이지 공통 코드를 npm 패키지로 꺼낸 **pnpm 모노레포**다. 소비자는 신규 웹 서비스의 관리자 앱(Vue 3 + Vuetify 4 SPA)과 API(NestJS + Kysely)다. 네 참조 프로젝트(kim5257-crm-v5 · ssworks-axion-admin · ssworks-gise-home · hangang-home)에 복사-수정으로 퍼져 있던 코드가 출처다.
 
-| 경로                    | 패키지                  | 성격                                                                                       |
-| ----------------------- | ----------------------- | ------------------------------------------------------------------------------------------ |
-| `packages/admin-shared` | `@ssworks/admin-shared` | 프레임워크 무의존. 브라우저·NestJS 양쪽이 import 한다                                      |
-| `packages/admin-ui`     | `@ssworks/admin-ui`     | Vue 3 + Vuetify 4 컴포넌트·composable. vue·vuetify 는 peer                                 |
-| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 진행 — 2a 기반 · 2b 인증 · 2c 세션 · 감사 · 2d 역할 · 사용자 완료) |
-| `docs/`                 | —                       | 검토·Phase 0 대조 보고. **설계 근거는 코드 주석과 이 폴더에 있다**                         |
+| 경로                    | 패키지                  | 성격                                                                                                 |
+| ----------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------- |
+| `packages/admin-shared` | `@ssworks/admin-shared` | 프레임워크 무의존. 브라우저·NestJS 양쪽이 import 한다                                                |
+| `packages/admin-ui`     | `@ssworks/admin-ui`     | Vue 3 + Vuetify 4 컴포넌트·composable. vue·vuetify 는 peer                                           |
+| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 진행 — 2a 기반 · 2b 인증 · 2c 세션 · 감사 · 2d 역할 · 사용자 · 2e-1 팀 완료) |
+| `docs/`                 | —                       | 검토·Phase 0 대조 보고. **설계 근거는 코드 주석과 이 폴더에 있다**                                   |
 
 ## 명령어
 
@@ -96,6 +96,7 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 - 쓰기 라우트에는 `@Audit({ action, targetType })` — 코어 액션은 admin-shared `CoreAuditActions`(+ 라벨 · 개수 테스트)에 먼저 더한다(카탈로그 밖이면 기동에서 멈춘다). meta 는 `attachAuditMeta` · `attachAuditDiff`, 비밀 키는 쓸 때 가린다.
 - 역할 · 사용자 쓰기의 권한 상승은 `accounts/account-command.ts` 의 `judgeAccountCommand` 하나로 판정한다(대상을 "덮어야"). 전체 권한 재직자 수를 줄일 수 있는 쓰기는 `withSuperAdminSurvival`(센티넬 잠금이 트랜잭션 첫 문장)로 감싼다. 서버가 아는 권한 카탈로그는 코어 옵션 `permissionCatalog`(함의 표는 카탈로그의 `implies`).
 - 사용자 날짜는 `'YYYY-MM-DD'` — 효력 시각(퇴사일 다음 날 0시, 기준 시간대 `timeZone`)은 `accounts/calendar.ts` 의 `effectiveResignAt` 하나로 셈한다. 사용자 쓰기 트랜잭션 안의 결정 읽기(대상 · 역할 · 팀 · 재직 이력)는 모두 `FOR UPDATE` 다(스냅샷 격리 · 낡은 읽기 — 스펙 §14 R5-6 · R7). 임시 비밀번호는 응답에만 싣는다.
+- 팀 쓰기 넷(만들기 · 이름 · 이동 · 삭제)은 `lockGuardRow(trx, GUARD_LOCK_TEAM_TREE)` 가 트랜잭션 첫 문장이고 그 뒤 읽기는 모두 `FOR UPDATE` 다 — 예외는 삭제의 소속 셈(서브트리 팀 행을 잠근 뒤 첫 비잠금 읽기, 2e 스펙 ② D1). closure 자기 행(depth 0)은 쓰되 기대지 않는다. 경합 테스트의 `whileHeld` 는 잠금 대기를 `SHOW ENGINE INNODB STATUS` 로 본다(`information_schema.innodb_trx` 는 서버 전역 캐시라 못 쓴다).
 
 ## 변경 흐름
 
@@ -120,7 +121,9 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 | Phase 2 PR 2c — 세션 · 감사(`AdminSessionsModule`·`AdminAuditModule` · 권한 슬롯 · 감사 장)                                            | 완료                      | 스펙 `docs/superpowers/specs/2026-10-14-admin-server-sessions-audit-design.md` · 플랜 `docs/superpowers/plans/2026-10-14-admin-server-sessions-audit.md` |
 | Phase 2 PR 2d-1 — 역할 · 판정(`AdminRolesModule` · 권한 카탈로그 옵션 · 지배 판정 · 전권자 잔존 · 세션 끊기 검사)                      | 완료                      | 스펙 `docs/superpowers/specs/2026-10-14-admin-server-users-roles-design.md` · 플랜 `docs/superpowers/plans/2026-10-14-admin-server-roles.md`             |
 | Phase 2 PR 2d-2 — 사용자 · 계정(`AdminUsersModule` · 효력 시각 · 임시 비밀번호 · 재직 이력 · 잠금 해제)                                | 완료                      | 스펙 `docs/superpowers/specs/2026-10-14-admin-server-users-roles-design.md` · 플랜 `docs/superpowers/plans/2026-10-14-admin-server-users.md`             |
-| **Phase 2 PR 2e — 팀 · 약관**                                                                                                          | **다음**                  | 2a 스펙 §1-3 2e 행                                                                                                                                       |
+| Phase 2 PR 2e-1 — 팀(`AdminTeamsModule`· 장 0010 ·`lockGuardRow` · 소속 셈 · 다시 매김)                                                | 완료                      | 스펙 `docs/superpowers/specs/2026-10-14-admin-server-teams-legal-design.md` · 플랜 `docs/superpowers/plans/2026-10-14-admin-server-teams.md`             |
+| **Phase 2 PR 2d-3 — 계정 정리**                                                                                                        | **다음**                  | 2e 스펙 §2-1 이월 표                                                                                                                                     |
+| Phase 2 PR 2e-2 — 약관                                                                                                                 | 대기                      | 2e 스펙 [2]                                                                                                                                              |
 | 템플릿 `kim5257-project-template` `preset/admin` + `.claude/skills/admin-scaffold`                                                     | 대기                      | `docs/00-admin-common-review.md` §3                                                                                                                      |
 
 `docs/01-phase0.md` §8 표를 단계가 끝날 때마다 갱신한다.

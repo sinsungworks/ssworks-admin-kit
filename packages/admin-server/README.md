@@ -2,7 +2,7 @@
 
 관리자 API 공통 NestJS 모듈 — NestJS 12 · Kysely 0.29 · MariaDB. **Phase 2 진행 중**이고 `private: true` 라 아직 발행하지 않는다(Phase 2 마지막 PR 뒤 첫 발행).
 
-지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 9장(PR 2a · 2c · 2d-1)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1), 사용자 · 계정(PR 2d-2)이다. 팀 · 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
+지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 10장(PR 2a · 2c · 2d-1 · 2e-1)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1), 사용자 · 계정(PR 2d-2), 팀(PR 2e-1)이다. 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
 
 ## 설치
 
@@ -91,17 +91,18 @@ export default defineConfig({
 export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 ```
 
-| 장 ID                          | 테이블                        |
-| ------------------------------ | ----------------------------- |
-| `0001_roles`                   | `roles`                       |
-| `0002_users`                   | `users`                       |
-| `0003_teams`                   | `teams`                       |
-| `0004_team_closure`            | `team_closure`                |
-| `0005_team_user_map`           | `team_user_map`               |
-| `0006_user_employment_periods` | `user_employment_periods`     |
-| `0007_sessions`                | `sessions`                    |
-| `0008_audit_logs`              | `audit_logs`                  |
-| `0009_guard_locks`             | `guard_locks`(센티넬 행 하나) |
+| 장 ID                          | 테이블                            |
+| ------------------------------ | --------------------------------- |
+| `0001_roles`                   | `roles`                           |
+| `0002_users`                   | `users`                           |
+| `0003_teams`                   | `teams`                           |
+| `0004_team_closure`            | `team_closure`                    |
+| `0005_team_user_map`           | `team_user_map`                   |
+| `0006_user_employment_periods` | `user_employment_periods`         |
+| `0007_sessions`                | `sessions`                        |
+| `0008_audit_logs`              | `audit_logs`                      |
+| `0009_guard_locks`             | `guard_locks`(센티넬 행 하나)     |
+| `0010_team_tree_lock`          | `guard_locks` 에 행 하나(팀 트리) |
 
 🔴 패키지가 새 장을 내면 changeset 이 알린다 — 스텁 한 줄을 더한다. `assertAdminMigrationStubs` 가 빠진 장을 잡는다. 시드(첫 관리자 계정 · 역할)는 프로젝트 몫이다.
 
@@ -239,6 +240,8 @@ AdminServerModule.forRootAsync({
       'roles.manage': 'org.roles:write', // POST · PATCH · DELETE /roles…
       'users.read': 'org.users:read', // GET /users… · GET /roles(역할 고르기)
       'users.manage': 'org.users:write', // POST · PATCH /users…
+      'teams.read': 'org.teams:read', // GET /teams/tree(users.read 로도 열린다 — 사용자 폼의 팀 고르기)
+      'teams.manage': 'org.teams:write', // POST · PATCH · DELETE /teams…
     },
   }),
 })
@@ -437,6 +440,49 @@ const loadTeamUsers = (query: TeamUserQuery) =>
     },
   })
 ```
+
+## 팀
+
+```ts
+imports: [
+  AdminServerModule.forRootAsync({
+    useFactory: () => ({
+      // …
+      permissions: {
+        // …
+        'teams.read': 'org.teams:read',
+        'teams.manage': 'org.teams:write',
+      },
+    }),
+  }),
+  AdminAuthModule,
+  AdminTeamsModule,
+]
+```
+
+마이그레이션 폴더에 스텁 한 줄을 더한다(모든 장 필수 — 이미 장을 돌린 DB 도 `kysely migrate` 한 번으로 따라온다):
+
+```ts
+// src/database/migrations/010_admin_team_tree_lock.migration.ts
+export { up, down } from '@ssworks/admin-server/migrations/0010_team_tree_lock'
+```
+
+| 라우트                            | 슬롯                        | 본문 → 응답                                             | 감사                                  |
+| --------------------------------- | --------------------------- | ------------------------------------------------------- | ------------------------------------- |
+| `GET /admin/teams/tree`           | `teams.read` ∨ `users.read` | → `{ items: AdminTeamNode[] }` — 루트 여럿, 없으면 `[]` | —                                     |
+| `POST /admin/teams`               | `teams.manage`              | `{ teamName, parentTeamNo }` → 201 `{ teamNo }`         | `org.team.create`                     |
+| `PATCH /admin/teams/:teamNo`      | `teams.manage`              | `{ teamName }` → `{}`                                   | `org.team.update`                     |
+| `PATCH /admin/teams/:teamNo/move` | `teams.manage`              | `{ parentTeamNo, beforeTeamNo }` → `{}`                 | `org.team.move`                       |
+| `DELETE /admin/teams/:teamNo`     | `teams.manage`              | → `{}` — 하위 팀째                                      | `org.team.delete`(meta `descendants`) |
+
+- admin-ui `useTeamTree` 배선(admin-ui README "조직")이 그대로 맞는다 — 위 `baseURL: '/api/admin'` 이면 `load: () => api.get<AdminTeamTree>('/teams/tree').then((r) => r.items)`, ``move: ({ teamNo, ...body }) => api.patch(`/teams/${teamNo}/move`, body)``. 2열 인원 목록은 `GET /users?filter[teamNo]=…&filter[recursive]=true`("사용자 · 계정").
+- **루트가 여럿이다.** `parentTeamNo: null` 이 최상위다. 화면에서 최상위 팀을 만들고 옮기려면 `useTeamTree({ topLevel: true })`. 루트 팀을 지우거나 옮기지 못하게 하려면 화면의 `canAct` 와 자기 라우트로 막는다(패키지는 시스템 팀을 모른다).
+- **이동**은 기준 형제 번호다(`beforeTeamNo: null` = 맨 끝). 서버가 받는 형제 묶음을 0..n-1 로 다시 매긴다 — 시드의 빈 번호 · 같은 값은 그 묶음을 한 번 움직이면 사라진다. 자기 자신 · 하위 팀 아래로는 400 `ERR_TEAM_MOVE_CYCLE`, 기준 팀이 그 상위 팀의 자식이 아니면 400 `issues[beforeTeamNo]`, 없는 상위 팀은 404 `ERR_NO_TEAM`.
+- **지우기**는 하위 팀째다. 서브트리에 소속 계정이 하나라도 있으면(퇴사자 포함) 409 `ERR_TEAM_HAS_MEMBERS` + `details.memberCount`(계정 수) — 먼저 `PATCH /admin/users/:userNo { teamNo }` 로 옮긴다.
+- **이름**은 전체에서 하나다(같은 상위 팀 안이 아니다). 대소문자 · 끝 공백만 다른 이름도 같은 이름이라 409 `ERR_DUPLICATE_TEAM_NAME` 이다(`utf8mb4_unicode_ci`). 앞뒤 공백은 떼고 저장한다.
+- 재인증 · revision 이 없다(`reauth: true` 여도).
+- **쓰는 쪽 시드의 closure**: 계층은 `team_closure` 에만 있다. 상위 팀은 깊이 1 행이고, 조상마다 한 행(깊이 = 거리)을 넣는다. 자기 행(깊이 0)은 넣어도 안 넣어도 패키지 결과가 같다 — 패키지가 만드는 팀은 자기 행을 넣는다.
+- **동시 쓰기**: 팀 쓰기(만들기 · 이름 · 이동 · 삭제)는 `guard_locks` 행 `teamTree` 에서 하나씩 돈다. 사용자 만들기 · 수정이 지우는 중인 팀을 고르면 기다렸다가 400 `issues[teamNo]`, 지우기가 소속을 넣는 중인 팀을 만나면 기다렸다가 409 다.
 
 ## admin-ui 와 맞물리기
 
