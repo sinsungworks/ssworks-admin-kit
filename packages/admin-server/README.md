@@ -2,7 +2,7 @@
 
 관리자 API 공통 NestJS 모듈 — NestJS 12 · Kysely 0.29 · MariaDB. **Phase 2 진행 중**이고 `private: true` 라 아직 발행하지 않는다(Phase 2 마지막 PR 뒤 첫 발행).
 
-지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 8장(PR 2a · 2c)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c)다. 사용자 · 역할 · 팀 · 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
+지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 9장(PR 2a · 2c · 2d-1)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1)이다. 사용자 · 팀 · 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
 
 ## 설치
 
@@ -91,16 +91,17 @@ export default defineConfig({
 export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 ```
 
-| 장 ID                          | 테이블                    |
-| ------------------------------ | ------------------------- |
-| `0001_roles`                   | `roles`                   |
-| `0002_users`                   | `users`                   |
-| `0003_teams`                   | `teams`                   |
-| `0004_team_closure`            | `team_closure`            |
-| `0005_team_user_map`           | `team_user_map`           |
-| `0006_user_employment_periods` | `user_employment_periods` |
-| `0007_sessions`                | `sessions`                |
-| `0008_audit_logs`              | `audit_logs`              |
+| 장 ID                          | 테이블                        |
+| ------------------------------ | ----------------------------- |
+| `0001_roles`                   | `roles`                       |
+| `0002_users`                   | `users`                       |
+| `0003_teams`                   | `teams`                       |
+| `0004_team_closure`            | `team_closure`                |
+| `0005_team_user_map`           | `team_user_map`               |
+| `0006_user_employment_periods` | `user_employment_periods`     |
+| `0007_sessions`                | `sessions`                    |
+| `0008_audit_logs`              | `audit_logs`                  |
+| `0009_guard_locks`             | `guard_locks`(센티넬 행 하나) |
 
 🔴 패키지가 새 장을 내면 changeset 이 알린다 — 스텁 한 줄을 더한다. `assertAdminMigrationStubs` 가 빠진 장을 잡는다. 시드(첫 관리자 계정 · 역할)는 프로젝트 몫이다.
 
@@ -234,6 +235,8 @@ AdminServerModule.forRootAsync({
       'sessions.read': 'org.users:read', // GET /sessions
       'sessions.manage': 'org.users:write', // DELETE /sessions/:sessionNo · /sessions/user/:userNo
       'auditLogs.read': 'setting.auditLog:read', // GET /audit-logs
+      'roles.read': 'org.roles:read', // GET /roles
+      'roles.manage': 'org.roles:write', // POST · PATCH · DELETE /roles…
     },
   }),
 })
@@ -241,6 +244,7 @@ AdminServerModule.forRootAsync({
 
 - 🔴 import 한 기능 모듈의 슬롯이 없거나, 모르는 슬롯(오타) · 빈 키가 있으면 기동에서 멈춘다. 슬롯 판정은 `@RequirePermissions` 와 같은 층이다(`'*'` 는 이어진 슬롯을 통과한다).
 - 키 이름은 프로젝트 카탈로그가 정한다 — hangang 은 `org.users:*`, gise 는 `account.session:manage`.
+- 🔴 역할 · 사용자 모듈을 쓰면 슬롯 맵의 키가 `permissionCatalog` 안이어야 한다 — 오타(`org.role:write`)는 기동에서 멈춘다.
 
 ## 세션 · 감사
 
@@ -270,7 +274,7 @@ imports: [
 - 전체 목록 쿼리: `filter[keyword]`(아이디 · 이름 부분일치) · `filter[userNo]` · 정렬 `lastAccessAt` · `loginAt` · `expireAt`.
 - 🔴 지금 쓰는 세션은 이 라우트로 끊지 못한다(400) — 로그아웃이 정상 경로다. 남의 세션 · 없는 세션 · 이미 끝난 세션은 같은 404 다. 본인 계정의 "사용자 전체" 는 지금 세션까지 끊는다(다음 요청 401 — admin-ui `onSelfSignedOut`).
 - 유예창(30초) 안에서 다른 탭이 옛 refresh 를 내면 세션이 하나 더 생긴다. 같은 브라우저라면 그중 하나는 아무도 쓰지 않는 행으로 만료(7일)까지 남는다 — 목록에 같은 기기가 두 번 보이면 그것이다. "다른 세션 모두" 가 쓸어 낸다.
-- 남의 세션을 끊을 때의 권한 상승 검사(낮은 관리자가 전권자의 세션을 끊는 것)는 사용자 · 역할 PR(2d)이 붙인다.
+- 🔴 남의 세션을 끊으려면 그 사람의 역할 권한을 덮어야 한다(아래 "권한 상승") — 낮은 관리자가 전권자의 세션을 끊으면 403 `details.outside`. 본인 세션은 늘 된다.
 
 ### 감사
 
@@ -301,6 +305,72 @@ async create(@Body() body: PostBody, @Req() req: Request) {
 - 🔴 로그인 실패 행의 meta `userId` 는 사람이 친 원문이다 — 비밀번호를 아이디 칸에 치면 그대로 남는다. 감사 조회 권한을 그만큼 좁게 준다.
 - 조회: `GET /audit-logs` — `filter[actorUserNo]` · `filter[action]` + `filter[actionMatch]`(`prefix` 기본 · `exact`) · `filter[targetType]` · `filter[targetRefNo]` · `filter[from]` · `filter[to]`(`[from, to)` — "다음 날 0시" 를 보낸다). 행은 admin-shared `adminAuditLogSchema`, 라벨은 `auditCatalog.labelOf(action)`.
 - 보존 기간 · 청소 · 파티셔닝은 쓰는 쪽 몫이다(크론으로 오래된 행을 지운다).
+
+## 역할 · 권한
+
+```ts
+// 프로젝트 shared — 카탈로그와 함의 표 하나를 서버 · 화면이 같이 쓴다
+export const permissions = definePermissions(
+  {
+    USERS_READ: 'org.users:read',
+    USERS_WRITE: 'org.users:write',
+    ROLES_READ: 'org.roles:read',
+    ROLES_WRITE: 'org.roles:write',
+  },
+  { implies: { 'org.users:write': ['org.users:read'], 'org.roles:write': ['org.roles:read'] } },
+)
+```
+
+```ts
+imports: [
+  AdminServerModule.forRootAsync({
+    useFactory: () => ({
+      …,
+      permissionCatalog: permissions, // 🔴 역할 모듈을 쓰면 필수
+      permissions: { …, 'roles.read': 'org.roles:read', 'roles.manage': 'org.roles:write' },
+      reauth: false, // true 면 역할 만들기 · 수정 · 삭제가 본문 currentPassword 를 요구한다
+    }),
+  }),
+  AdminAuthModule,
+  AdminRolesModule, // /roles 다섯 라우트
+]
+```
+
+| 라우트                      | 슬롯           | 본문 → 응답                                                      | admin-ui `useRoleEditor` 어댑터 |
+| --------------------------- | -------------- | ---------------------------------------------------------------- | ------------------------------- |
+| `GET /roles`                | `roles.read`   | → `{ items }`(전량 · `displayOrder` 순)                          | `list`                          |
+| `POST /roles`               | `roles.manage` | `{ roleName, isDefault, permissions }` → 201 `{ roleNo }`        | `create`                        |
+| `PATCH /roles/:roleNo`      | `roles.manage` | `{ revision, roleName?, isDefault?, permissions? }` → `{ item }` | `update`                        |
+| `PATCH /roles/:roleNo/move` | `roles.manage` | `{ displayOrder }`(이웃의 값) → `{}`                             | `move`                          |
+| `DELETE /roles/:roleNo`     | `roles.manage` | 본문 `{ revision }` → `{}`                                       | `remove`                        |
+
+```ts
+const roleApi: RoleEditorApi = {
+  list: async () => (await api.get<{ items: AdminRole[] }>('/roles')).items,
+  create: async (body, ctx) =>
+    (await api.post<{ roleNo: bigint }>('/roles', { ...body, ...ctx })).roleNo,
+  update: async (roleNo, body, ctx) =>
+    void (await api.patch(`/roles/${roleNo}`, { ...body, ...ctx })),
+  remove: async (roleNo, body, ctx) =>
+    void (await api.del(`/roles/${roleNo}`, { ...body, ...ctx })),
+  move: async (roleNo, body) => void (await api.patch(`/roles/${roleNo}/move`, body)),
+}
+useRoleEditor({
+  api: roleApi,
+  permissions: permissions.ALL_PERMISSION_VALUES,
+  implies: permissions.implies, // 🔴 서버 정규화와 같은 표
+  reauth: false, // 서버 reauth 와 같게
+  canWrite: () => check.hasPermission('org.roles:write'),
+})
+```
+
+- **정규화**: `'*'` 가 섞이면 `['*']` 하나, 아니면 함의를 펼쳐 카탈로그 순서로 저장한다. 카탈로그 밖 키는 400 `issues[{ path: ['permissions', i] }]`. 목록은 저장된 그대로 낸다 — 카탈로그에서 지운 옛 키는 화면이 버리고 다음 저장에서 빠진다.
+- **권한 상승**: 행위자가 대상을 "덮어야" 한다(`coversPermissions`). 역할 만들기는 새 권한, 수정은 `permissions` 를 보낼 때만 현재 · 새 권한 둘 다, 삭제는 현재 권한. 남의 세션 끊기는 그 사람의 역할. 거부는 403 `details.outside`(덮지 못한 키). 🔴 `permissions` 없이 이름 · 기본 여부만 고치는 수정은 넓은 역할에도 열려 있다(3b `useRoleEditor` 가 그렇게 보낸다).
+- **전권자 잔존**: 전체 권한(`'*'`) 재직자를 0 으로 만드는 역할 수정 · 삭제는 409 다. 동시 요청은 `guard_locks` 의 센티넬 행이 줄 세운다(장 `0009_guard_locks` — 모든 앱에 필수). 시드로 첫 전체 권한 계정을 만들기 전에는 0 이라 막히지 않는다.
+- **revision**: 수정 · 삭제 본문에 필수, 다르면 409 `ERR_COMMON_REVISION_CONFLICT`. 이동은 revision 을 받지도 올리지도 않는다(순서는 내용이 아니다).
+- **기본 역할**은 하나다 — 켜면 다른 기본 역할이 꺼지고 그 revision 이 오른다(그 역할을 열어 둔 화면은 409 를 받는다).
+- 이름 중복(대소문자 · 끝 공백 무시)은 400 `issues[{ path: ['roleName'] }]` — `useRoleEditor` 의 이름 칸 아래에 뜬다. 쓰는 중인 역할의 삭제는 409 `ERR_COMMON_IN_USE`.
+- 감사: `org.role.create` · `update` · `move` · `delete`(diff `roleName` · `isDefault` · `permissions`). 재인증 비밀번호는 남지 않는다.
 
 ## admin-ui 와 맞물리기
 
