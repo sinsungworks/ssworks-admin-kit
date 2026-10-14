@@ -166,3 +166,92 @@ describe('createPermissionCheck / catalog.createCheck — 지연 평가 판정�
       >()
   })
 })
+
+describe('definePermissions — implies · normalize(2d 스펙 ① C1)', () => {
+  const posts = definePermissions(
+    {
+      POSTS_READ: 'board.posts:read',
+      POSTS_WRITE: 'board.posts:write',
+      POSTS_DELETE: 'board.posts:delete',
+      USERS_READ: 'org.users:read',
+    },
+    {
+      implies: {
+        'board.posts:write': ['board.posts:read'],
+        'board.posts:delete': ['board.posts:write'],
+      },
+    },
+  )
+
+  it('연쇄 함의를 펼치고 카탈로그 순서로 낸다', () => {
+    expect(posts.normalize(['board.posts:delete'])).toEqual([
+      'board.posts:read',
+      'board.posts:write',
+      'board.posts:delete',
+    ])
+    expect(posts.normalize(['org.users:read', 'board.posts:write'])).toEqual([
+      'board.posts:read',
+      'board.posts:write',
+      'org.users:read',
+    ])
+  })
+
+  it("🔴 '*' 가 섞이면 정확히 ['*'] 하나 — 키 목록으로 펼치지 않는다(hangang 왕복 항등)", () => {
+    expect(posts.normalize(['board.posts:read', '*'])).toEqual(['*'])
+    expect(posts.normalize(['*'])).toEqual(['*'])
+  })
+
+  it('중복은 접고 카탈로그 밖 키는 버린다 · 빈 배열은 빈 배열', () => {
+    expect(posts.normalize(['org.users:read', 'org.users:read', 'nope:read'])).toEqual([
+      'org.users:read',
+    ])
+    expect(posts.normalize([])).toEqual([])
+  })
+
+  it('순환 함의에서 멈춘다', () => {
+    const cyclic = definePermissions(
+      { A: 'a:read', B: 'b:read' },
+      { implies: { 'a:read': ['b:read'], 'b:read': ['a:read'] } },
+    )
+    expect(cyclic.normalize(['b:read'])).toEqual(['a:read', 'b:read'])
+  })
+
+  it('implies 는 검증된 얼린 표 — 없으면 {}', () => {
+    expect(posts.implies).toEqual({
+      'board.posts:write': ['board.posts:read'],
+      'board.posts:delete': ['board.posts:write'],
+    })
+    expect(Object.isFrozen(posts.implies)).toBe(true)
+    expect(definePermissions({ A: 'a:read' }).implies).toEqual({})
+  })
+
+  it('extraValues 도 함의의 키 · 값이 될 수 있다', () => {
+    const withExtra = definePermissions(
+      { A: 'a:read' },
+      { extraValues: ['db.edit.x'] as const, implies: { 'db.edit.x': ['a:read'] } },
+    )
+    expect(withExtra.normalize(['db.edit.x'])).toEqual(['a:read', 'db.edit.x'])
+  })
+
+  it("🔴 카탈로그 밖 키 · 값, '*', 자기 자신은 정의할 때 던진다 — 문제를 모아 한 번에", () => {
+    const base = { A: 'a:read', B: 'b:read' } as const
+    expect(() => definePermissions(base, { implies: { 'x:read': ['a:read'] } as never })).toThrow(
+      '함의 키가 카탈로그 밖이다: x:read',
+    )
+    expect(() => definePermissions(base, { implies: { 'a:read': ['x:read'] } as never })).toThrow(
+      '함의 값이 카탈로그 밖이다: a:read → x:read',
+    )
+    expect(() => definePermissions(base, { implies: { 'a:read': ['*'] } as never })).toThrow(
+      '함의 값이 카탈로그 밖이다: a:read → *',
+    )
+    expect(() => definePermissions(base, { implies: { '*': ['a:read'] } as never })).toThrow(
+      '함의 키가 카탈로그 밖이다: *',
+    )
+    expect(() => definePermissions(base, { implies: { 'a:read': ['a:read'] } })).toThrow(
+      '자기 자신을 함의한다: a:read',
+    )
+    expect(() => definePermissions(base, { implies: { 'x:read': ['y:read'] } as never })).toThrow(
+      '함의 키가 카탈로그 밖이다: x:read / 함의 값이 카탈로그 밖이다: x:read → y:read',
+    )
+  })
+})

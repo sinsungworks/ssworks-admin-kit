@@ -26,6 +26,8 @@ import { z } from 'zod'
  * export const { PERMISSIONS, ALL_PERMISSION_VALUES, permissionSchema } = permissions
  * export type Permission = PermissionOf<typeof permissions>
  * ```
+ *
+ * 역할 정규화의 함의 표는 `definePermissions(catalog, { implies })` — 서버(`normalize`)와 화면이 같은 표를 쓴다(2d).
  */
 
 /** 전체 권한. 최고 관리자 역할에만 부여한다. */
@@ -87,13 +89,20 @@ export function createPermissionCheck<P extends string = string>(
   }
 }
 
-export interface DefinePermissionsOptions<E extends string = never> {
+export interface DefinePermissionsOptions<E extends string = never, P extends string = string> {
   /**
    * 카탈로그 객체 밖에서 파생되는 유효 권한 값. crm-v5 의 `db.edit.<item>` 처럼 상수
    * 객체로 나열하지 않고 생성하는 키가 있을 때 쓴다. `ALL_PERMISSION_VALUES` 와 zod
    * 스키마에 함께 들어간다.
    */
   extraValues?: readonly E[]
+  /**
+   * 함의 표 — 키를 켜면 값의 키들이 함께 켜진다(연쇄를 펼친다). 예: `{ 'org.users:write': ['org.users:read'] }`.
+   * 정의할 때 던진다: 키 · 값이 카탈로그 밖 · `'*'` · 자기 자신. 순환은 허용한다(닫힘이 멈춘다).
+   * 🔴 서버(`normalize`)와 admin-ui `useRoleEditor({ implies })` 가 이 표 하나를 쓴다 — hangang 은 서버 파일의 표와
+   *    화면의 손 사본이 따로 있었다(갈리면 "읽기는 껐는데 편집은 켜진" 집합을 서버가 되살린다).
+   */
+  implies?: Partial<Record<P, readonly P[]>>
 }
 
 export interface PermissionCatalog<T extends Record<string, string>, E extends string = never> {
@@ -119,6 +128,13 @@ export interface PermissionCatalog<T extends Record<string, string>, E extends s
   hasAnyPermission(granted: readonly string[], ...required: (T[keyof T] | E)[]): boolean
   coversPermissions(granted: readonly string[], target: readonly string[]): boolean
   createCheck(granted: () => readonly string[]): PermissionCheck<T[keyof T] | E>
+  /** 검증된 함의 표(얼린 사본). 없으면 `{}`. admin-ui `useRoleEditor({ implies })` 에 그대로 넘긴다 */
+  readonly implies: Readonly<Partial<Record<T[keyof T] | E, readonly (T[keyof T] | E)[]>>>
+  /**
+   * 역할 권한 정규화(3b §9 · hangang `permissions.normalize.ts`). `'*'` 가 있으면 정확히 `['*']` → 아니면 함의 닫힘 →
+   * 카탈로그 순서(`ALL_PERMISSION_VALUES`) · 중복 제거. 카탈로그 밖 키는 버린다(서버는 본문 검증이 먼저 막는다).
+   */
+  normalize(values: readonly string[]): (T[keyof T] | E | AllPermission)[]
 }
 
 /** `definePermissions()` 반환값에서 권한 유니온 타입을 뽑는다. */
@@ -136,7 +152,7 @@ export type PermissionOf<C> =
  */
 export function definePermissions<const T extends Record<string, string>, E extends string = never>(
   catalog: T,
-  options: DefinePermissionsOptions<E> = {},
+  options: DefinePermissionsOptions<E, NoInfer<T[keyof T] | E>> = {},
 ): PermissionCatalog<T, E> {
   type P = T[keyof T] | E | AllPermission
 
@@ -172,6 +188,21 @@ export function definePermissions<const T extends Record<string, string>, E exte
     return permissionSet.has(value)
   }
 
+  const implies = freezeImplies(options.implies ?? {}, permissionSet)
+
+  function normalize(list: readonly string[]): P[] {
+    if (list.includes(ALL_PERMISSION)) return [ALL_PERMISSION as P]
+    const granted = new Set<string>()
+    const pending = list.filter((value) => value !== ALL_PERMISSION && permissionSet.has(value))
+    while (pending.length > 0) {
+      const key = pending.pop() as string
+      if (granted.has(key)) continue
+      granted.add(key)
+      if (Object.hasOwn(implies, key)) pending.push(...(implies[key] ?? []))
+    }
+    return ALL_PERMISSION_VALUES.filter((value) => value !== ALL_PERMISSION && granted.has(value))
+  }
+
   return {
     PERMISSIONS,
     ALL_PERMISSION_VALUES,
@@ -183,5 +214,32 @@ export function definePermissions<const T extends Record<string, string>, E exte
     hasAnyPermission,
     coversPermissions,
     createCheck: (granted) => createPermissionCheck<T[keyof T] | E>(granted),
+    implies: implies as PermissionCatalog<T, E>['implies'],
+    normalize,
   }
+}
+
+/** 함의 표를 검증해 얼린다. 문제를 모아 한 번에 던진다(`defineAuditCatalog` 와 같은 틀). */
+function freezeImplies(
+  table: Partial<Record<string, readonly string[]>>,
+  known: ReadonlySet<string>,
+): Readonly<Record<string, readonly string[]>> {
+  const problems: string[] = []
+  const entries: [string, readonly string[]][] = []
+  for (const [key, values] of Object.entries(table)) {
+    if (values === undefined) continue
+    if (key === ALL_PERMISSION || !known.has(key))
+      problems.push(`함의 키가 카탈로그 밖이다: ${key}`)
+    for (const value of values) {
+      if (value === ALL_PERMISSION || !known.has(value)) {
+        problems.push(`함의 값이 카탈로그 밖이다: ${key} → ${value}`)
+      } else if (value === key) {
+        problems.push(`자기 자신을 함의한다: ${key}`)
+      }
+    }
+    entries.push([key, Object.freeze([...new Set(values)])])
+  }
+  if (problems.length > 0) throw new Error(`definePermissions: ${problems.join(' / ')}`)
+  // 🔴 Object.fromEntries 는 자기 속성으로 만든다 — `__proto__` 같은 키도 대입이 아니라 데이터다.
+  return Object.freeze(Object.fromEntries(entries))
 }
