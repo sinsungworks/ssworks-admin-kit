@@ -12,7 +12,7 @@ class Routes {
   @RequirePermissionSlot('sessions.read')
   read() {}
 
-  @RequirePermissionSlot('roles.read', 'users.read' as never)
+  @RequirePermissionSlot('roles.read', 'users.read')
   either() {}
 }
 
@@ -47,13 +47,15 @@ describe('resolvePermissionMap', () => {
     }
   })
 
-  it('슬롯은 다섯 — 2c 셋 + 역할 둘(2d-1)', () => {
+  it('슬롯은 일곱 — 2c 셋 + 역할 둘(2d-1) + 사용자 둘(2d-2)', () => {
     expect(ADMIN_PERMISSION_SLOTS).toEqual([
       'sessions.read',
       'sessions.manage',
       'auditLogs.read',
       'roles.read',
       'roles.manage',
+      'users.read',
+      'users.manage',
     ])
   })
 })

@@ -1,5 +1,5 @@
 import { BusinessError, CommonErrorCodes, definePermissions } from '@ssworks/admin-shared'
-import type { ResolvedAccountsConfig } from '../accounts/options.js'
+import type { ResolvedAccountsConfig, ResolvedUsersConfig } from '../accounts/options.js'
 import type { AdminPrincipal } from '../auth/principal.js'
 
 // 테스트 전용 — 역할 · 사용자 판정의 카탈로그와 주체(2d). 🔴 빌드에서 빠진다(tsconfig.build.json 의 test-support 제외).
@@ -28,6 +28,11 @@ export const TEST_CATALOG = definePermissions(
 
 export function accountsConfig(reauth = false): ResolvedAccountsConfig {
   return Object.freeze({ catalog: TEST_CATALOG, reauth })
+}
+
+/** 사용자 서비스 설정 — 기준 시간대 기본 Asia/Seoul */
+export function usersConfig(reauth = false, timeZone = 'Asia/Seoul'): ResolvedUsersConfig {
+  return Object.freeze({ catalog: TEST_CATALOG, reauth, timeZone })
 }
 
 /** 판정에 쓰는 주체 — userNo · permissions 만 의미가 있다 */

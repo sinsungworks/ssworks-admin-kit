@@ -1,10 +1,24 @@
 // 정본: ssworks-gise-home apps/api/src/modules/accounts/account-policy.ts `ACCOUNT_ERROR_MESSAGES`(판정 문구) +
 //       hangang-home apps/api/src/modules/roles · users 서비스 문구
-// 바꾼 점: 한 표에 모은다(2b AUTH_MESSAGES · 2c SESSION_MESSAGES 와 같은 방식). 사용자 상태 문구는 2d-2 가 더한다.
+// 바꾼 점: 한 표에 모은다(2b AUTH_MESSAGES · 2c SESSION_MESSAGES 와 같은 방식). 재직 문구는 hangang 을 다듬었다(2d 스펙 §6).
 
 export const ACCOUNT_MESSAGES = Object.freeze({
   noRole: '역할을 찾을 수 없습니다.',
   noUser: '사용자를 찾을 수 없습니다.',
+  noTeam: '팀을 찾을 수 없습니다.',
+  duplicateUserId: '이미 있는 아이디입니다.',
+  userRevisionMismatch: '다른 관리자가 먼저 이 계정을 바꿨습니다. 새로 불러온 내용을 확인하세요.',
+  resignBeforeJoin: '퇴사일은 입사일과 같거나 뒤여야 합니다.',
+  rehireNotAfterResign: '재입사일은 직전 퇴사일 다음 날부터입니다.',
+  joinDateOutOfRange: '입사일은 직전 퇴사일 다음 날부터 이번 퇴사일까지입니다.',
+  alreadyResigned: '이미 퇴사 처리된 사용자입니다.',
+  notResigned: '재직 중인 사용자는 퇴사일을 정정할 수 없습니다.',
+  notResignedForRehire: '재직 중인 사용자는 재입사 처리할 수 없습니다.',
+  activePeriodExists: '이미 활성 근무 이력이 있어 재입사 처리할 수 없습니다.',
+  noPeriodForJoin: '근무 이력이 없어 입사일을 정정할 수 없습니다.',
+  noPeriodForResign: '근무 이력이 없어 퇴사일을 정정할 수 없습니다.',
+  periodCorrupted:
+    '근무 이력이 손상되어(활성 구간 중복) 처리할 수 없습니다. 관리자에게 문의하세요.',
   unknownPermission: '알 수 없는 권한입니다.',
   duplicateRoleName: '이미 있는 역할 이름입니다.',
   currentPasswordRequired: '현재 비밀번호를 입력하세요.',

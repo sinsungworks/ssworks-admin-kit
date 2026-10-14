@@ -1,6 +1,6 @@
 import { definePermissions } from '@ssworks/admin-shared'
 import { describe, expect, it } from 'vitest'
-import { resolveAccountsConfig } from './options.js'
+import { resolveAccountsConfig, resolveUsersConfig } from './options.js'
 
 const catalog = definePermissions({
   USERS_READ: 'org.users:read',
@@ -63,5 +63,25 @@ describe('resolveAccountsConfig', () => {
     expect(() =>
       resolveAccountsConfig({ permissionCatalog: catalog, reauth: 'yes' as never }, 'M'),
     ).toThrow('reauth 는 true · false 여야 한다.')
+  })
+})
+
+describe('resolveUsersConfig', () => {
+  it('계정 설정 + 기준 시간대(기본 Asia/Seoul) — 얼린 설정', () => {
+    const config = resolveUsersConfig({ permissionCatalog: catalog }, 'AdminUsersModule')
+    expect(config).toEqual({ catalog, reauth: false, timeZone: 'Asia/Seoul' })
+    expect(Object.isFrozen(config)).toBe(true)
+    expect(
+      resolveUsersConfig({ permissionCatalog: catalog, timeZone: 'UTC', reauth: true }, 'M'),
+    ).toMatchObject({ reauth: true, timeZone: 'UTC' })
+  })
+
+  it('🔴 timeZone 이 IANA 이름이 아니면 멈춘다(B15) — 카탈로그 검사는 그대로', () => {
+    expect(() =>
+      resolveUsersConfig({ permissionCatalog: catalog, timeZone: '+09:00' }, 'AdminUsersModule'),
+    ).toThrow('timeZone 은 IANA 시간대 이름이어야 한다')
+    expect(() => resolveUsersConfig({}, 'AdminUsersModule')).toThrow(
+      'AdminUsersModule 은 permissionCatalog 옵션이 있어야 한다',
+    )
   })
 })

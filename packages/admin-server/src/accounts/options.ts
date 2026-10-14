@@ -1,7 +1,8 @@
 import type { PermissionCatalog } from '@ssworks/admin-shared'
 import type { AdminServerOptions } from '../options.js'
+import { resolveTimeZone } from './calendar.js'
 
-// 정본: 없음 — 2d 스펙 ① C1 · ⑦ R1 · B4 · B12. 역할 · 사용자 모듈이 함께 읽는 코어 옵션의 해석.
+// 정본: 없음 — 2d 스펙 ① C1 · ⑦ R1 · B4 · B12. 역할 · 사용자 모듈이 함께 읽는 코어 옵션의 해석. 사용자 모듈은 기준 시간대(⑤ TZ1 · B15)를 더한다.
 
 /**
  * 서버가 쓰는 카탈로그의 부분(2d 스펙 B4). admin-shared `definePermissions()` 결과가 그대로 들어간다(§14 R1-1).
@@ -47,6 +48,21 @@ export function resolveAccountsConfig(
     throw new Error(`permissions 의 키가 permissionCatalog 에 없다(오타?): ${strays.join(', ')}`)
   }
   return Object.freeze({ catalog, reauth: options.reauth === true })
+}
+
+/** 사용자 모듈의 설정 — 계정 설정 + 기준 시간대. 같은 토큰(ADMIN_ACCOUNTS_CONFIG)으로 낸다(역할 모듈과 각자의 provider) */
+export interface ResolvedUsersConfig extends ResolvedAccountsConfig {
+  /** 날짜(입사일 · 퇴사일)를 읽는 기준 시간대 — IANA 이름 */
+  readonly timeZone: string
+}
+
+/** 🔴 기동에서 멈춘다: resolveAccountsConfig 의 셋 + timeZone 이 IANA 이름이 아님(B15) */
+export function resolveUsersConfig(
+  options: Pick<AdminServerOptions, 'permissionCatalog' | 'reauth' | 'permissions' | 'timeZone'>,
+  moduleName: string,
+): ResolvedUsersConfig {
+  const accounts = resolveAccountsConfig(options, moduleName)
+  return Object.freeze({ ...accounts, timeZone: resolveTimeZone(options.timeZone) })
 }
 
 function isCatalog(value: unknown): value is AdminPermissionCatalog {

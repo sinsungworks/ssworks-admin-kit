@@ -32,6 +32,12 @@ export interface AdminServerOptions {
   permissionCatalog?: AdminPermissionCatalog
   /** 기본 false. 켜면 역할 · 사용자 쓰기가 본문 `currentPassword` 로 재인증한다(2d 스펙 ⑦ R1 · Phase 0 §4 #4) */
   reauth?: boolean
+  /**
+   * 날짜(입사일 · 퇴사일)를 읽는 기준 시간대 — IANA 이름(`'Asia/Seoul'` · `'UTC'`). 기본 `'Asia/Seoul'`(2d 스펙 ⑤ TZ1).
+   * 퇴사일 D 의 효력 시각은 이 시간대의 D 다음 날 0시다. 🔴 바꿔도 이미 저장된 효력 시각 · 날짜는 그대로다.
+   * `AdminUsersModule` 이 기동에서 검증한다(`'+09:00'` 같은 오프셋 표기는 거부).
+   */
+  timeZone?: string
 }
 
 /** 정적 옵션 — `RouterModule` 이 모듈 정의 시점의 값을 요구한다(스펙 F2). */

@@ -19,6 +19,8 @@ export const TEST_PERMISSIONS = Object.freeze({
   'auditLogs.read': 'setting.auditLog:read',
   'roles.read': 'org.roles:read',
   'roles.manage': 'org.roles:write',
+  'users.read': 'org.users:read',
+  'users.manage': 'org.users:write',
 })
 
 /** 프로브 라우트의 액션 — 쓰는 쪽 카탈로그 병합을 그대로 탄다 */

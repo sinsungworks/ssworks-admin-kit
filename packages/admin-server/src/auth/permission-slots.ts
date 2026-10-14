@@ -5,9 +5,15 @@ import { PERMISSION_SLOT } from '../tokens.js'
 //   (hangang org.users:read · gise account.session:manage · axion sessions:read · crm setting.session:read).
 // 🔴 패키지는 권한 키를 하드코딩하지 않는다 — 슬롯 이름만 선언하고 키는 AdminServerOptions.permissions 가 준다.
 
-/** 2c 의 셋 + 2d-1 의 역할 둘. 2d-2~2f 가 늘린다 — 유니온이 늘어나는 것은 하위 호환이다 */
+/** 2c 의 셋 + 2d 의 역할 둘 · 사용자 둘. 2e~2f 가 늘린다 — 유니온이 늘어나는 것은 하위 호환이다 */
 export type AdminPermissionSlot =
-  'sessions.read' | 'sessions.manage' | 'auditLogs.read' | 'roles.read' | 'roles.manage'
+  | 'sessions.read'
+  | 'sessions.manage'
+  | 'auditLogs.read'
+  | 'roles.read'
+  | 'roles.manage'
+  | 'users.read'
+  | 'users.manage'
 
 export const ADMIN_PERMISSION_SLOTS: readonly AdminPermissionSlot[] = Object.freeze([
   'sessions.read',
@@ -15,6 +21,8 @@ export const ADMIN_PERMISSION_SLOTS: readonly AdminPermissionSlot[] = Object.fre
   'auditLogs.read',
   'roles.read',
   'roles.manage',
+  'users.read',
+  'users.manage',
 ])
 
 export type AdminPermissionMap = Partial<Record<AdminPermissionSlot, string>>
