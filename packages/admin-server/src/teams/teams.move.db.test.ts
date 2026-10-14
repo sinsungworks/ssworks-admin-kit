@@ -118,6 +118,29 @@ describe('같은 상위 팀', () => {
       [z, 2],
     ])
   })
+
+  it('🔴 빈 번호 묶음의 제자리 이동은 아무것도 쓰지 않는다 — 최상위 제자리도 before = after', async () => {
+    const p = await seedTeamUnder(t.db, { teamName: 'nw-P', parentTeamNo: null })
+    const x = await seedTeamUnder(t.db, { teamName: 'nw-x', parentTeamNo: p, displayOrder: 10 })
+    const y = await seedTeamUnder(t.db, { teamName: 'nw-y', parentTeamNo: p, displayOrder: 20 })
+    const z = await seedTeamUnder(t.db, { teamName: 'nw-z', parentTeamNo: p, displayOrder: 30 })
+    expect(await service.move(z, { parentTeamNo: p, beforeTeamNo: null })).toEqual({
+      before: { parentTeamNo: p, displayOrder: 30 },
+      after: { parentTeamNo: p, displayOrder: 30 },
+    })
+    expect(await service.move(x, { parentTeamNo: p, beforeTeamNo: y })).toEqual({
+      before: { parentTeamNo: p, displayOrder: 10 },
+      after: { parentTeamNo: p, displayOrder: 10 },
+    })
+    expect(await displayOrders(t.db, [x, y, z])).toEqual([
+      [x, 10],
+      [y, 20],
+      [z, 30],
+    ])
+    const lastRoot = await create('nw-last-root', null)
+    const rootMove = await service.move(lastRoot, { parentTeamNo: null, beforeTeamNo: null })
+    expect(rootMove.after).toEqual(rootMove.before)
+  })
 })
 
 describe('다른 상위 팀', () => {
@@ -182,6 +205,31 @@ describe('다른 상위 팀', () => {
     )
     expect(await childrenOf(root)).toEqual([])
   })
+
+  it('🔴 여러 단계 조상 사이로 옮겨도 closure 가 맞다 — 옛 바깥 조상 둘을 지우고 새 조상 셋을 넣는다', async () => {
+    const a1 = await create('ml-a1', null)
+    const a2 = await create('ml-a2', a1)
+    const b1 = await create('ml-b1', null)
+    const b2 = await create('ml-b2', b1)
+    const b3 = await create('ml-b3', b2)
+    const mover = await create('ml-mover', a2)
+    const leaf = await create('ml-leaf', mover)
+    await service.move(mover, { parentTeamNo: b3, beforeTeamNo: null })
+    expect(await closureOf(t.db, [mover, leaf])).toEqual(
+      closure(
+        [mover, mover, 0],
+        [b3, mover, 1],
+        [b2, mover, 2],
+        [b1, mover, 3],
+        [leaf, leaf, 0],
+        [mover, leaf, 1],
+        [b3, leaf, 2],
+        [b2, leaf, 3],
+        [b1, leaf, 4],
+      ),
+    )
+    expect(await childrenOf(a2)).toEqual([])
+  })
 })
 
 describe('검사(B10)', () => {
@@ -209,6 +257,7 @@ describe('검사(B10)', () => {
     expect(notSibling.message).toBe(TEAM_MESSAGES.beforeNotSibling)
     expect(issuePath(notSibling)).toEqual(['beforeTeamNo'])
     const self = await failure(service.move(moving, { parentTeamNo: p, beforeTeamNo: moving }))
+    expect(self.code).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
     expect(self.message).toBe(TEAM_MESSAGES.beforeIsSelf)
     expect(issuePath(self)).toEqual(['beforeTeamNo'])
   })

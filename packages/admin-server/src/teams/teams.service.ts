@@ -11,7 +11,13 @@ import { GUARD_LOCK_TEAM_TREE, lockGuardRow } from '../database/guard-locks.js'
 import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { KYSELY } from '../tokens.js'
-import { TEAM_MESSAGES, beforeTeamError, duplicateTeamName, moveCycle } from './errors.js'
+import {
+  TEAM_MESSAGES,
+  beforeTeamError,
+  duplicateTeamName,
+  moveCycle,
+  teamHasMembers,
+} from './errors.js'
 import { closurePairs, planTeamMove, type ClosureLink } from './move.js'
 import {
   lockAncestors,
@@ -198,6 +204,39 @@ export class AdminTeamsService {
           .execute()
       }
       return { before, after: { parentTeamNo, displayOrder: plan.targetOrder } }
+    })
+  }
+
+  /**
+   * 하위 팀째 지운다 — 서브트리에 소속 계정이 있으면 409(퇴사자 포함 · ③ M1). closure · 소속은 FK CASCADE(B7). 🔴 대상은 따로
+   * 넣는다 — 자기 행에 기대지 않는다(④ C1).
+   */
+  async remove(
+    teamNo: bigint,
+  ): Promise<{ before: TeamAuditView; descendants: { teamNo: bigint; teamName: string }[] }> {
+    return runWriteTransaction(this.db, async (trx) => {
+      // 🔴 첫 문장(① G1)
+      await lockGuardRow(trx, GUARD_LOCK_TEAM_TREE)
+      const target = await lockTeamRow(trx, teamNo)
+      const descendants = await lockDescendants(trx, teamNo)
+      const teamNos = [teamNo, ...descendants.map((link) => link.teamNo)]
+      // 🔴 비잠금 셈 — 이 트랜잭션의 첫 비잠금 읽기다(② D1 · B4). 소속을 더하는 길은 모두 그 팀 행을 먼저 잡는다(사용자 쓰기의
+      //    lockTeam X, 그 밖의 INSERT 는 FK 검사의 S) — 서브트리 팀 행을 X 로 쥔 지금은 새 소속이 생길 수 없고, 지금 여는
+      //    읽기 뷰는 기다리는 사이 커밋된 소속을 본다. 이 앞에 비잠금 읽기를 두면 읽기 뷰가 먼저 열려 셈이 0 을 보고
+      //    DELETE 의 CASCADE 가 그 소속을 조용히 지운다(스펙 §14 R1-1 — hangang A3 가 막으려던 것). FOR UPDATE 로 세면
+      //    teamUserMap 구간의 gap 잠금이 사용자 팀 변경과 엇갈려 교착한다(R1-3 — ② D2 를 고르지 않았다).
+      const counted = await trx
+        .selectFrom('teamUserMap')
+        .select((eb) => eb.fn.count<number | string | bigint>('userNo').distinct().as('n'))
+        .where('teamNo', 'in', teamNos)
+        .executeTakeFirstOrThrow()
+      const memberCount = Number(counted.n)
+      if (memberCount > 0) throw teamHasMembers(memberCount)
+      await trx.deleteFrom('teams').where('teamNo', 'in', teamNos).execute()
+      return {
+        before: { teamName: target.teamName, parentTeamNo: target.parentTeamNo },
+        descendants: descendants.map((link) => ({ teamNo: link.teamNo, teamName: link.teamName })),
+      }
     })
   }
 
