@@ -163,6 +163,21 @@ describe('쓰는 쪽 라우트 · 실패 요청', () => {
     })
   })
 
+  it('🔴 본문의 자기 "__proto__" 키로 소독을 빠져나갈 수 없다(최종 리뷰 F1)', async () => {
+    const user = await seedUser(t.db, { roleNo: memberRole })
+    const agent = await signIn(user)
+    await agent
+      .post('/admin/auditprobe/item/6')
+      .set('Content-Type', 'application/json')
+      .send('{"__proto__":{"password":"p1"},"password":"p2","note":"ok"}')
+      .expect(201)
+    const [row] = await auditRows({ actorUserNo: user.userNo, path: '/admin/auditprobe/item/6' })
+    const text = JSON.stringify(row?.meta)
+    expect(text).not.toContain('p1')
+    expect(text).not.toContain('p2')
+    expect(row?.meta).toMatchObject({ password: '***', note: 'ok' })
+  })
+
   it('🔴 핸들러에서 던진 실패는 응답과 같은 상태 · 코드로 남는다', async () => {
     const user = await seedUser(t.db, { roleNo: memberRole })
     const agent = await signIn(user)

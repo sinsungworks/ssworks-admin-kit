@@ -60,6 +60,46 @@ describe('scrubSecrets', () => {
   })
 })
 
+describe('🔴 일반 객체 밖 — JSON.stringify 가 직렬화하는 모든 객체(최종 리뷰 F1)', () => {
+  class Dto {
+    constructor(
+      public userNo: number,
+      public newPassword: string,
+      public nested: { token: string },
+    ) {}
+  }
+
+  it('클래스 인스턴스 안의 비밀도 가린다', () => {
+    const text = serializeAuditMeta({ body: new Dto(3, 'plain-new', { token: 't' }) }, keys)
+    expect(text).toBe('{"body":{"userNo":3,"newPassword":"***","nested":{"token":"***"}}}')
+  })
+
+  it('toJSON 이 돌려주는 값을 걷는다', () => {
+    const withToJson = { toJSON: () => ({ password: 'p', keep: 1 }) }
+    expect(serializeAuditMeta({ x: withToJson }, keys)).toBe('{"x":{"password":"***","keep":1}}')
+  })
+
+  it('클래스 인스턴스 안의 bigint 도 접는다 — 자리표시로 떨어지지 않는다', () => {
+    expect(serializeAuditMeta({ body: new Dto(3, 'p', { token: 't' }), id: 1n }, keys)).not.toBe(
+      '{"_unserializable":true}',
+    )
+    class Holder {
+      id = 9n
+    }
+    expect(serializeAuditMeta({ h: new Holder() }, keys)).toBe('{"h":{"id":"9"}}')
+  })
+
+  it('클래스 인스턴스를 지나는 순환은 [Circular]', () => {
+    class Node {
+      self: unknown
+    }
+    const node = new Node()
+    node.self = node
+    expect(scrubSecrets({ node }, keys)).toEqual({ node: { self: '[Circular]' } })
+    expect(serializeAuditMeta({ node }, keys)).toBe('{"node":{"self":"[Circular]"}}')
+  })
+})
+
 describe('foldBigInts', () => {
   it('bigint → 십진 문자열, Date → ISO, 잘못된 Date → null', () => {
     expect(

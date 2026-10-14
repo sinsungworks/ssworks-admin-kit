@@ -1,5 +1,6 @@
 import type { Request } from 'express'
 import { describe, expect, it } from 'vitest'
+import { serializeAuditMeta, secretKeySet } from './scrub.js'
 import { attachAuditDiff, attachAuditMeta, attachAuditTarget, readAuditBag } from './audit-bag.js'
 
 const request = () => ({ params: {} }) as unknown as Request
@@ -32,5 +33,21 @@ describe('감사 가방', () => {
     const keysBefore = Object.keys(req)
     attachAuditMeta(req, { a: 1 })
     expect(Object.keys(req)).toEqual(keysBefore)
+  })
+
+  it('🔴 __proto__ 키는 데이터로 남고 다른 키처럼 가려진다(최종 리뷰 F1)', () => {
+    const req = request()
+    attachAuditMeta(req, JSON.parse('{"__proto__":{"password":"x"},"password":"y"}') as never)
+    const text = serializeAuditMeta(readAuditBag(req)!.meta, secretKeySet())
+    expect(text).toBe('{"__proto__":{"password":"***"},"password":"***"}')
+  })
+
+  it('diff 의 __proto__ 필드도 데이터로 남는다', () => {
+    const req = request()
+    const before = JSON.parse('{"__proto__":{"token":"t"},"a":1}') as Record<string, unknown>
+    attachAuditDiff(req, before, null, ['__proto__', 'a'])
+    expect(serializeAuditMeta(readAuditBag(req)!.meta, secretKeySet())).toBe(
+      '{"before":{"__proto__":{"token":"***"},"a":1},"after":{}}',
+    )
   })
 })

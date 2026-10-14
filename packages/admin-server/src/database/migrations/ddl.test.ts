@@ -1,5 +1,6 @@
 import { DummyDriver, Kysely, MysqlAdapter, MysqlIntrospector, MysqlQueryCompiler } from 'kysely'
 import { describe, expect, it } from 'vitest'
+import { AUDIT_COLUMN_WIDTHS } from '../../audit/entry.js'
 import { adminKyselyPlugins } from '../kysely.js'
 import * as roles from './0001_roles.js'
 import * as users from './0002_users.js'
@@ -62,6 +63,20 @@ describe('0008_audit_logs', () => {
   it('🔴 users · sessions FK 가 없다 — 계정 삭제가 감사 흔적을 지우지 않게', async () => {
     const statements = await capture((db) => auditLogs.up(db))
     expect(statements.join(' ').toLowerCase()).not.toContain('foreign key')
+  })
+
+  it('🔴 가변 길이 컬럼 너비가 AUDIT_COLUMN_WIDTHS 와 같다 — 끊는 쪽과 DB 가 어긋나면 행이 거부된다', async () => {
+    const [statement] = await capture((db) => auditLogs.up(db))
+    const widths = {
+      method: AUDIT_COLUMN_WIDTHS.method,
+      path: AUDIT_COLUMN_WIDTHS.path,
+      ip: AUDIT_COLUMN_WIDTHS.ip,
+      user_agent: AUDIT_COLUMN_WIDTHS.userAgent,
+      error_code: AUDIT_COLUMN_WIDTHS.errorCode,
+    }
+    for (const [column, width] of Object.entries(widths)) {
+      expect(statement).toContain(`\`${column}\` varchar(${width})`)
+    }
   })
 
   it('status_code 는 smallint unsigned, meta 는 json + utf8mb4_bin', async () => {

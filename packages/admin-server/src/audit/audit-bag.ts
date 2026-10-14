@@ -16,7 +16,9 @@ type WithBag = Request & { [AUDIT_BAG]?: AuditBag }
 
 function bagOf(req: Request): AuditBag {
   const holder = req as WithBag
-  holder[AUDIT_BAG] ??= { meta: {} }
+  // 🔴 meta 는 null-prototype 이다(최종 리뷰 F1) — JSON 본문의 자기 "__proto__" 키를 일반 객체에 `Object.assign` 하면 `[[Set]]` 이
+  //    프로토타입을 바꿔 그 패치 전체가 소독을 빠져나간다. null-prototype 에서는 그냥 데이터 키다.
+  holder[AUDIT_BAG] ??= { meta: Object.create(null) as Record<string, unknown> }
   return holder[AUDIT_BAG]
 }
 
@@ -45,7 +47,8 @@ export function attachAuditDiff(
   fields: readonly string[],
 ): void {
   const pick = (source: Record<string, unknown> | null | undefined): Record<string, unknown> => {
-    const picked: Record<string, unknown> = {}
+    // 🔴 null-prototype — `__proto__` 라는 필드 이름도 대입이 아니라 데이터로 남는다(최종 리뷰 F1)
+    const picked = Object.create(null) as Record<string, unknown>
     if (source == null) return picked
     for (const field of fields) if (Object.hasOwn(source, field)) picked[field] = source[field]
     return picked
