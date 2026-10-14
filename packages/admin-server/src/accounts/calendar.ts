@@ -142,7 +142,8 @@ export function fromDateColumn(value: Date): string {
 }
 
 /**
- * 코어 옵션 `timeZone` 을 푼다. 없으면 'Asia/Seoul'. 정규 이름을 돌려준다 — `'asia/seoul'` → `'Asia/Seoul'`,
+ * 코어 옵션 `timeZone` 을 푼다. 없으면 'Asia/Seoul'. Intl(ICU) 가 내는 이름을 돌려준다 —
+ * 대개 정규 이름이고 일부는 옛 이름이다(ICU 판에 따라 다르다: `'Asia/Kolkata'` → `'Asia/Calcutta'`). `'asia/seoul'` → `'Asia/Seoul'`,
  * `'US/Eastern'` → `'America/New_York'`(2d-3 스펙 ⑤ N1). 셈 · 감사 meta 가 한 표기를 쓴다.
  * 🔴 기동에서 멈춘다: IANA 모양이 아님(`+09:00` · `KST`) · Intl 이 모르는 이름(B15).
  * 🔴 링크 이름의 정규 이름은 ICU 판마다 다를 수 있다 — 거부하지 않고 바꿔 둔다(Node 를 올려도 기동이 깨지지 않게).

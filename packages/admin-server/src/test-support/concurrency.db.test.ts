@@ -95,8 +95,18 @@ describe('whileHeld', () => {
 })
 
 describe('lockWaitsIn', () => {
+  // 데이터베이스 만들기가 10~15초 걸린다 — 테스트 본문(20초)이 아니라 훅(60초)에서 만들고 지운다.
+  let other: TestDatabase
+
+  beforeAll(async () => {
+    other = await createTestDatabase()
+  })
+
+  afterAll(async () => {
+    await other?.drop()
+  })
+
   it('🔴 다른 데이터베이스(병렬 테스트 파일)의 대기는 세지 않는다', async () => {
-    const other = await createTestDatabase()
     const open = (database: string) =>
       createConnection({ ...testDbServer(), database, timezone: 'Z' })
     const holder = await open(other.name)
@@ -128,7 +138,6 @@ describe('lockWaitsIn', () => {
       await holder.rollback().catch(() => undefined)
       await waiter.rollback().catch(() => undefined)
       for (const connection of [holder, waiter, observer]) await connection.end()
-      await other.drop()
     }
   })
 })

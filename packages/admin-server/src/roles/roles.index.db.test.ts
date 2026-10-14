@@ -116,28 +116,34 @@ describe('🔴 역할 쓰기는 상관없는 역할 행을 기다리지 않는�
 })
 
 describe('순서 시드가 0 여럿일 때(Review Focus 4)', () => {
+  // 데이터베이스 만들기는 느리다 — 테스트 본문(20초)이 아니라 훅(60초)에서 한다.
+  let u: TestDatabase
+
+  beforeAll(async () => {
+    u = await createTestDatabase()
+  })
+
+  afterAll(async () => {
+    await u?.drop()
+  })
+
   it('만들기는 끝 행 + 1 = 1, 그다음은 2 — 시드의 0 은 그대로', async () => {
-    const u = await createTestDatabase()
-    try {
-      await seedRole(u.db, { roleName: 'zero-a', permissions: [] })
-      await seedRole(u.db, { roleName: 'zero-b', permissions: [] })
-      const own = new AdminRolesService(u.db, accountsConfig(), undefined)
-      await own.create({ roleName: 'zero-new-1', isDefault: false, permissions: [] }, root)
-      await own.create({ roleName: 'zero-new-2', isDefault: false, permissions: [] }, root)
-      const rows = await u.db
-        .selectFrom('roles')
-        .select(['roleName', 'displayOrder'])
-        .orderBy('displayOrder')
-        .orderBy('roleNo')
-        .execute()
-      expect(rows).toEqual([
-        { roleName: 'zero-a', displayOrder: 0 },
-        { roleName: 'zero-b', displayOrder: 0 },
-        { roleName: 'zero-new-1', displayOrder: 1 },
-        { roleName: 'zero-new-2', displayOrder: 2 },
-      ])
-    } finally {
-      await u.drop()
-    }
+    await seedRole(u.db, { roleName: 'zero-a', permissions: [] })
+    await seedRole(u.db, { roleName: 'zero-b', permissions: [] })
+    const own = new AdminRolesService(u.db, accountsConfig(), undefined)
+    await own.create({ roleName: 'zero-new-1', isDefault: false, permissions: [] }, root)
+    await own.create({ roleName: 'zero-new-2', isDefault: false, permissions: [] }, root)
+    const rows = await u.db
+      .selectFrom('roles')
+      .select(['roleName', 'displayOrder'])
+      .orderBy('displayOrder')
+      .orderBy('roleNo')
+      .execute()
+    expect(rows).toEqual([
+      { roleName: 'zero-a', displayOrder: 0 },
+      { roleName: 'zero-b', displayOrder: 0 },
+      { roleName: 'zero-new-1', displayOrder: 1 },
+      { roleName: 'zero-new-2', displayOrder: 2 },
+    ])
   })
 })

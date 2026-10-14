@@ -82,3 +82,41 @@ describe.each([
     ).toEqual([])
   })
 })
+
+describe('스냅샷 격리 ON — 기본 켜기', () => {
+  it('🔴 다른 기본 역할 잠금은 잠금 단계에 있다 — 그 역할의 이동이 커밋되기를 기다렸다 기본을 넘겨받는다', async () => {
+    // 🔴 lockOtherDefaults 를 쓰기 단계(읽기 뷰가 열린 뒤)로 옮기면 ON 에서 1020 → 409 ERR_COMMON_CONFLICT 가 된다(§14 R4).
+    const seeder = new AdminRolesService(t.db, accountsConfig(), undefined)
+    const d = await seeder.create(
+      { roleName: 'snap-default-d', isDefault: true, permissions: ['org.users:read'] },
+      root,
+    )
+    const r = await seeder.create(
+      { roleName: 'snap-default-r', isDefault: false, permissions: ['org.users:read'] },
+      root,
+    )
+    const db = await snapshotKysely(t, true)
+    try {
+      const service = new AdminRolesService(db, accountsConfig(), undefined)
+      const result = await whileHeld(t, moving(d.roleNo), () =>
+        service.update(
+          r.roleNo,
+          { revision: 0, isDefault: true, permissions: ['org.users:read'] },
+          root,
+        ),
+      )
+      if (!result.ok) throw result.error
+      expect(result.value.clearedDefaults).toEqual([d.roleNo])
+      expect(result.value.item.isDefault).toBe(true)
+    } finally {
+      await db.destroy()
+    }
+    const rows = await t.db
+      .selectFrom('roles')
+      .select(['roleNo', 'isDefault'])
+      .where('roleNo', 'in', [d.roleNo, r.roleNo])
+      .execute()
+    expect(rows.find((row) => row.roleNo === d.roleNo)?.isDefault).toBe(false)
+    expect(rows.find((row) => row.roleNo === r.roleNo)?.isDefault).toBe(true)
+  })
+})

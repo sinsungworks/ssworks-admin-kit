@@ -44,6 +44,7 @@ async function migrationRows(): Promise<number> {
 }
 
 describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
+  // 전체 장 통과를 세 번 도는 한 테스트다 — 다른 파일이 병렬로 DDL 을 돌리는 전체 실행에서 전역 20초를 넘겼다. 이 테스트만 90초.
   it('up → down → up', async () => {
     const first = await t.migrator.migrateToLatest()
     expect(first.error).toBeUndefined()
@@ -62,7 +63,7 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
     expect(again.error).toBeUndefined()
     expect(await coreTables()).toEqual(CORE_TABLES)
     expect(await migrationRows()).toBe(ADMIN_MIGRATIONS.length)
-  })
+  }, 90_000)
 
   it('collation · NULL · ON UPDATE · 타입을 스키마에서 잰다', async () => {
     const result = await sql<{

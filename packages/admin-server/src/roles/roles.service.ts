@@ -131,6 +131,7 @@ export class AdminRolesService {
         // 🔴 FOR UPDATE — 동시 만들기 둘이 같은 끝 값을 읽으면 순서 값이 겹친다(§14 R5-5 · R7-4). 🔴 idx_roles_display_order 의
         //    끝 행과 그 위 틈(supremum)만 잠그고 다른 역할 행은 잠그지 않는다(2d-3 스펙 C6). 두 만들기의 읽기가 서로의 INSERT 앞에
         //    겹치면 한쪽은 교착(1213 → 409, 다시 시도)으로 끝난다 — 순서 값은 겹치지 않는다(2d-3 스펙 §14 R3).
+        //    다만 순서 맨 끝 역할의 삭제 · 이동 · 기본 켜기와 겹쳐도 같다 — 끝 행 잠금이 그 역할의 PK 행을 기다린다(§14 R4).
         //    MAX(…) 는 옵티마이저가 "optimized away" 로 읽어 잠금이 그 동작에 기댄다(2d-3 스펙 §14 R1-8)
         const top = await trx
           .selectFrom('roles')
@@ -273,8 +274,8 @@ export class AdminRolesService {
   ): Promise<{ before: RoleAuditView }> {
     await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const actor = actorOf(principal)
-    // 🔴 쓰는 중 검사가 먼저라 잔존은 지금은 닿지 않는 방어선이다(hangang · 2d 스펙 B11). 쓰는 중 검사가 스냅숏 때문에 놓친
-    //    배정은 FK restrict 가 받친다 — mapError 가 같은 409 ERR_COMMON_IN_USE 로 바꾼다(2a F15).
+    // 🔴 쓰는 중 검사가 먼저라 잔존은 지금은 닿지 않는 방어선이다(hangang · 2d 스펙 B11). 쓰는 중 검사가 무언가 놓쳐도
+    //    FK restrict 가 받친다 — mapError 가 같은 409 ERR_COMMON_IN_USE 로 바꾼다(2a F15).
     const before = await runWriteTransaction(this.db, (trx) =>
       withSuperAdminSurvival(trx, {
         // 🔴 잠금 읽기 · 판정만(2d-3 스펙 C2 · C3)
