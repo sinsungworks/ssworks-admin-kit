@@ -2,12 +2,22 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import {
   toListQuery,
   type AdminUserCreate,
+  type AdminUserRehire,
+  type AdminUserResign,
+  type AdminUserResignDate,
   type AdminUserUpdate,
   type Paginated,
 } from '@ssworks/admin-shared'
 import { sql, type Kysely } from 'kysely'
 import { actorOf, judgeAccountCommand } from '../accounts/account-command.js'
-import { fromDateColumn, startOfDayIn, todayIn } from '../accounts/calendar.js'
+import {
+  dateIn,
+  effectiveResignAt,
+  fromDateColumn,
+  startOfDayIn,
+  toDateColumn,
+  todayIn,
+} from '../accounts/calendar.js'
 import { isDuplicateOf } from '../accounts/duplicate.js'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import type { ResolvedUsersConfig } from '../accounts/options.js'
@@ -22,8 +32,14 @@ import { AdminSessionStore } from '../auth/session.store.js'
 import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { ADMIN_ACCOUNTS_CONFIG, KYSELY } from '../tokens.js'
-import { correctJoinDate, insertPeriod } from './employment.js'
-import { fieldError, noUser, userRevisionConflict } from './errors.js'
+import {
+  correctJoinDate,
+  insertPeriod,
+  lockActivePeriods,
+  lockLatestPeriods,
+  reasonOf,
+} from './employment.js'
+import { fieldError, noUser, userConflict, userRevisionConflict } from './errors.js'
 import { lockGrantRole, lockTeam, lockUser, replaceTeam } from './user-locks.js'
 import { readUser, toUserView, userViewQuery, type AdminUserView } from './user-view.js'
 import { userListCondition, type AdminUserListQuery } from './users.query.js'
@@ -54,6 +70,25 @@ export interface AdminUserCreateBody extends AdminUserCreate {
 
 export interface AdminUserUpdateBody extends AdminUserUpdate {
   currentPassword?: string
+}
+
+export interface AdminUserResignBody extends AdminUserResign {
+  currentPassword?: string
+}
+
+export interface AdminUserResignDateBody extends AdminUserResignDate {
+  currentPassword?: string
+}
+
+export interface AdminUserRehireBody extends AdminUserRehire {
+  currentPassword?: string
+}
+
+/** 퇴사 · 퇴사일 정정 · 재입사의 결과 — 감사 diff 의 before 와 meta 를 함께 돌려준다 */
+export interface UserEmploymentResult {
+  item: AdminUserView
+  before: AdminUserView
+  meta: Record<string, unknown>
 }
 
 @Injectable()
@@ -232,6 +267,174 @@ export class AdminUsersService {
         body.roleNo === undefined ? await write() : await withSuperAdminSurvival(trx, write)
       // 🔴 같은 트랜잭션에서 읽는다 — 응답 · 감사 after 가 이 쓰기의 결과다(§14 R5-2)
       return { item: await readUser(trx, userNo, timeZone), before }
+    })
+  }
+
+  /**
+   * 퇴사(⑤ Z1). 효력 시각(기준 시간대의 퇴사일 다음 날 0시)이 이미 지났으면 그 사용자의 세션을 같은 트랜잭션에서
+   * 폐기한다 — 미래면 두고 인증이 그 시각에 막는다(공통 6). 활성 구간이 없으면 users.joinAt 으로 치유한다(공통 7).
+   * 🔴 늘 잔존 잠금 — 퇴사 예정(미래)도 셈에서 곧바로 빠진다(§5-3).
+   */
+  async resign(
+    userNo: bigint,
+    body: AdminUserResignBody,
+    principal: AdminPrincipal,
+  ): Promise<UserEmploymentResult> {
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
+    const timeZone = this.config.timeZone
+    const actor = actorOf(principal)
+    const reason = reasonOf(body.reason)
+    const now = new Date()
+    return runWriteTransaction(this.db, (trx) =>
+      withSuperAdminSurvival(trx, async () => {
+        const target = await lockUser(trx, userNo)
+        // 🔴 판정이 상태보다 먼저(B7)
+        judgeAccountCommand(actor, {
+          kind: 'user.resign',
+          targetUserNo: userNo,
+          current: this.permissionsOf(target),
+        })
+        if (target.resignAt !== null) throw userConflict(ACCOUNT_MESSAGES.alreadyResigned)
+        const before = await readUser(trx, userNo, timeZone)
+        const active = await lockActivePeriods(trx, userNo)
+        if (active.length > 1) throw userConflict(ACCOUNT_MESSAGES.periodCorrupted)
+        const healed = active[0] === undefined
+        const period =
+          active[0] ??
+          (await insertPeriod(trx, {
+            userNo,
+            joinDate: dateIn(target.joinAt, timeZone),
+            reason: null,
+            createdBy: null,
+          }))
+        if (body.resignDate < period.joinDate) {
+          throw fieldError('resignDate', ACCOUNT_MESSAGES.resignBeforeJoin)
+        }
+        await trx
+          .updateTable('userEmploymentPeriods')
+          .set({ resignAt: toDateColumn(body.resignDate), reason })
+          .where('periodNo', '=', period.periodNo)
+          .execute()
+        const effective = effectiveResignAt(body.resignDate, timeZone)
+        await trx
+          .updateTable('users')
+          .set((eb) => ({
+            resignAt: effective,
+            revision: eb('revision', '+', 1),
+            updateAt: sql<Date>`current_timestamp`,
+          }))
+          .where('userNo', '=', userNo)
+          .execute()
+        // 🔴 효력 시각이 이미 지났으면 같은 트랜잭션에서 끊는다 — 커밋되면 그 사용자의 다음 요청은 401(§14 R6-1)
+        const revokedCount =
+          effective.getTime() <= now.getTime()
+            ? await this.sessions.revokeAllOfUser(userNo, 'terminated', now, { trx })
+            : 0
+        return {
+          item: await readUser(trx, userNo, timeZone),
+          before,
+          meta: { reason, revokedCount, ...(healed ? { healedPeriod: true } : {}), timeZone },
+        }
+      }),
+    )
+  }
+
+  /**
+   * 퇴사일 정정 — 마지막 구간만. 잔존 잠금 없음(resignAt 이 NULL 아닌 채로 바뀐다). 세션은 건드리지 않는다(hangang) —
+   * 과거로 당기면 인증이 다음 요청에서 막는다.
+   */
+  async correctResignDate(
+    userNo: bigint,
+    body: AdminUserResignDateBody,
+    principal: AdminPrincipal,
+  ): Promise<UserEmploymentResult> {
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
+    const timeZone = this.config.timeZone
+    const actor = actorOf(principal)
+    const reason = body.reason === undefined ? undefined : reasonOf(body.reason)
+    return runWriteTransaction(this.db, async (trx) => {
+      const target = await lockUser(trx, userNo)
+      judgeAccountCommand(actor, {
+        kind: 'user.resignDate',
+        targetUserNo: userNo,
+        current: this.permissionsOf(target),
+      })
+      if (target.resignAt === null) throw userConflict(ACCOUNT_MESSAGES.notResigned)
+      const before = await readUser(trx, userNo, timeZone)
+      const [last] = await lockLatestPeriods(trx, userNo)
+      if (last === undefined) throw userConflict(ACCOUNT_MESSAGES.noPeriodForResign)
+      if (body.resignDate < last.joinDate) {
+        throw fieldError('resignDate', ACCOUNT_MESSAGES.resignBeforeJoin)
+      }
+      await trx
+        .updateTable('userEmploymentPeriods')
+        .set({
+          resignAt: toDateColumn(body.resignDate),
+          ...(reason === undefined ? {} : { reason }),
+        })
+        .where('periodNo', '=', last.periodNo)
+        .execute()
+      await trx
+        .updateTable('users')
+        .set((eb) => ({
+          resignAt: effectiveResignAt(body.resignDate, timeZone),
+          revision: eb('revision', '+', 1),
+          updateAt: sql<Date>`current_timestamp`,
+        }))
+        .where('userNo', '=', userNo)
+        .execute()
+      return {
+        item: await readUser(trx, userNo, timeZone),
+        before,
+        meta: { ...(reason === undefined ? {} : { reason }), timeZone },
+      }
+    })
+  }
+
+  /** 재입사 — 잔존 잠금 없음(셈을 늘리기만 한다). 본인도 된다(B16 — 퇴사 예정인 본인) */
+  async rehire(
+    userNo: bigint,
+    body: AdminUserRehireBody,
+    principal: AdminPrincipal,
+  ): Promise<UserEmploymentResult> {
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
+    const timeZone = this.config.timeZone
+    const actor = actorOf(principal)
+    const reason = reasonOf(body.reason)
+    return runWriteTransaction(this.db, async (trx) => {
+      const target = await lockUser(trx, userNo)
+      judgeAccountCommand(actor, {
+        kind: 'user.rehire',
+        targetUserNo: userNo,
+        current: this.permissionsOf(target),
+      })
+      if (target.resignAt === null) throw userConflict(ACCOUNT_MESSAGES.notResignedForRehire)
+      const before = await readUser(trx, userNo, timeZone)
+      if ((await lockActivePeriods(trx, userNo)).length > 0) {
+        throw userConflict(ACCOUNT_MESSAGES.activePeriodExists)
+      }
+      const [last] = await lockLatestPeriods(trx, userNo)
+      // ⑤ Z1 에서 같은 날은 근무가 겹친다 — 재입사일은 직전 퇴사일 다음 날부터(axion)
+      if (last?.resignDate != null && body.joinDate <= last.resignDate) {
+        throw fieldError('joinDate', ACCOUNT_MESSAGES.rehireNotAfterResign)
+      }
+      await insertPeriod(trx, {
+        userNo,
+        joinDate: body.joinDate,
+        reason,
+        createdBy: principal.userNo,
+      })
+      await trx
+        .updateTable('users')
+        .set((eb) => ({
+          joinAt: startOfDayIn(body.joinDate, timeZone),
+          resignAt: null,
+          revision: eb('revision', '+', 1),
+          updateAt: sql<Date>`current_timestamp`,
+        }))
+        .where('userNo', '=', userNo)
+        .execute()
+      return { item: await readUser(trx, userNo, timeZone), before, meta: { reason, timeZone } }
     })
   }
 

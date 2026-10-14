@@ -84,3 +84,25 @@ export async function correctJoinDate(
     .where('periodNo', '=', last.periodNo)
     .execute()
 }
+
+/** 활성 구간(퇴사일 없음) 전부 — 둘 이상이면 손상(공통 7). 🔴 FOR UPDATE — 기다린 사이 생긴 구간을 본다(§14 R7-2) */
+export async function lockActivePeriods(
+  trx: Transaction<AdminDatabase>,
+  userNo: bigint,
+): Promise<LockedPeriod[]> {
+  const rows = await trx
+    .selectFrom('userEmploymentPeriods')
+    .select(['periodNo', 'joinAt', 'resignAt'])
+    .where('userNo', '=', userNo)
+    .where('resignAt', 'is', null)
+    .orderBy('periodNo')
+    .forUpdate()
+    .execute()
+  return rows.map(toPeriod)
+}
+
+/** 사유 — 앞뒤 공백을 떼고, 비면 없음(null) */
+export function reasonOf(reason: string | null | undefined): string | null {
+  const trimmed = reason?.trim() ?? ''
+  return trimmed === '' ? null : trimmed
+}
