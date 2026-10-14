@@ -7,7 +7,7 @@ import {
   parseJSON,
 } from '@ssworks/admin-shared'
 import request, { type Response } from 'supertest'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import { bootAdminApp } from '../test-support/admin-app.js'
@@ -54,6 +54,29 @@ const data = (response: Response): unknown => parseJSON<{ data: unknown }>(respo
 const listSchema = z.object({ items: z.array(adminRoleSchema) })
 const itemSchema = z.object({ item: adminRoleSchema })
 const createdSchema = z.object({ roleNo: z.bigint() })
+// AdminRoleView 의 키 전부(admin-shared adminRoleSchema) — 봉투 data 의 키 집합을 정확히 잰다
+const ROLE_KEYS = ['displayOrder', 'isDefault', 'permissions', 'revision', 'roleName', 'roleNo']
+
+/** 성공 봉투 { success: true, data } 를 풀고 data 의 키 집합이 정확히 keys 인지 잰다 */
+function envelope(response: Response, keys: string[]): Record<string, unknown> {
+  const body = parseJSON<{ success: boolean; data: Record<string, unknown> }>(response.text)
+  expect(body.success).toBe(true)
+  expect(Object.keys(body.data).sort()).toEqual([...keys].sort())
+  return body.data
+}
+
+function expectRoleKeys(item: unknown) {
+  expect(Object.keys(item as Record<string, unknown>).sort()).toEqual(ROLE_KEYS)
+}
+
+async function failCount(user: SeededUser): Promise<number> {
+  const row = await t.db
+    .selectFrom('users')
+    .select('loginFailCount')
+    .where('userNo', '=', user.userNo)
+    .executeTakeFirstOrThrow()
+  return row.loginFailCount
+}
 
 function expectError(response: Response, status: number, code: string, message?: string) {
   expect(response.status).toBe(status)
@@ -73,7 +96,10 @@ async function signIn(user: SeededUser, target: NestExpressApplication = app): P
 }
 
 async function roles(agent: Agent) {
-  return listSchema.parse(data(await agent.get('/admin/roles').expect(200))).items
+  const response = await agent.get('/admin/roles').expect(200)
+  const body = envelope(response, ['items'])
+  for (const item of body.items as unknown[]) expectRoleKeys(item)
+  return listSchema.parse(data(response)).items
 }
 
 async function roleNamed(agent: Agent, roleName: string) {
@@ -84,6 +110,7 @@ async function roleNamed(agent: Agent, roleName: string) {
 
 async function create(agent: Agent, body: Record<string, unknown>): Promise<bigint> {
   const response = await agent.post('/admin/roles').send(body).expect(201)
+  envelope(response, ['roleNo'])
   return createdSchema.parse(data(response)).roleNo
 }
 
@@ -192,14 +219,12 @@ describe('수정', () => {
       CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT,
       ACCOUNT_MESSAGES.roleRevisionMismatch,
     )
-    const { item } = itemSchema.parse(
-      data(
-        await agent
-          .patch(`/admin/roles/${roleNo}`)
-          .send({ revision: 0, roleName: 'http-rev2', permissions: ['org.users:write'] })
-          .expect(200),
-      ),
-    )
+    const updated = await agent
+      .patch(`/admin/roles/${roleNo}`)
+      .send({ revision: 0, roleName: 'http-rev2', permissions: ['org.users:write'] })
+      .expect(200)
+    expectRoleKeys(envelope(updated, ['item']).item)
+    const { item } = itemSchema.parse(data(updated))
     expect(item).toMatchObject({
       roleName: 'http-rev2',
       permissions: ['org.users:read', 'org.users:write'],
@@ -218,7 +243,7 @@ describe('수정', () => {
       .patch(`/admin/roles/${wide}`)
       .send({ revision: 0, roleName: 'http-wide-role2' })
       .expect(200)
-    expectError(
+    const denied = expectError(
       await agent
         .patch(`/admin/roles/${wide}`)
         .send({ revision: 1, permissions: ['org.users:read'] }),
@@ -226,6 +251,8 @@ describe('수정', () => {
       CommonErrorCodes.ERR_COMMON_FORBIDDEN,
       ACCOUNT_MESSAGES.higherRoleToEdit,
     )
+    // 판정은 현재 권한(['*'])이 먼저다(judgeAccountCommand) — 보내려던 키가 아니라 대상 역할이 못 덮인다
+    expect(denied.details).toEqual({ outside: ['*'] })
   })
 
   it('기본 역할은 하나 — 켜면 다른 기본 역할이 꺼지고 그 revision 이 오른다(⑫ D1)', async () => {
@@ -273,18 +300,58 @@ describe('수정', () => {
       'old.key:read',
       'org.users:read',
     ])
-    expectError(
+    const resent = expectError(
       await agent
         .patch(`/admin/roles/${stale}`)
         .send({ revision: 0, permissions: ['old.key:read', 'org.users:read'] }),
       400,
       CommonErrorCodes.ERR_COMMON_VALIDATION,
     )
+    expect(resent.details).toEqual({
+      issues: [
+        { path: ['permissions', 0], code: 'custom', message: ACCOUNT_MESSAGES.unknownPermission },
+      ],
+    })
     await agent
       .patch(`/admin/roles/${stale}`)
       .send({ revision: 0, permissions: ['org.users:read'] })
       .expect(200)
     expect((await roleNamed(agent, 'http-stale')).permissions).toEqual(['org.users:read'])
+  })
+
+  it('🔴 revision 이 빠진 수정 · 삭제는 400 issues revision — 역할은 그대로', async () => {
+    const agent = await signIn(boss)
+    const roleNo = await create(agent, {
+      roleName: 'http-norev',
+      isDefault: false,
+      permissions: [],
+    })
+    const before = await roleNamed(agent, 'http-norev')
+    for (const response of [
+      await agent.patch(`/admin/roles/${roleNo}`).send({ roleName: 'http-norev2' }),
+      await agent.delete(`/admin/roles/${roleNo}`).send({}),
+    ]) {
+      const body = expectError(response, 400, CommonErrorCodes.ERR_COMMON_VALIDATION)
+      const issues = (body.details as { issues: { path: unknown[] }[] }).issues
+      expect(issues.map((issue) => issue.path)).toEqual([['revision']])
+    }
+    expect(await roleNamed(agent, 'http-norev')).toEqual(before)
+  })
+
+  it('재인증 끔 — 보낸 currentPassword 는 버린다(비교하지 않는다 · 카운터 그대로)', async () => {
+    const agent = await signIn(boss)
+    const roleNo = await create(agent, {
+      roleName: 'http-reauth-off',
+      isDefault: false,
+      permissions: [],
+      currentPassword: 'anything',
+    })
+    await agent
+      .patch(`/admin/roles/${roleNo}`)
+      .send({ revision: 0, roleName: 'http-reauth-off2', currentPassword: '' })
+      .expect(200)
+    expect((await roleNamed(agent, 'http-reauth-off2')).revision).toBe(1)
+    expect(await failCount(boss)).toBe(0)
   })
 
   it('없는 역할 404 · 숫자가 아닌 경로 400', async () => {
@@ -348,6 +415,50 @@ describe('이동 · 삭제', () => {
 })
 
 describe('재인증(reauth: true)', () => {
+  // 틀린 재인증 한 번은 실패 카운터에 센다(2b B2) — 단언이 먼저 실패해도 다음 테스트가 잠금에 걸리지 않게 되돌린다.
+  afterEach(async () => {
+    await t.db
+      .updateTable('users')
+      .set({ loginFailCount: 0 })
+      .where('userNo', '=', boss.userNo)
+      .execute()
+  })
+
+  it('🔴 수정 · 삭제도 묻는다 — 빠짐 · 빈 값 400 currentPassword(카운터 그대로 · 역할 그대로) · 맞음 200', async () => {
+    const agent = await signIn(boss, guarded)
+    const roleNo = await create(agent, {
+      roleName: 'reauth-write',
+      isDefault: false,
+      permissions: [],
+      currentPassword: boss.password,
+    })
+    const before = await roleNamed(agent, 'reauth-write')
+    for (const response of [
+      await agent.patch(`/admin/roles/${roleNo}`).send({ revision: 0, roleName: 'reauth-write2' }),
+      await agent
+        .patch(`/admin/roles/${roleNo}`)
+        .send({ revision: 0, roleName: 'reauth-write2', currentPassword: '' }),
+      await agent.delete(`/admin/roles/${roleNo}`).send({ revision: 0 }),
+    ]) {
+      const body = expectError(response, 400, CommonErrorCodes.ERR_COMMON_VALIDATION)
+      expect(body.details).toEqual({
+        issues: [
+          expect.objectContaining({
+            path: ['currentPassword'],
+            message: ACCOUNT_MESSAGES.currentPasswordRequired,
+          }),
+        ],
+      })
+      expect(await failCount(boss)).toBe(0)
+      expect(await roleNamed(agent, 'reauth-write')).toEqual(before)
+    }
+    await agent
+      .patch(`/admin/roles/${roleNo}`)
+      .send({ revision: 0, roleName: 'reauth-write2', currentPassword: boss.password })
+      .expect(200)
+    expect((await roleNamed(agent, 'reauth-write2')).revision).toBe(1)
+  })
+
   it('🔴 빠짐 · 빈 값 400 currentPassword(카운터 그대로) · 틀림 403 · 맞음 201 — 이동은 묻지 않는다', async () => {
     const agent = await signIn(boss, guarded)
     for (const extra of [{}, { currentPassword: '' }]) {
@@ -395,13 +506,6 @@ describe('재인증(reauth: true)', () => {
       .expect(201)
     const roleNo = createdSchema.parse(data(response)).roleNo
     await agent.patch(`/admin/roles/${roleNo}/move`).send({ displayOrder: 1 }).expect(200)
-
-    // 틀린 재인증 한 번은 실패 카운터에 셌다(2b B2) — 다음 테스트가 잠금에 걸리지 않게 되돌린다.
-    await t.db
-      .updateTable('users')
-      .set({ loginFailCount: 0 })
-      .where('userNo', '=', boss.userNo)
-      .execute()
   })
 })
 
@@ -463,7 +567,24 @@ describe('감사', () => {
       })
       .expect(201)
     const roleNo = createdSchema.parse(data(response)).roleNo
-    const [row] = await auditRows(CoreAuditActions.ROLE_CREATE, roleNo)
-    expect(JSON.stringify(row?.meta)).not.toContain(boss.password)
+    await agent
+      .patch(`/admin/roles/${roleNo}`)
+      .send({ revision: 0, roleName: 'audit-reauth2', currentPassword: boss.password })
+      .expect(200)
+    await agent
+      .delete(`/admin/roles/${roleNo}`)
+      .send({ revision: 1, currentPassword: boss.password })
+      .expect(200)
+    for (const action of [
+      CoreAuditActions.ROLE_CREATE,
+      CoreAuditActions.ROLE_UPDATE,
+      CoreAuditActions.ROLE_DELETE,
+    ]) {
+      const [row] = await auditRows(action, roleNo)
+      expect(row, action).toBeDefined()
+      const raw = JSON.stringify(row?.meta)
+      expect(raw).not.toContain(boss.password)
+      expect(raw).not.toContain('currentPassword')
+    }
   })
 })
