@@ -48,6 +48,8 @@ export interface SeedUserInput {
   /** 평문 — 시드가 해시한다 */
   password?: string
   userName?: string
+  /** 없으면 DB 기본값(지금) */
+  joinAt?: Date
   resignAt?: Date | null
   isPasswordChangeRequired?: boolean
   loginFailCount?: number
@@ -74,6 +76,7 @@ export async function seedUser(
       password: await hashPassword(password),
       userName: input.userName ?? `사용자${sequence}`,
       roleNo: input.roleNo,
+      joinAt: input.joinAt,
       resignAt: input.resignAt ?? null,
       isPasswordChangeRequired: input.isPasswordChangeRequired ?? false,
       loginFailCount: input.loginFailCount ?? 0,
