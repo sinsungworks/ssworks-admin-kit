@@ -60,6 +60,19 @@ const issue = (path: string, message: string) => ({
   issues: [{ path: [path], code: 'custom', message }],
 })
 
+/** 만료된 미폐기 세션 — 살아 있는 세션을 만들고 만료 시각을 1분 전으로 옮긴다 */
+async function expiredSession(userNo: bigint): Promise<bigint> {
+  const sessionNo = await seedSession(t.db, userNo)
+  await t.db
+    .updateTable('sessions')
+    .set({ expireAt: new Date(Date.now() - 60_000) })
+    .where('sessionNo', '=', sessionNo)
+    .execute()
+  return sessionNo
+}
+
+const sessionState = (sessionNo: bigint) => new AdminSessionStore(t.db).findByNo(sessionNo)
+
 describe('resign', () => {
   it('🔴 어제 → 효력 시각(오늘 0시)이 지났다 — 그 사용자 세션을 같은 트랜잭션에서 끊는다(공통 6)', async () => {
     const user = await employee('r-yesterday')
@@ -107,6 +120,19 @@ describe('resign', () => {
     const result = await service.resign(user.userNo, { resignDate: day(30) }, root)
     expect(result.meta).toMatchObject({ revokedCount: 0 })
     expect(await liveSessionCount(t.db, user.userNo)).toBe(1)
+  })
+
+  it('🔴 즉시 퇴사는 살아 있는 세션만 끊고 센다 — 만료된 미폐기 행 · 이미 폐기된 행은 그대로(⑥ L1 · Review Focus 5)', async () => {
+    const user = await employee('r-live-only')
+    const live = await seedSession(t.db, user.userNo)
+    const expired = await expiredSession(user.userNo)
+    const rotated = await seedSession(t.db, user.userNo)
+    await new AdminSessionStore(t.db).revoke(rotated, 'rotated', new Date())
+    const result = await service.resign(user.userNo, { resignDate: day(-1) }, root)
+    expect(result.meta).toMatchObject({ revokedCount: 1 })
+    expect(await sessionState(live)).toMatchObject({ isRevoked: true, revokedReason: 'terminated' })
+    expect(await sessionState(expired)).toMatchObject({ isRevoked: false, revokedReason: null })
+    expect(await sessionState(rotated)).toMatchObject({ isRevoked: true, revokedReason: 'rotated' })
   })
 
   it('🔴 입사 당일 퇴사는 된다 · 하루 앞은 400 resignDate(Review Focus 4)', async () => {

@@ -76,6 +76,13 @@ describe('resolveUsersConfig', () => {
     ).toMatchObject({ reauth: true, timeZone: 'UTC' })
   })
 
+  it('timeZone 은 정규 이름으로 바꿔 둔다(2d-3 스펙 ⑤ N1)', () => {
+    expect(
+      resolveUsersConfig({ permissionCatalog: catalog, timeZone: 'asia/seoul' }, 'AdminUsersModule')
+        .timeZone,
+    ).toBe('Asia/Seoul')
+  })
+
   it('🔴 timeZone 이 IANA 이름이 아니면 멈춘다(B15) — 카탈로그 검사는 그대로', () => {
     expect(() =>
       resolveUsersConfig({ permissionCatalog: catalog, timeZone: '+09:00' }, 'AdminUsersModule'),

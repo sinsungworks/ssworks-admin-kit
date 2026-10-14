@@ -355,9 +355,13 @@ export class AdminUsersService {
           // 🔴 효력 시각이 이미 지났으면 같은 트랜잭션에서 끊는다 — 커밋되면 그 사용자의 다음 요청은 401(§14 R6-1).
           // 🔴 세션 폐기는 쓰기 단계다(2d-3 스펙 C5) — 잠금 단계로 올리면 대상의 refresh 회전과의 교착에서 퇴사가 희생자가
           //    된다. ON 에서 대상 로그아웃이 셈과 폐기 사이에 커밋되면 1020 → 409 다시 시도(2d-3 스펙 §14 R1-4).
+          //    liveOnly — 만료된 미폐기 행은 건드리지도 세지도 않는다(2d-3 스펙 ⑥ L1 — 감사 revokedCount 가 2c 세션 라우트와 한 뜻).
           const revokedCount =
             effective.getTime() <= now.getTime()
-              ? await this.sessions.revokeAllOfUser(userNo, 'terminated', now, { trx })
+              ? await this.sessions.revokeAllOfUser(userNo, 'terminated', now, {
+                  trx,
+                  liveOnly: true,
+                })
               : 0
           return {
             item: await readUser(trx, userNo, timeZone),
@@ -503,7 +507,8 @@ export class AdminUsersService {
         })
         .where('userNo', '=', userNo)
         .execute()
-      return this.sessions.revokeAllOfUser(userNo, 'terminated', now, { trx })
+      // liveOnly — 만료된 미폐기 행은 건드리지도 세지도 않는다(2d-3 스펙 ⑥ L1 — 감사 revokedCount 만 바뀐다)
+      return this.sessions.revokeAllOfUser(userNo, 'terminated', now, { trx, liveOnly: true })
     })
     return { temporaryPassword, revokedCount }
   }

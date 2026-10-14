@@ -77,6 +77,31 @@ describe('resetPassword', () => {
     expect(row.updateAt.toISOString()).toBe(PAST.toISOString())
   })
 
+  it('🔴 살아 있는 세션만 끊고 센다 — 만료된 미폐기 행 · 이미 폐기된 행은 그대로(⑥ L1 · Review Focus 5)', async () => {
+    const store = new AdminSessionStore(t.db)
+    const user = await locked('p-live-only')
+    const live = await seedSession(t.db, user.userNo)
+    const expired = await seedSession(t.db, user.userNo)
+    await t.db
+      .updateTable('sessions')
+      .set({ expireAt: new Date(Date.now() - 60_000) })
+      .where('sessionNo', '=', expired)
+      .execute()
+    const rotated = await seedSession(t.db, user.userNo)
+    await store.revoke(rotated, 'rotated', new Date())
+    const { revokedCount } = await service.resetPassword(user.userNo, {}, root)
+    expect(revokedCount).toBe(1)
+    expect(await store.findByNo(live)).toMatchObject({
+      isRevoked: true,
+      revokedReason: 'terminated',
+    })
+    expect(await store.findByNo(expired)).toMatchObject({ isRevoked: false, revokedReason: null })
+    expect(await store.findByNo(rotated)).toMatchObject({
+      isRevoked: true,
+      revokedReason: 'rotated',
+    })
+  })
+
   it('본인 403 selfAccount · 넓은 계정 403 · 없는 사용자 404 — 비밀번호 그대로', async () => {
     const me = await seedUser(t.db, { roleNo: plainRole, userId: 'p-self' })
     const self = await rejection(() =>

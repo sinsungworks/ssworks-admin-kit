@@ -142,15 +142,16 @@ export function fromDateColumn(value: Date): string {
 }
 
 /**
- * 코어 옵션 `timeZone` 을 푼다. 없으면 'Asia/Seoul'.
+ * 코어 옵션 `timeZone` 을 푼다. 없으면 'Asia/Seoul'. 정규 이름을 돌려준다 — `'asia/seoul'` → `'Asia/Seoul'`,
+ * `'US/Eastern'` → `'America/New_York'`(2d-3 스펙 ⑤ N1). 셈 · 감사 meta 가 한 표기를 쓴다.
  * 🔴 기동에서 멈춘다: IANA 모양이 아님(`+09:00` · `KST`) · Intl 이 모르는 이름(B15).
+ * 🔴 링크 이름의 정규 이름은 ICU 판마다 다를 수 있다 — 거부하지 않고 바꿔 둔다(Node 를 올려도 기동이 깨지지 않게).
  */
 export function resolveTimeZone(value: unknown): string {
   if (typeof value === 'undefined') return DEFAULT_TIME_ZONE
   if (typeof value === 'string' && IANA_TIME_ZONE.test(value)) {
     try {
-      formatterFor(value)
-      return value
+      return formatterFor(value).resolvedOptions().timeZone
     } catch {
       // Intl 이 모르는 이름 — 아래 문구로 멈춘다
     }

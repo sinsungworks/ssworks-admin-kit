@@ -76,12 +76,23 @@ describe('toDateColumn · fromDateColumn', () => {
 })
 
 describe('resolveTimeZone', () => {
-  it('없으면 Asia/Seoul, IANA 이름은 그대로', () => {
+  it('없으면 Asia/Seoul, 정규 이름은 그대로', () => {
     expect(resolveTimeZone(undefined)).toBe(DEFAULT_TIME_ZONE)
     expect(DEFAULT_TIME_ZONE).toBe('Asia/Seoul')
-    for (const zone of ['UTC', 'Asia/Seoul', 'America/Argentina/Buenos_Aires', 'Etc/GMT+9']) {
+    for (const zone of ['UTC', 'Asia/Seoul', 'America/New_York', 'Etc/GMT+9']) {
       expect(resolveTimeZone(zone)).toBe(zone)
     }
+  })
+
+  it('🔴 대소문자 · 옛 이름은 정규 이름으로 바꿔 돌려준다(2d-3 스펙 ⑤ N1 — 감사 meta 가 한 표기)', () => {
+    expect(resolveTimeZone('asia/seoul')).toBe('Asia/Seoul')
+    expect(resolveTimeZone('US/Eastern')).toBe('America/New_York')
+    expect(resolveTimeZone('Etc/UTC')).toBe('UTC')
+    // 🔴 링크 이름의 정규 이름은 ICU 판마다 다를 수 있다(ICU 78.3 은 'America/Buenos_Aires') — Intl 이 내는 값을 그대로 쓴다
+    const linked = 'America/Argentina/Buenos_Aires'
+    expect(resolveTimeZone(linked)).toBe(
+      new Intl.DateTimeFormat('en-US', { timeZone: linked }).resolvedOptions().timeZone,
+    )
   })
 
   it('🔴 오프셋 표기 · 약어 · 모르는 이름 · 문자열 아님은 멈춘다(B15 — Node 의 Intl 은 +09:00 을 받는다, §14 R1-5)', () => {
