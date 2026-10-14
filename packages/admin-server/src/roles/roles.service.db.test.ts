@@ -198,6 +198,35 @@ describe('update', () => {
     expect(error.details).toEqual({ outside: ['*'] })
   })
 
+  it('🔴 권한 없는 사람에게는 revision 이 틀려도 409 가 아니라 403 이다 — 판정이 먼저(B7)', async () => {
+    const { roleNo } = await service.create(
+      { roleName: 'b7-wide', isDefault: false, permissions: ['*'] },
+      root,
+    )
+    const error = await rejection(() =>
+      service.update(roleNo, { revision: 7, permissions: ['org.users:read'] }, manager),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+    expect(error.message).toBe(ACCOUNT_MESSAGES.higherRoleToEdit)
+    expect(await stored(roleNo)).toMatchObject({ permissions: ['*'], revision: 0 })
+  })
+
+  it('이름 중복(대소문자 무시)으로 바꾸면 400 issues roleName · 그 역할은 그대로(B1)', async () => {
+    await service.create({ roleName: 'Svc-Dup', isDefault: false, permissions: [] }, root)
+    const second = await service.create(
+      { roleName: 'svc-other', isDefault: false, permissions: [] },
+      root,
+    )
+    const error = await rejection(() =>
+      service.update(second.roleNo, { revision: 0, roleName: 'svc-dup' }, root),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
+    expect(error.details).toEqual({
+      issues: [{ path: ['roleName'], code: 'custom', message: ACCOUNT_MESSAGES.duplicateRoleName }],
+    })
+    expect(await stored(second.roleNo)).toMatchObject({ roleName: 'svc-other', revision: 0 })
+  })
+
   it('옛 키는 permissions 를 담은 저장에서 빠진다(Review Focus 2)', async () => {
     const roleNo = await seedRole(t.db, {
       roleName: 'update-stale',
