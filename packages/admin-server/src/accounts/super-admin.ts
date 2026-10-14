@@ -52,7 +52,10 @@ export function assertSuperAdminSurvives(before: number, after: number): void {
   }
 }
 
-/** 잔존을 줄일 수 있는 쓰기를 감싼다 — 센티넬 잠금(첫 문장) → 전 셈 → write → 후 셈 → 판정(던지면 롤백) */
+/**
+ * 잔존을 줄일 수 있는 쓰기를 감싼다 — 센티넬 잠금(첫 문장) → 전 셈 → write → 후 셈 → 판정(던지면 롤백)
+ * 🔴 호출자는 트랜잭션의 첫 호출로 부른다 — 앞선 SELECT(revision 확인 등)가 읽기 뷰를 먼저 열면 셈이 낡는다
+ */
 export async function withSuperAdminSurvival<T>(
   trx: Transaction<AdminDatabase>,
   write: () => Promise<T>,

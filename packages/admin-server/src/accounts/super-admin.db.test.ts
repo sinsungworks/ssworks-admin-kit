@@ -63,22 +63,28 @@ describe('lockSuperAdminGuard', () => {
     const baseline = await count(t.db)
 
     const holder = await createConnection({ ...testDbServer(), database: t.name })
-    await holder.beginTransaction()
-    await holder.query(
-      `select lock_name from guard_locks where lock_name = 'superAdminSurvival' for update`,
-    )
-    await holder.query(`update roles set permissions = '["org.users:read"]' where role_no = ?`, [
-      role,
-    ])
+    let waiting: Promise<{ waited: number; count: number }>
+    try {
+      await holder.beginTransaction()
+      await holder.query(
+        `select lock_name from guard_locks where lock_name = 'superAdminSurvival' for update`,
+      )
+      await holder.query(`update roles set permissions = '["org.users:read"]' where role_no = ?`, [
+        role,
+      ])
 
-    const started = Date.now()
-    const waiting = t.db.transaction().execute(async (trx) => {
-      await lockSuperAdminGuard(trx)
-      return { waited: Date.now() - started, count: await countSuperAdmins(trx) }
-    })
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    await holder.commit()
-    await holder.end()
+      const started = Date.now()
+      waiting = t.db.transaction().execute(async (trx) => {
+        await lockSuperAdminGuard(trx)
+        return { waited: Date.now() - started, count: await countSuperAdmins(trx) }
+      })
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      await holder.commit()
+    } finally {
+      // 커밋 못 한 채 끝나면 센티넬 잠금이 남아 afterAll 의 DROP DATABASE 가 막힌다
+      await holder.rollback().catch(() => undefined)
+      await holder.end()
+    }
 
     const result = await waiting
     expect(result.waited).toBeGreaterThanOrEqual(350)
@@ -127,6 +133,7 @@ describe('withSuperAdminSurvival', () => {
   it('하나가 남으면 통과하고 결과를 돌려준다', async () => {
     const role = await seedRole(u.db, { roleName: 'second-star', permissions: ['*'] })
     const user = await seedUser(u.db, { roleNo: role })
+    await seedUser(u.db, { roleNo: role }) // 남을 한 명 — 앞 테스트가 남긴 상태에 기대지 않는다
     const result = await u.db.transaction().execute((trx) =>
       withSuperAdminSurvival(trx, async () => {
         await trx
@@ -142,11 +149,18 @@ describe('withSuperAdminSurvival', () => {
 
   it('센티넬 행이 없으면 500 ERR_COMMON_INTERNAL — 쓰기 전에 멈춘다', async () => {
     await u.db.deleteFrom('guardLocks').execute()
+    let written = false
     try {
       const error = await u.db
         .transaction()
-        .execute((trx) => withSuperAdminSurvival(trx, async () => 'never'))
+        .execute((trx) =>
+          withSuperAdminSurvival(trx, async () => {
+            written = true
+          }),
+        )
         .catch((caught: unknown) => caught)
+      expect(written).toBe(false)
+      expect(error).toBeInstanceOf(BusinessError)
       expect((error as BusinessError).code).toBe(CommonErrorCodes.ERR_COMMON_INTERNAL)
       expect((error as BusinessError).message).toBe(ACCOUNT_MESSAGES.guardMissing)
     } finally {
@@ -155,5 +169,66 @@ describe('withSuperAdminSurvival', () => {
         .values({ lockName: GUARD_LOCK_SUPER_ADMIN, description: '테스트가 되돌림' })
         .execute()
     }
+  })
+})
+
+describe('withSuperAdminSurvival 경합', () => {
+  // 기준선(전권자 둘)이 알려져 있어야 하므로 데이터베이스를 따로 쓴다.
+  let v: TestDatabase
+
+  beforeAll(async () => {
+    v = await createTestDatabase()
+  })
+
+  afterAll(async () => {
+    await v?.drop()
+  })
+
+  it('🔴 둘 중 하나를 앞 트랜잭션이 내리는 동안 다른 하나를 내리면 409 — 잠금이 전 셈보다 먼저여야 한다(write skew)', async () => {
+    const roleA = await seedRole(v.db, { roleName: 'skew-a', permissions: ['*'] })
+    const roleB = await seedRole(v.db, { roleName: 'skew-b', permissions: ['*'] })
+    await seedUser(v.db, { roleNo: roleA })
+    await seedUser(v.db, { roleNo: roleB })
+    expect(await count(v.db)).toBe(2)
+
+    const holder = await createConnection({ ...testDbServer(), database: v.name })
+    let waiting: Promise<unknown>
+    try {
+      await holder.beginTransaction()
+      await holder.query(
+        `select lock_name from guard_locks where lock_name = 'superAdminSurvival' for update`,
+      )
+      await holder.query(`update roles set permissions = '[]' where role_no = ?`, [roleA])
+
+      waiting = v.db
+        .transaction()
+        .execute((trx) =>
+          withSuperAdminSurvival(trx, async () => {
+            await trx
+              .updateTable('roles')
+              .set({ permissions: JSON.stringify([]) })
+              .where('roleNo', '=', roleB)
+              .execute()
+          }),
+        )
+        .catch((caught: unknown) => caught)
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      await holder.commit()
+    } finally {
+      // 커밋 못 한 채 끝나면 센티넬 잠금이 남아 afterAll 의 DROP DATABASE 가 막힌다
+      await holder.rollback().catch(() => undefined)
+      await holder.end()
+    }
+
+    const error = await waiting
+    expect(error).toBeInstanceOf(BusinessError)
+    expect((error as BusinessError).code).toBe(CommonErrorCodes.ERR_COMMON_CONFLICT)
+    expect((error as BusinessError).message).toBe(ACCOUNT_MESSAGES.lastSuperAdmin)
+    const b = await v.db
+      .selectFrom('roles')
+      .select('permissions')
+      .where('roleNo', '=', roleB)
+      .executeTakeFirstOrThrow()
+    expect(b.permissions).toEqual(['*'])
   })
 })
