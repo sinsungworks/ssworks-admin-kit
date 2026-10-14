@@ -2,7 +2,7 @@
 
 관리자 API 공통 NestJS 모듈 — NestJS 12 · Kysely 0.29 · MariaDB. **Phase 2 진행 중**이고 `private: true` 라 아직 발행하지 않는다(Phase 2 마지막 PR 뒤 첫 발행).
 
-지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 9장(PR 2a · 2c · 2d-1)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1)이다. 사용자 · 팀 · 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
+지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 9장(PR 2a · 2c · 2d-1)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1), 사용자 · 계정(PR 2d-2)이다. 팀 · 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
 
 ## 설치
 
@@ -237,6 +237,8 @@ AdminServerModule.forRootAsync({
       'auditLogs.read': 'setting.auditLog:read', // GET /audit-logs
       'roles.read': 'org.roles:read', // GET /roles
       'roles.manage': 'org.roles:write', // POST · PATCH · DELETE /roles…
+      'users.read': 'org.users:read', // GET /users… · GET /roles(역할 고르기)
+      'users.manage': 'org.users:write', // POST · PATCH /users…
     },
   }),
 })
@@ -372,6 +374,69 @@ useRoleEditor({
 - **기본 역할**은 하나다 — 켜면 다른 기본 역할이 꺼지고 그 revision 이 오른다(그 역할을 열어 둔 화면은 409 를 받는다).
 - 이름 중복(대소문자 · 끝 공백 무시)은 400 `issues[{ path: ['roleName'] }]` — `useRoleEditor` 의 이름 칸 아래에 뜬다. 쓰는 중인 역할의 삭제는 409 `ERR_COMMON_IN_USE`.
 - 감사: `org.role.create` · `update` · `move` · `delete`(diff `roleName` · `isDefault` · `permissions`). 재인증 비밀번호는 남지 않는다.
+
+## 사용자 · 계정
+
+```ts
+imports: [
+  AdminServerModule.forRootAsync({
+    useFactory: () => ({
+      …,
+      permissionCatalog: permissions, // 🔴 사용자 모듈도 필수
+      permissions: { …, 'users.read': 'org.users:read', 'users.manage': 'org.users:write' },
+      timeZone: 'Asia/Seoul', // 기본값 — 입사일 · 퇴사일을 읽는 기준 시간대(IANA 이름)
+    }),
+  }),
+  AdminAuthModule,
+  AdminUsersModule, // /users 열 라우트
+]
+```
+
+| 라우트                                  | 슬롯           | 본문 → 응답                                                                           |
+| --------------------------------------- | -------------- | ------------------------------------------------------------------------------------- |
+| `GET /users`                            | `users.read`   | 쿼리(아래) → `{ items, total, page, itemsPerPage }`                                   |
+| `GET /users/:userNo`                    | `users.read`   | → `{ item }`                                                                          |
+| `GET /users/:userNo/employment-periods` | `users.read`   | → `{ items }`(입사일 내림차순)                                                        |
+| `POST /users`                           | `users.manage` | `{ userId, userName, roleNo, teamNo, joinDate? }` → 201 `{ item, temporaryPassword }` |
+| `PATCH /users/:userNo`                  | `users.manage` | `{ revision, userName?, roleNo?, teamNo?, joinDate? }` → `{ item }`                   |
+| `POST /users/:userNo/resign`            | `users.manage` | `{ resignDate, reason? }` → `{ item }`                                                |
+| `PATCH /users/:userNo/resign-date`      | `users.manage` | `{ resignDate, reason? }` → `{ item }`                                                |
+| `POST /users/:userNo/rehire`            | `users.manage` | `{ joinDate, reason? }` → `{ item }`                                                  |
+| `POST /users/:userNo/password-reset`    | `users.manage` | (재인증이면 `{ currentPassword }`) → `{ temporaryPassword }`                          |
+| `POST /users/:userNo/unlock`            | `users.manage` | (재인증이면 `{ currentPassword }`) → `{}`                                             |
+
+목록 쿼리: `page` · `itemsPerPage` · `sortBy`(`userId` · `userName` · `joinAt` · `resignAt` · `createAt` · `updateAt`, 기본 `createAt` 내림차순) · `filter[keyword]`(아이디 · 이름 부분일치) · `filter[teamNo]`(소속 전체로 거른다) · `filter[recursive]`(`'true'` · `'false'` 만 — 하위 팀 포함) · `filter[status]`(`active` · `resigned` — 퇴사 예정 포함). 행의 팀은 **대표 팀**(가장 작은 `teamNo`)이고 무소속 계정도 보인다.
+
+- **날짜와 효력 시각**: 본문 · 응답의 날짜는 `'YYYY-MM-DD'`. 퇴사일은 **그날까지 근무**한다 — 효력 시각(`resignAt`)은 기준 시간대(`timeZone`)에서 퇴사일 다음 날 0시이고, 인증은 그 시각부터 로그인 · 요청을 막는다. **지금 막으려면 어제 날짜**로 퇴사시킨다 — 그 사용자의 세션이 바로 끊긴다(다음 요청 401, 로그인 403 `ERR_RESIGNED_USER`). 미래 퇴사일은 세션을 두고 효력 시각에 막는다. 🔴 `timeZone` 을 바꿔도 이미 저장된 효력 시각 · 날짜는 그대로다. `+09:00` 같은 오프셋 표기는 기동에서 멈춘다.
+- **임시 비밀번호**: 계정 만들기와 초기화는 서버가 만든 16자 임시 비밀번호를 **응답에서 한 번만** 돌려준다(저장은 해시, 감사에는 남지 않는다). 그 값으로 로그인하면 강제 변경 흐름이다(`/auth/me` 의 `isPasswordChangeRequired`). 초기화는 그 계정의 살아 있는 세션을 끊고 잠금도 푼다. admin-ui 배선:
+
+```vue
+<TemporaryPasswordDialog v-model="createdPassword" mode="create" :target="`${name}(${userId})`" />
+<TemporaryPasswordDialog v-model="resetPassword" mode="reset" :target="label" sessions-revoked />
+```
+
+- **권한 상승 · 자기 계정**: 사용자 쓰기는 대상의 역할 권한을 덮어야 하고, 역할을 바꾸면 새 역할도 덮어야 한다(403 `details.outside`). 🔴 자기 계정의 퇴사 · 퇴사일 정정 · 비밀번호 초기화 · 잠금 해제는 403 — 다른 관리자에게 요청한다. 자기 이름 · 팀 바꾸기와 재입사(퇴사 예정인 본인)는 된다.
+- **전권자 잔존**: 마지막 전체 권한(`'*'`) 재직자의 역할을 내리거나 퇴사(퇴사 예정 포함)시키면 409.
+- **revision · 수정일**: `PATCH /users/:userNo` 는 `revision` 필수(다르면 409). 수정 · 퇴사 · 퇴사일 정정 · 재입사가 `revision` 과 `updateAt` 을 올린다. 초기화 · 잠금 해제 · 로그인 실패 · 본인 비밀번호 변경은 올리지 않는다 — 열어 둔 수정 폼이 떨어지지 않는다.
+- **팀**: 사용자 쓰기는 팀 하나(`teamNo`, `null` 이면 무소속)를 받고 소속을 그 하나로 바꾼다. 여러 팀 소속은 팀 모듈(2e)의 몫이다.
+- **재직 이력**: 퇴사 · 재입사마다 구간이 쌓인다. 재입사일은 직전 퇴사일 **다음 날**부터, 퇴사일은 입사일과 같거나 뒤. 시드에서 이력 없이 만든 계정은 첫 퇴사 때 `users.joinAt` 으로 구간을 치유한다.
+- **확장 필드**(전화 · 이메일)는 패키지 라우트가 받지 않는다 — 쓰는 쪽 자기 라우트가 다룬다. 🔴 NOT NULL 확장 컬럼은 DEFAULT 를 둔다(패키지 INSERT 가 모른다).
+- 🔴 **카탈로그를 바꿨을 때**: 카탈로그에서 키를 지우거나 `implies` 를 더했다면, 전체 권한(`'*'`) 관리자가 그 키를 가진 역할 · 관리자 역할을 **한 번 다시 저장**한다(화면이 옛 키를 버리고 서버가 함의를 채운다). 그 전에는 좁은 관리자가 그 역할 · 그 역할의 계정을 다루지 못한다(403 — 판정은 저장된 권한을 본다, 스펙 §14 R5-1).
+- **동시 쓰기 재시도**: MariaDB 11.6.2+(`innodb_snapshot_isolation` 기본 ON)에서는 퇴사 · 역할 변경이 대상의 로그인과 겹치면 드물게 409 `ERR_COMMON_CONFLICT`("다시 시도해 주세요")로 끝난다 — 다시 보내면 된다.
+- 감사: `org.user.create` · `update` · `resign` · `resignDate.update` · `rehire` · `password.reset` · `unlock`. 퇴사 · 정정 · 재입사 meta 에 사유 · 끊은 세션 수 · 기준 시간대가 남는다. 임시 비밀번호 · 재인증 비밀번호는 남지 않는다.
+
+3d `TeamUserList` 어댑터:
+
+```ts
+const loadTeamUsers = (query: TeamUserQuery) =>
+  api.get<{ items: AdminUser[]; total: bigint }>('/users', {
+    params: {
+      page: query.page,
+      itemsPerPage: query.itemsPerPage,
+      filter: { teamNo: query.teamNo, recursive: query.recursive, keyword: query.keyword },
+    },
+  })
+```
 
 ## admin-ui 와 맞물리기
 

@@ -755,3 +755,8 @@ TDD — 실패하는 테스트부터. 세 층(2a D1). 구현자는 테스트를 
   6. (e) zod 4.6.5: 필드 수준 `.trim()` · `.refine()`(달력 날짜)이 든 객체도 `.omit` · `.pick` · `.extend` · `.partial` 이 된다 — 객체 수준 refine 만 `.omit` 이 던진다(3b §11 R1 재확인). `z.string().trim().min(1)` 은 `' '` 를 거부한다. `'true'` · `'false'` 만 받는 boolean 은 `'0'` · `''` 를 거부한다.
   7. (f) `updateAt: ColumnType<Date, never, Date>` 에 ``set({ updateAt: sql<Date>`current_timestamp` })`` 가 타입으로 들어가고, INSERT 의 `updateAt` 은 타입 오류다.
   8. mariadb 3.5.4 풀 옵션 `initSql: 'set session innodb_snapshot_isolation = ON'` 은 풀 연결마다 걸리고 재사용 연결에도 남는다(전역은 OFF 그대로) — 스냅샷 DB 테스트는 이 옵션으로 만든 전용 Kysely 를 서비스에 넣는다. 공유 테스트 서버의 전역 변수를 건드리지 않는다.
+- **R8 — 플랜이 더한 작은 결정 둘(2026-10-14, 2d-2 플랜).** 재입사 감사 diff 에 효력 시각 `resignAt` 을 더한다 — 재입사가 지우는 값이다(§5-6 의 `joinDate · resignDate` 에 한 칸). 퇴사의 감사 meta 는 치유했을 때 `healedPeriod: true` 를 싣는다(§5-6 의 `healedPeriod?`). 퇴사일 정정은 서비스 메서드 이름이 `correctResignDate` 다(라우트 `PATCH /users/:userNo/resign-date`).
+- **R9 — 구현 · 리뷰 중 정한 것(2026-10-14, 2d-2 SDD).**
+  1. 사용자 수정의 잠금 순서는 users → roles → teams → (teamUserMap · 재직 이력) — 만들기와 같은 순서(Task 8 리뷰: 이력을 팀보다 먼저 잠그면 같은 팀의 만들기와 교착).
+  2. 잔존으로 감싼 쓰기(역할을 바꾸는 수정 · 퇴사)의 감사 before 는 잔존 셈이 연 읽기 뷰를 본다 — 스냅샷 격리 OFF 에서 대상 잠금을 기다린 사이 커밋된 같은 계정의 쓰기를 못 볼 수 있다(판정 · 저장은 잠금 읽기라 맞다). ON 에서는 같은 경합이 409. 받아들이고 테스트로 고정했다 — 구조적 해결(`withSuperAdminSurvival` 순서를 "센티넬 → 대상 잠금 → 셈" 으로)은 후속.
+  3. 역할 만들기의 `MAX(displayOrder) … FOR UPDATE` 는 전수 스캔이라, 대상 행을 먼저 잠그는 이동 · 기본 켜기 수정과 드물게 교착할 수 있다 — 1213 → 409 다시 시도로 끝나 데이터는 깨지지 않는다(README "동시 쓰기 재시도"). `guardLocks` 순서용 잠금 행은 후속 검토.
