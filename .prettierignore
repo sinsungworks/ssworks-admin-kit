@@ -3,3 +3,4 @@ dist/
 pnpm-lock.yaml
 CHANGELOG.md
 docs/phase0-reports/
+.superpowers/

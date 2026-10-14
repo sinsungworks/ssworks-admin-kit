@@ -54,7 +54,7 @@ export class AdminTeamsController {
     return { teamNo }
   }
 
-  /** 🔴 'move' 를 ':teamNo' 보다 먼저 선언한다(경로가 다르지만 읽는 사람이 헷갈리지 않게 — hangang 'tree' 주석과 같은 뜻) */
+  /** 'move' 를 ':teamNo' 보다 먼저 선언한다 — 경로 모양이 달라 겹치지 않지만, 읽는 사람이 헷갈리지 않게 */
   @RequirePermissionSlot('teams.manage')
   @Audit({ action: CoreAuditActions.TEAM_MOVE, targetType: CoreAuditTargets.TEAM })
   @Patch(':teamNo/move')

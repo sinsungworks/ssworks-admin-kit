@@ -482,7 +482,7 @@ export { up, down } from '@ssworks/admin-server/migrations/0010_team_tree_lock'
 - **이름**은 전체에서 하나다(같은 상위 팀 안이 아니다). 대소문자 · 끝 공백만 다른 이름도 같은 이름이라 409 `ERR_DUPLICATE_TEAM_NAME` 이다(`utf8mb4_unicode_ci`). 앞뒤 공백은 떼고 저장한다.
 - 재인증 · revision 이 없다(`reauth: true` 여도).
 - **쓰는 쪽 시드의 closure**: 계층은 `team_closure` 에만 있다. 상위 팀은 깊이 1 행이고, 조상마다 한 행(깊이 = 거리)을 넣는다. 자기 행(깊이 0)은 넣어도 안 넣어도 패키지 결과가 같다 — 패키지가 만드는 팀은 자기 행을 넣는다.
-- **동시 쓰기**: 팀 쓰기(만들기 · 이름 · 이동 · 삭제)는 `guard_locks` 행 `teamTree` 에서 하나씩 돈다. 사용자 만들기 · 수정이 지우는 중인 팀을 고르면 기다렸다가 400 `issues[teamNo]`, 지우기가 소속을 넣는 중인 팀을 만나면 기다렸다가 409 다.
+- **동시 쓰기**: 팀 쓰기(만들기 · 이름 · 이동 · 삭제)는 `guard_locks` 행 `teamTree` 에서 하나씩 돈다. 사용자 만들기 · 수정이 지우는 중인 팀을 고르면 기다렸다가 400 `issues[teamNo]`, 지우기가 소속을 넣는 중인 팀을 만나면 기다렸다가 409 다. 드문 잠금 충돌(교착, 또는 스냅샷 격리 ON 의 `ER_CHECKREAD` 1020)은 409 `ERR_COMMON_CONFLICT`("동시 처리 충돌입니다. 다시 시도해 주세요.")로 끝난다 — 클라이언트가 다시 보내면 된다.
 
 ## admin-ui 와 맞물리기
 

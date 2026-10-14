@@ -223,7 +223,8 @@ export class AdminTeamsService {
       // 🔴 비잠금 셈 — 이 트랜잭션의 첫 비잠금 읽기다(② D1 · B4). 소속을 더하는 길은 모두 그 팀 행을 먼저 잡는다(사용자 쓰기의
       //    lockTeam X, 그 밖의 INSERT 는 FK 검사의 S) — 서브트리 팀 행을 X 로 쥔 지금은 새 소속이 생길 수 없고, 지금 여는
       //    읽기 뷰는 기다리는 사이 커밋된 소속을 본다. 이 앞에 비잠금 읽기를 두면 읽기 뷰가 먼저 열려 셈이 0 을 보고
-      //    DELETE 의 CASCADE 가 그 소속을 조용히 지운다(스펙 §14 R1-1 — hangang A3 가 막으려던 것). FOR UPDATE 로 세면
+      //    DELETE 의 CASCADE 가 그 소속을 조용히 지운다(스냅샷 격리 OFF — MariaDB 11.4 기본. ON — 11.6.2+ 기본 — 이면 DELETE 가
+      //    1020 으로 실패해 409 가 된다. 스펙 §14 R1-1 — hangang A3 가 막으려던 것). FOR UPDATE 로 세면
       //    teamUserMap 구간의 gap 잠금이 사용자 팀 변경과 엇갈려 교착한다(R1-3 — ② D2 를 고르지 않았다).
       const counted = await trx
         .selectFrom('teamUserMap')
