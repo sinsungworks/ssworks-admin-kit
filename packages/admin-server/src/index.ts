@@ -52,3 +52,7 @@ export { attachAuditTarget, attachAuditMeta, attachAuditDiff } from './audit/aud
 export type { AdminAuditOptions } from './audit/options.js'
 export { AdminAuditModule } from './audit/audit.module.js'
 export { AdminSessionsModule } from './sessions/sessions.module.js'
+
+// 역할 · 판정(PR 2d-1)
+export { AdminRolesModule } from './roles/roles.module.js'
+export type { AdminPermissionCatalog } from './accounts/options.js'

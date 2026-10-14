@@ -21,6 +21,7 @@ import type {
   AdminServerOptions,
   AdminServerStaticOptions,
 } from './options.js'
+import { AdminRolesModule } from './roles/roles.module.js'
 import { AdminSessionsModule } from './sessions/sessions.module.js'
 import { ADMIN_SERVER_OPTIONS, KYSELY } from './tokens.js'
 
@@ -36,6 +37,7 @@ const ADMIN_ROUTE_MODULES: readonly Type[] = [
   AdminAuthModule,
   AdminAuditModule,
   AdminSessionsModule,
+  AdminRolesModule,
 ]
 
 const DEFAULT_ROUTE_PREFIX = 'admin'
