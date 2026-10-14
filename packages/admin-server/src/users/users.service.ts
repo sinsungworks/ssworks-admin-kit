@@ -91,6 +91,11 @@ export interface UserEmploymentResult {
   meta: Record<string, unknown>
 }
 
+/** 본문 없는 쓰기(초기화 · 잠금 해제) — 재인증을 켜면 currentPassword 만 온다 */
+export interface AdminUserReauthBody {
+  currentPassword?: string
+}
+
 @Injectable()
 export class AdminUsersService {
   private readonly logger = new Logger('AdminUsersService')
@@ -436,6 +441,68 @@ export class AdminUsersService {
         .where('userNo', '=', userNo)
         .execute()
       return { item: await readUser(trx, userNo, timeZone), before, meta: { reason, timeZone } }
+    })
+  }
+
+  /**
+   * 비밀번호 초기화(3c §9) — 해시 교체 · 강제 변경 · 잠금 해제 · 대상의 살아 있는 세션 폐기를 한 트랜잭션에서(공통 5).
+   * 🔴 revision · updateAt 은 그대로(⑧ V1 — 열어 둔 수정 폼을 떨어뜨리지 않는다). 해시는 트랜잭션 밖.
+   * 🔴 코어 users.password 를 직접 쓴다 — AUTH_REPOSITORY.changePassword 는 본인 변경(기대 해시 조건)용이다(2c B4).
+   * 🔴 임시 비밀번호는 돌려주기만 한다 — 감사 meta 에는 revokedCount 만.
+   */
+  async resetPassword(
+    userNo: bigint,
+    body: AdminUserReauthBody,
+    principal: AdminPrincipal,
+  ): Promise<{ temporaryPassword: string; revokedCount: number }> {
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
+    const temporaryPassword = generateTemporaryPassword()
+    const passwordHash = await hashPassword(temporaryPassword)
+    const actor = actorOf(principal)
+    const now = new Date()
+    const revokedCount = await runWriteTransaction(this.db, async (trx) => {
+      const target = await lockUser(trx, userNo)
+      judgeAccountCommand(actor, {
+        kind: 'user.passwordReset',
+        targetUserNo: userNo,
+        current: this.permissionsOf(target),
+      })
+      await trx
+        .updateTable('users')
+        .set({
+          password: passwordHash,
+          isPasswordChangeRequired: true,
+          loginFailCount: 0,
+          lockUntil: null,
+        })
+        .where('userNo', '=', userNo)
+        .execute()
+      return this.sessions.revokeAllOfUser(userNo, 'terminated', now, { trx })
+    })
+    return { temporaryPassword, revokedCount }
+  }
+
+  /** 잠금 해제(gise) — 실패 카운터 0 · lockUntil NULL. 잠겨 있지 않아도 된다(B16). revision · updateAt 그대로 */
+  async unlock(
+    userNo: bigint,
+    body: AdminUserReauthBody,
+    principal: AdminPrincipal,
+  ): Promise<{ lockUntil: Date | null; loginFailCount: number }> {
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
+    const actor = actorOf(principal)
+    return runWriteTransaction(this.db, async (trx) => {
+      const target = await lockUser(trx, userNo)
+      judgeAccountCommand(actor, {
+        kind: 'user.unlock',
+        targetUserNo: userNo,
+        current: this.permissionsOf(target),
+      })
+      await trx
+        .updateTable('users')
+        .set({ loginFailCount: 0, lockUntil: null })
+        .where('userNo', '=', userNo)
+        .execute()
+      return { lockUntil: target.lockUntil, loginFailCount: target.loginFailCount }
     })
   }
 

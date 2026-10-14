@@ -1,4 +1,9 @@
-import { createConnection, type Connection } from 'mariadb'
+import { MariadbDialect } from '@kim5257/kysely-mariadb-dialect'
+import { Kysely } from 'kysely'
+import { createConnection, createPool, type Connection } from 'mariadb'
+import { adminPoolConfig } from '../database/connection.js'
+import { adminKyselyPlugins } from '../database/kysely.js'
+import type { AdminDatabase } from '../database/types.js'
 import type { TestDatabase } from './db.js'
 import { testDbServer } from './db-url.js'
 
@@ -41,4 +46,20 @@ export async function whileHeld<T>(
     await connection.rollback().catch(() => undefined)
     await connection.end()
   }
+}
+
+/**
+ * innodb_snapshot_isolation 을 이 풀의 연결마다 켠(끈) Kysely — MariaDB 11.6.2+ 의 기본(ON)을 11.4 에서 잰다(§14 R7-8).
+ * 🔴 SET GLOBAL 을 쓰지 않는다 — 테스트 파일은 같은 서버에서 병렬로 돈다. 다 쓰면 destroy() 한다.
+ */
+export function snapshotKysely(t: TestDatabase, snapshot: boolean): Kysely<AdminDatabase> {
+  return new Kysely<AdminDatabase>({
+    dialect: new MariadbDialect({
+      pool: createPool({
+        ...adminPoolConfig({ ...testDbServer(), database: t.name, connectionLimit: 2 }),
+        initSql: `set session innodb_snapshot_isolation = ${snapshot ? 'ON' : 'OFF'}`,
+      }),
+    }),
+    plugins: adminKyselyPlugins(),
+  })
 }
