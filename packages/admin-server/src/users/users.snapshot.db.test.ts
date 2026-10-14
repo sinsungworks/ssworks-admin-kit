@@ -51,7 +51,7 @@ function loginFailure(userNo: bigint) {
 describe('퇴사 · 스냅샷 격리(§14 R5-6 · R7-1)', () => {
   it('🔴 ON — 셈 뒤 대상의 로그인 실패가 커밋되면 409 ERR_COMMON_CONFLICT(원인 ER_CHECKREAD) · 아무것도 바뀌지 않는다', async () => {
     const user = await target('snap-on')
-    const db = snapshotKysely(t, true)
+    const db = await snapshotKysely(t, true)
     try {
       const service = new AdminUsersService(db, usersConfig(), new AdminSessionStore(db), undefined)
       const result = await whileHeld(t, loginFailure(user.userNo), () =>
@@ -75,7 +75,7 @@ describe('퇴사 · 스냅샷 격리(§14 R5-6 · R7-1)', () => {
 
   it('OFF(11.4 기본) — 같은 순서에서 기다렸다가 최신 행으로 퇴사한다', async () => {
     const user = await target('snap-off')
-    const db = snapshotKysely(t, false)
+    const db = await snapshotKysely(t, false)
     try {
       const service = new AdminUsersService(db, usersConfig(), new AdminSessionStore(db), undefined)
       const result = await whileHeld(t, loginFailure(user.userNo), () =>

@@ -1,15 +1,18 @@
 import { MariadbDialect } from '@kim5257/kysely-mariadb-dialect'
-import { Kysely } from 'kysely'
+import { Kysely, sql } from 'kysely'
 import { createConnection, createPool, type Connection } from 'mariadb'
 import { adminPoolConfig } from '../database/connection.js'
 import { adminKyselyPlugins } from '../database/kysely.js'
 import type { AdminDatabase } from '../database/types.js'
 import type { TestDatabase } from './db.js'
 import { testDbServer } from './db-url.js'
+import { lockWaitThreadIds } from './lock-wait.js'
 
 // 테스트 전용 — 경합 재현. 🔴 빌드에서 빠진다(tsconfig.build.json 의 test-support 제외).
-// 다른 트랜잭션이 행을 쥔 채로 있는 동안 서비스 메서드(공개 경로)를 부르고, 잠시 뒤 그 트랜잭션을 커밋한다 — 잠금 순서 ·
-// 읽기 뷰 회귀를 결정적으로 잰다(2d 스펙 §14 R7). 부품을 따로 부르면 순서 회귀를 못 잡는다.
+// 다른 트랜잭션이 행을 쥔 채로 있는 동안 서비스 메서드(공개 경로)를 부르고, 그 메서드가 잠금을 기다리기 시작하면 쥔 트랜잭션을
+// 커밋한다 — 잠금 순서 · 읽기 뷰 회귀를 결정적으로 잰다(2d 스펙 §14 R7). 부품을 따로 부르면 순서 회귀를 못 잡는다.
+// 바꾼 점(2e 스펙 이월 4 · §14 R1-6): 300ms 고정 대기 대신 잠금 대기를 본다 — 느린 CI 에서 서비스가 잠금에 닿기 전에 커밋해
+//   경합을 재지 못하는 거짓 결과가 없다. 🔴 information_schema.innodb_trx 는 서버 전역 캐시라 쓰지 않는다(lock-wait.ts).
 
 export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms))
@@ -24,42 +27,130 @@ export function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
   )
 }
 
+const POLL_MS = 25
+const SNAPSHOT_POOL_SIZE = 2
+
+function openRaw(t: TestDatabase): Promise<Connection> {
+  return createConnection({ ...testDbServer(), database: t.name, timezone: 'Z' })
+}
+
 /**
- * 원시 연결이 트랜잭션을 열고 `hold` 로 잠금 · 쓰기를 쥔 채 `during()` 을 시작한다. `waitMs` 뒤 그 트랜잭션을 커밋하고
+ * 이 데이터베이스에서 행 잠금을 기다리는 연결 수 — SHOW ENGINE INNODB STATUS 의 대기 thread id ∩ processlist 의
+ * `db = database`. 🔴 PROCESS 권한이 필요하다(로컬 컨테이너 · CI 모두 root).
+ */
+export async function lockWaitsIn(observer: Connection, database: string): Promise<number> {
+  const rows = (await observer.query('show engine innodb status')) as { Status?: string }[]
+  const ids = lockWaitThreadIds(rows[0]?.Status ?? '')
+  if (ids.length === 0) return 0
+  const found = (await observer.query(
+    'select count(*) as n from information_schema.processlist where db = ? and id in (?)',
+    [database, ids],
+  )) as { n: bigint | number }[]
+  return Number(found[0]?.n ?? 0)
+}
+
+export interface WhileHeldOptions {
+  /** 같은 데이터베이스에서 이만큼의 연결이 잠금을 기다리면 커밋한다. 기본 1 */
+  waiters?: number
+  /** 이 시간 안에 대기를 못 보면 그래도 커밋한다. 기본 5000ms */
+  timeoutMs?: number
+}
+
+/**
+ * 원시 연결이 트랜잭션을 열고 `hold` 로 잠금 · 쓰기를 쥔 채 `during()` 을 시작한다. 같은 데이터베이스에서 `waiters` 개의 연결이
+ * 잠금을 기다리기 시작하면 — 또는 `during()` 이 기다리지 않고 끝나면, 또는 `timeoutMs` 가 지나면 — 그 트랜잭션을 커밋하고
  * `during()` 의 결과를 돌려준다. 🔴 실패해도 롤백 · 종료한다 — 쥔 잠금이 남으면 afterAll 의 DROP DATABASE 가 막힌다.
  */
 export async function whileHeld<T>(
   t: TestDatabase,
   hold: (connection: Connection) => Promise<unknown>,
   during: () => Promise<T>,
-  waitMs = 300,
+  options: WhileHeldOptions = {},
 ): Promise<Settled<T>> {
-  const connection = await createConnection({ ...testDbServer(), database: t.name, timezone: 'Z' })
+  const waiters = options.waiters ?? 1
+  const deadline = Date.now() + (options.timeoutMs ?? 5000)
+  const connection = await openRaw(t)
+  const observer = await openRaw(t)
   try {
     await connection.beginTransaction()
     await hold(connection)
-    const pending = settle(during())
-    await sleep(waitMs)
+    let finished = false
+    const pending = settle(during()).then((result) => {
+      finished = true
+      return result
+    })
+    while (!finished && Date.now() < deadline) {
+      if ((await lockWaitsIn(observer, t.name)) >= waiters) break
+      await sleep(POLL_MS)
+    }
     await connection.commit()
     return await pending
   } finally {
     await connection.rollback().catch(() => undefined)
     await connection.end()
+    await observer.end()
   }
 }
 
 /**
- * innodb_snapshot_isolation 을 이 풀의 연결마다 켠(끈) Kysely — MariaDB 11.6.2+ 의 기본(ON)을 11.4 에서 잰다(§14 R7-8).
+ * innodb_snapshot_isolation 을 이 풀의 연결마다 켠(끈) Kysely — MariaDB 11.6.2+ 의 기본(ON)을 11.4 에서 잰다(2d §14 R7-8).
  * 🔴 SET GLOBAL 을 쓰지 않는다 — 테스트 파일은 같은 서버에서 병렬로 돈다. 다 쓰면 destroy() 한다.
+ * 🔴 돌려주기 전에 풀의 연결 둘을 동시에 붙잡아 세션 값을 단언한다(풀 데우기 — 2e 이월 4). initSql 이 빠진 연결이 섞이면
+ *    ON 을 잰다고 믿은 테스트가 OFF 를 잰다.
  */
-export function snapshotKysely(t: TestDatabase, snapshot: boolean): Kysely<AdminDatabase> {
-  return new Kysely<AdminDatabase>({
+export async function snapshotKysely(
+  t: TestDatabase,
+  snapshot: boolean,
+): Promise<Kysely<AdminDatabase>> {
+  const db = new Kysely<AdminDatabase>({
     dialect: new MariadbDialect({
       pool: createPool({
-        ...adminPoolConfig({ ...testDbServer(), database: t.name, connectionLimit: 2 }),
+        ...adminPoolConfig({
+          ...testDbServer(),
+          database: t.name,
+          connectionLimit: SNAPSHOT_POOL_SIZE,
+        }),
         initSql: `set session innodb_snapshot_isolation = ${snapshot ? 'ON' : 'OFF'}`,
       }),
     }),
     plugins: adminKyselyPlugins(),
   })
+  try {
+    const values = await sessionSnapshotValues(db, SNAPSHOT_POOL_SIZE)
+    const expected = snapshot ? 1 : 0
+    if (values.some((value) => value !== expected)) {
+      throw new Error(
+        `innodb_snapshot_isolation 세션 값이 ${expected} 이 아니다: ${values.join(', ')}`,
+      )
+    }
+    return db
+  } catch (error) {
+    await db.destroy()
+    throw error
+  }
+}
+
+/** 풀의 연결 n 개를 동시에 붙잡고(서로를 기다린다) 각자의 세션 값을 읽는다 */
+async function sessionSnapshotValues(
+  db: Kysely<AdminDatabase>,
+  connections: number,
+): Promise<number[]> {
+  let arrived = 0
+  let release: () => void = () => undefined
+  const together = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return Promise.all(
+    Array.from({ length: connections }, () =>
+      db.connection().execute(async (connection) => {
+        const result = await sql<{
+          value: number | bigint | string
+        }>`select @@session.innodb_snapshot_isolation as value`.execute(connection)
+        arrived += 1
+        if (arrived === connections) release()
+        await together
+        return Number(result.rows[0]?.value)
+      }),
+    ),
+  )
 }
