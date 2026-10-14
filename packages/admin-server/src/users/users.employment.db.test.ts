@@ -20,7 +20,10 @@ import { AdminUsersService } from './users.service.js'
 // 데이터베이스(describe '잔존'). 날짜는 기준 시간대(Asia/Seoul)의 오늘에서 센다.
 
 const TZ = 'Asia/Seoul'
-const day = (offset: number) => addDays(todayIn(TZ), offset)
+// 🔴 오늘은 파일이 읽힐 때 한 번 센다 — 요청과 단언이 KST 자정을 걸쳐도 같은 날이다(이월 8). 효력 시각이 "지금" 보다 앞인지
+//    재는 단언(세션 유지 · 미래)은 서비스 시계를 따르므로 자정 직전 몇 초에는 드물게 틀릴 수 있다 — 시계 주입은 비범위.
+const TODAY = todayIn(TZ)
+const day = (offset: number) => addDays(TODAY, offset)
 
 let t: TestDatabase
 let service: AdminUsersService
@@ -238,6 +241,20 @@ describe('resign', () => {
     expect(error.message).toBe(ACCOUNT_MESSAGES.periodCorrupted)
   })
 
+  it('🔴 치유한 뒤 400 이면 치유 구간도 롤백된다(이월 8)', async () => {
+    const seeded = await seedUser(t.db, {
+      roleNo: plainRole,
+      userId: 'r-heal-400',
+      joinAt: new Date('2025-03-01T15:00:00.000Z'), // KST 2025-03-02
+    })
+    const error = await rejection(() =>
+      service.resign(seeded.userNo, { resignDate: '2025-03-01' }, root),
+    )
+    expect(error.details).toEqual(issue('resignDate', ACCOUNT_MESSAGES.resignBeforeJoin))
+    expect(await periodsOf(t.db, seeded.userNo)).toEqual([])
+    expect(await userRow(t.db, seeded.userNo)).toMatchObject({ resignAt: null, revision: 0 })
+  })
+
   it('효력 시각은 기준 시간대의 다음 날 0시 — America/New_York 서머타임 시작일(⑤ Z1)', async () => {
     const newYork = new AdminUsersService(
       t.db,
@@ -358,6 +375,15 @@ describe('correctResignDate', () => {
       ).message,
     ).toBe(ACCOUNT_MESSAGES.selfAccount)
   })
+
+  it('🔴 권한 없는 사람에게는 재직 중이어도 409 가 아니라 403 — 판정이 먼저(B7 · 이월 8)', async () => {
+    const wide = await seedUser(t.db, { roleNo: wideRole, userId: 'd-b7-wide' })
+    const error = await rejection(() =>
+      service.correctResignDate(wide.userNo, { resignDate: day(1) }, manager),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+    expect(error.message).toBe(ACCOUNT_MESSAGES.higherAccount)
+  })
 })
 
 describe('rehire', () => {
@@ -437,6 +463,13 @@ describe('rehire', () => {
     expect(
       (await rejection(() => service.rehire(wide.userNo, { joinDate: day(1) }, manager))).message,
     ).toBe(ACCOUNT_MESSAGES.higherAccount)
+  })
+
+  it('🔴 권한 없는 사람에게는 재직 중이어도 409 가 아니라 403 — 판정이 먼저(B7 · 이월 8)', async () => {
+    const wide = await seedUser(t.db, { roleNo: wideRole, userId: 'h-b7-wide' })
+    const error = await rejection(() => service.rehire(wide.userNo, { joinDate: day(1) }, manager))
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+    expect(error.message).toBe(ACCOUNT_MESSAGES.higherAccount)
   })
 })
 

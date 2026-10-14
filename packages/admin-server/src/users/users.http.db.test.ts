@@ -25,7 +25,9 @@ import { seedClosure, seedPeriod } from '../test-support/users.js'
 // 어댑터가 기대는 모양. 🔴 bigint 가 든 본문은 stringifyJSON 으로 보낸다(supertest 의 .send(object) 는 bigint 에서 던진다).
 
 const TZ = 'Asia/Seoul'
-const day = (offset: number) => addDays(todayIn(TZ), offset)
+// 🔴 오늘은 파일이 읽힐 때 한 번 센다 — 요청과 단언이 KST 자정을 걸쳐도 같은 날이다(이월 8)
+const TODAY = todayIn(TZ)
+const day = (offset: number) => addDays(TODAY, offset)
 
 let t: TestDatabase
 let app: NestExpressApplication

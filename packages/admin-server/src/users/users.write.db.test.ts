@@ -1,4 +1,5 @@
 import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
+import type { Connection } from 'mariadb'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { startOfDayIn, todayIn } from '../accounts/calendar.js'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
@@ -6,6 +7,7 @@ import { verifyPassword } from '../auth/password.js'
 import { AdminSessionStore } from '../auth/session.store.js'
 import { testPrincipal, transactionOnly, usersConfig } from '../test-support/accounts.js'
 import { addToTeam, seedRole, seedTeam, seedUser } from '../test-support/auth.js'
+import { whileHeld } from '../test-support/concurrency.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { periodsOf, seedPeriod, userRow } from '../test-support/users.js'
 import { AdminUsersService } from './users.service.js'
@@ -350,6 +352,49 @@ describe('update', () => {
       root,
     )
     expect(item).toMatchObject({ userName: 'in trx', revision: 1 })
+  })
+})
+
+describe('🔴 줄 역할 잠금(lockGrantRole forUpdate — 이월 8)', () => {
+  /** 원시 연결이 줄 역할을 잡고 권한을 '*' 로 넓힌다(커밋 전) */
+  function widen(roleNo: bigint) {
+    return async (connection: Connection) => {
+      await connection.query('select role_no from roles where role_no = ? for update', [roleNo])
+      await connection.query(`update roles set permissions = '["*"]' where role_no = ?`, [roleNo])
+    }
+  }
+
+  it('만들기 — 줄 역할이 넓어지는 중이면 기다렸다 새 권한으로 판정해 403 · 계정을 만들지 않는다', async () => {
+    const grant = await seedRole(t.db, {
+      roleName: 'g-race-create',
+      permissions: ['org.users:read'],
+    })
+    const result = await whileHeld(t, widen(grant), () =>
+      service.create(
+        { userId: 'g-race-new', userName: '경합 계정', roleNo: grant, teamNo: null },
+        manager,
+      ),
+    )
+    if (result.ok) throw new Error('403 을 기대했다')
+    expect(result.error).toBeInstanceOf(BusinessError)
+    expect((result.error as BusinessError).message).toBe(ACCOUNT_MESSAGES.higherRoleToGrant)
+    expect(
+      await t.db.selectFrom('users').select('userNo').where('userId', '=', 'g-race-new').execute(),
+    ).toEqual([])
+  })
+
+  it('역할 변경 — 줄 역할이 넓어지는 중이면 기다렸다 새 권한으로 판정해 403 · 그대로', async () => {
+    const grant = await seedRole(t.db, {
+      roleName: 'g-race-update',
+      permissions: ['org.users:read'],
+    })
+    const user = await fresh('g-race-target')
+    const result = await whileHeld(t, widen(grant), () =>
+      service.update(user.userNo, { revision: 0, roleNo: grant }, manager),
+    )
+    if (result.ok) throw new Error('403 을 기대했다')
+    expect((result.error as BusinessError).message).toBe(ACCOUNT_MESSAGES.higherRoleToGrant)
+    expect(await userRow(t.db, user.userNo)).toMatchObject({ roleNo: plainRole, revision: 0 })
   })
 })
 
