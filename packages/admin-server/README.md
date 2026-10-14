@@ -2,7 +2,7 @@
 
 관리자 API 공통 NestJS 모듈 — NestJS 12 · Kysely 0.29 · MariaDB. **Phase 2 진행 중**이고 `private: true` 라 아직 발행하지 않는다(Phase 2 마지막 PR 뒤 첫 발행).
 
-지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 7장(PR 2a)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증)이다. 세션 목록 · 감사 · 사용자 · 역할 · 팀 · 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
+지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 8장(PR 2a · 2c)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c)다. 사용자 · 역할 · 팀 · 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
 
 ## 설치
 
@@ -100,6 +100,7 @@ export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 | `0005_team_user_map`           | `team_user_map`           |
 | `0006_user_employment_periods` | `user_employment_periods` |
 | `0007_sessions`                | `sessions`                |
+| `0008_audit_logs`              | `audit_logs`              |
 
 🔴 패키지가 새 장을 내면 changeset 이 알린다 — 스텁 한 줄을 더한다. `assertAdminMigrationStubs` 가 빠진 장을 잡는다. 시드(첫 관리자 계정 · 역할)는 프로젝트 몫이다.
 
@@ -215,10 +216,91 @@ AdminAuthModule.withRepository(MyAuthRepository, { imports: [MyUsersDataModule] 
 
 🔴 `updateLoginState` 는 원자적이어야 한다(행 잠금 또는 compare-and-set). `changePassword` 의 `trx` 는 `Transaction<AdminDatabase>` 라 자기 Database 타입으로 단언해 쓴다.
 
-### 시드 · 2c · 2f 자리
+### 시드 · IP 자리
 
 - 첫 관리자는 `@ssworks/admin-server/runner` 의 `hashPassword` 로 만든다(Nest 없이).
-- `ADMIN_AUTH_EVENTS`(로그인 · 갱신 · 재사용 · 로그아웃 · 비밀번호 변경 이벤트) · `ADMIN_ACCESS_POLICY`(IP 판정)를 전역 모듈이 제공하면 인증이 부른다. 패키지의 감사(2c) · IP 접근 제어(2f) 모듈이 채운다.
+- 인증 이벤트(로그인 · 갱신 · 재사용 · 로그아웃 · 비밀번호 변경)는 `AdminAuditModule` 이 감사 행으로 남긴다(아래 "감사"). `ADMIN_ACCESS_POLICY`(IP 판정)는 IP 접근 제어(2f)가 채운다.
+
+## 권한 슬롯
+
+패키지 라우트는 권한 키를 박지 않는다 — **슬롯**을 선언하고 쓰는 쪽이 자기 권한 키를 잇는다.
+
+```ts
+AdminServerModule.forRootAsync({
+  useFactory: () => ({
+    db: adminDbConnectionFromEnv(),
+    auth: { jwtSecret: process.env.ADMIN_JWT_SECRET! },
+    permissions: {
+      'sessions.read': 'org.users:read', // GET /sessions
+      'sessions.manage': 'org.users:write', // DELETE /sessions/:sessionNo · /sessions/user/:userNo
+      'auditLogs.read': 'setting.auditLog:read', // GET /audit-logs
+    },
+  }),
+})
+```
+
+- 🔴 import 한 기능 모듈의 슬롯이 없거나, 모르는 슬롯(오타) · 빈 키가 있으면 기동에서 멈춘다. 슬롯 판정은 `@RequirePermissions` 와 같은 층이다(`'*'` 는 이어진 슬롯을 통과한다).
+- 키 이름은 프로젝트 카탈로그가 정한다 — hangang 은 `org.users:*`, gise 는 `account.session:manage`.
+
+## 세션 · 감사
+
+```ts
+imports: [
+  AdminServerModule.forRootAsync({ useFactory: () => ({ …, permissions, audit: { catalog: auditCatalog } }) }),
+  AdminAuthModule,
+  AdminAuditModule, // 전역 감사 인터셉터 · 인증 이벤트 기록 · GET /audit-logs
+  AdminSessionsModule, // /sessions 6라우트
+]
+```
+
+🔴 둘 다 `AdminAuthModule` 이 있어야 뜬다(가드 없이 라우트가 열리지 않게). 감사 장 스텁(`0008_audit_logs`)은 모든 앱에 필수다.
+
+### 세션
+
+| 라우트                            | 권한              | 응답                                   | admin-ui `useSessions` 어댑터 |
+| --------------------------------- | ----------------- | -------------------------------------- | ----------------------------- |
+| `GET /sessions`                   | `sessions.read`   | `{ items, total, page, itemsPerPage }` | `fetch`(서버 페이징)          |
+| `DELETE /sessions/:sessionNo`     | `sessions.manage` | `{}`                                   | `revoke`(관리자 표)           |
+| `DELETE /sessions/user/:userNo`   | `sessions.manage` | `{ revokedCount }`                     | `revokeUser`                  |
+| `GET /sessions/me`                | `@SelfOnly`       | `{ items }`(전량)                      | `list`                        |
+| `DELETE /sessions/me/:sessionNo`  | `@SelfOnly`       | `{}`                                   | `revoke`(내 세션 표)          |
+| `POST /sessions/me/revoke-others` | `@SelfOnly`       | `{ revokedCount }`                     | `revokeOthers`                |
+
+- 행은 admin-shared `adminSessionSchema` · `adminSessionListItemSchema`. `isCurrent` 는 그 요청의 세션이다. 목록은 살아 있는 세션(끊기지 않고 만료 전)만이다.
+- 전체 목록 쿼리: `filter[keyword]`(아이디 · 이름 부분일치) · `filter[userNo]` · 정렬 `lastAccessAt` · `loginAt` · `expireAt`.
+- 🔴 지금 쓰는 세션은 이 라우트로 끊지 못한다(400) — 로그아웃이 정상 경로다. 남의 세션 · 없는 세션 · 이미 끝난 세션은 같은 404 다. 본인 계정의 "사용자 전체" 는 지금 세션까지 끊는다(다음 요청 401 — admin-ui `onSelfSignedOut`).
+- 유예창(30초) 안에서 다른 탭이 옛 refresh 를 내면 세션이 하나 더 생긴다. 같은 브라우저라면 그중 하나는 아무도 쓰지 않는 행으로 만료(7일)까지 남는다 — 목록에 같은 기기가 두 번 보이면 그것이다. "다른 세션 모두" 가 쓸어 낸다.
+- 남의 세션을 끊을 때의 권한 상승 검사(낮은 관리자가 전권자의 세션을 끊는 것)는 사용자 · 역할 PR(2d)이 붙인다.
+
+### 감사
+
+```ts
+// 프로젝트 액션은 admin-shared 카탈로그로 — 화면(감사 로그 조회)도 같은 라벨을 쓴다
+export const auditCatalog = defineAuditCatalog({
+  actions: { BOARD_POST_CREATE: 'board.post.create' },
+  targets: { POST: 'post' },
+  labels: { 'board.post.create': '게시글 작성' },
+  targetLabels: { post: '게시글' },
+})
+
+@RequirePermissions('board.post:write')
+@Audit({ action: 'board.post.create', targetType: 'post' })
+@Post()
+async create(@Body() body: PostBody, @Req() req: Request) {
+  const postNo = await this.posts.create(body)
+  attachAuditTarget(req, postNo) // 경로 변수로 대상을 알 수 없을 때
+  attachAuditDiff(req, null, body, ['title', 'isNotice']) // 남길 필드만
+  return { postNo }
+}
+```
+
+- 성공 · 실패(핸들러에서 던진 것) 모두 기록한다. 응답 전에 기록을 기다리고, 기록이 실패해도 응답은 그대로다(경고 한 줄). 가드가 거부한 요청(401 · 403)은 남지 않는다.
+- 🔴 카탈로그에 없는 액션 · 대상 종류를 단 `@Audit`, `@Public` 라우트의 `@Audit` 은 기동에서 멈춘다.
+- 대상 번호: `attachAuditTarget` → `@Audit({ paramKey })` 경로 변수 → 숫자 경로 변수가 하나뿐일 때 그것.
+- meta 의 비밀 키(`password` · `token` · `secret` …, 대소문자 무시)는 `***` 로 남는다. 프로젝트 키는 `audit.secretKeys` 로 더한다. bigint 는 문자열로, 64 KiB 를 넘는 meta 는 `{ _truncated, bytes }` 로 남는다 — 본문 같은 큰 필드를 `attachAuditDiff` 에 넣지 않는다.
+- 🔴 로그인 실패 행의 meta `userId` 는 사람이 친 원문이다 — 비밀번호를 아이디 칸에 치면 그대로 남는다. 감사 조회 권한을 그만큼 좁게 준다.
+- 조회: `GET /audit-logs` — `filter[actorUserNo]` · `filter[action]` + `filter[actionMatch]`(`prefix` 기본 · `exact`) · `filter[targetType]` · `filter[targetRefNo]` · `filter[from]` · `filter[to]`(`[from, to)` — "다음 날 0시" 를 보낸다). 행은 admin-shared `adminAuditLogSchema`, 라벨은 `auditCatalog.labelOf(action)`.
+- 보존 기간 · 청소 · 파티셔닝은 쓰는 쪽 몫이다(크론으로 오래된 행을 지운다).
 
 ## admin-ui 와 맞물리기
 
