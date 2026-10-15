@@ -105,7 +105,9 @@ export function createQuerySchema<
     defaultSortOrder = 'desc',
     filterShape = {} as TFilter,
   } = options
-  const columnSchema = z.enum(sortableColumns)
+  // 🔴 타입을 적어 둔다 — z.enum 의 추론 반환 타입(Flatten 조건부 타입)이 d.ts 에 풀려 나와 skipLibCheck: false
+  //    소비자에서 TS2536 3건이 났다(2f-2b 스펙 §5-4). 출력 · 입력은 같다(pagination.test.ts 의 타입 테스트).
+  const columnSchema: z.ZodType<TSortable[number], TSortable[number]> = z.enum(sortableColumns)
 
   return createPaginationQuerySchema(options).extend({
     sortBy: toArray(columnSchema).optional().default([defaultSortColumn]),

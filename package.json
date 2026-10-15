@@ -10,6 +10,7 @@
   "scripts": {
     "prepare": "pnpm --filter @ssworks/admin-shared build",
     "build": "pnpm -r build",
+    "check:dts": "pnpm -r --if-present check:dts",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -20,7 +21,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check:dts",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only",
     "release": "pnpm build && node scripts/stage-release.mjs"

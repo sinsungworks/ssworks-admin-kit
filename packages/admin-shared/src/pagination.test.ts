@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { z } from 'zod'
 import {
   createPaginatedRespSchema,
@@ -68,6 +68,20 @@ describe('createQuerySchema — 정렬 · 필터', () => {
   it('filterShape 를 생략해도 된다', () => {
     const plain = createQuerySchema({ sortableColumns: ['a'] as const, defaultSortColumn: 'a' })
     expect(plain.parse({}).filter).toBeUndefined()
+  })
+
+  it('타입 — 출력 sortBy 는 정렬 칸 배열, 입력은 단일값 · 배열 · 생략(2f-2b TS2536 고침 뒤에도 같다)', () => {
+    type Out = z.output<typeof schema>
+    type In = z.input<typeof schema>
+    expectTypeOf<Out['sortBy']>().toEqualTypeOf<('createAt' | 'userName')[]>()
+    expectTypeOf<Out['sortOrder']>().toEqualTypeOf<('asc' | 'desc')[]>()
+    expectTypeOf<In['sortBy']>().toEqualTypeOf<
+      'createAt' | 'userName' | ('createAt' | 'userName')[] | undefined
+    >()
+    expectTypeOf<Out['filter']>().toEqualTypeOf<{ userId?: string; teamNo?: bigint } | undefined>()
+    // @ts-expect-error 정렬 칸 밖 값은 컴파일 오류다
+    const wrong: Out['sortBy'] = ['password']
+    expect(wrong).toEqual(['password'])
   })
 })
 

@@ -19,14 +19,15 @@
 
 ```bash
 pnpm install
-pnpm check                              # lint → typecheck → test → build
+pnpm check                              # lint → typecheck → test → build → check:dts
+pnpm check:dts                          # 발행 d.ts 를 skipLibCheck: false 로(admin-shared · admin-server — build 뒤)
 pnpm test / pnpm test:watch             # vitest (워크스페이스 전체)
 pnpm --filter @ssworks/admin-ui test    # 패키지 하나
 pnpm lint:fix && pnpm format
 pnpm changeset                          # 공개 API 변경 시 반드시
 ```
 
-`admin-ui` 는 `@ssworks/admin-shared` 를 **`dist/` 로** import 한다(소스가 아니다). 그래서 root `prepare` 가 `pnpm install` 직후 admin-shared 를 빌드한다 — 없으면 새 체크아웃·CI 에서 typecheck·test 가 "Cannot find module" 로 깨진다. **admin-shared 를 고친 뒤에는 `pnpm --filter @ssworks/admin-shared build` 를 다시 돌려야** admin-ui 쪽에 보인다.
+`admin-ui` 는 `@ssworks/admin-shared` 를 **`dist/` 로** import 한다(소스가 아니다). 그래서 root `prepare` 가 `pnpm install` 직후 admin-shared 를 빌드한다 — 없으면 새 체크아웃·CI 에서 typecheck·test 가 "Cannot find module" 로 깨진다. **admin-shared 를 고친 뒤에는 `pnpm --filter @ssworks/admin-shared build` 를 다시 돌려야** admin-ui 쪽에 보인다. `check:dts` 는 발행 d.ts 를 쓰는 쪽처럼 검사한다 — admin-shared 는 DOM lib(브라우저 소비자), admin-server 는 @types/node(Node 소비자). admin-ui 는 Vuetify d.ts 가 skipLibCheck: false 에서 깨져 넣지 않는다.
 
 ## 실행 환경
 

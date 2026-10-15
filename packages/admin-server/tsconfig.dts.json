@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": false,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "files": ["dist/index.d.ts", "dist/runner.d.ts"],
+  "include": ["dist/database/migrations/*.d.ts"]
+}
