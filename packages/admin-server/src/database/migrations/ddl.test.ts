@@ -13,6 +13,7 @@ import * as auditLogs from './0008_audit_logs.js'
 import * as guardLocks from './0009_guard_locks.js'
 import * as teamTreeLock from './0010_team_tree_lock.js'
 import * as legalDocuments from './0011_legal_documents.js'
+import * as ipAccessRules from './0012_ip_access_rules.js'
 
 // 🔴 마이그레이션 DDL 을 소스 문자열이 아니라 **컴파일된 SQL** 로 잰다(hangang migrations-ddl.test.ts).
 //    `sql` 템플릿 안의 식별자는 CamelCasePlugin 이 바꾸지 않는다 — hangang 037 이 그 자리에서 실제 DB 적용 때 죽었다.
@@ -32,6 +33,7 @@ const CHAPTERS: [string, Chapter][] = [
   ['0009_guard_locks', guardLocks],
   ['0010_team_tree_lock', teamTreeLock],
   ['0011_legal_documents', legalDocuments],
+  ['0012_ip_access_rules', ipAccessRules],
 ]
 
 async function capture(run: (db: Kysely<unknown>) => Promise<void>): Promise<string[]> {
@@ -196,5 +198,47 @@ describe.each(CHAPTERS)('%s', (_id, chapter) => {
 
   it('down 도 돈다', async () => {
     expect((await capture((db) => chapter.down(db))).length).toBeGreaterThan(0)
+  })
+})
+
+describe('0012_ip_access_rules', () => {
+  it('표 · 인덱스 · 시드 두 행 — 열 정의 원문(2f-1 스펙 §4 · ③ D1)', async () => {
+    const statements = await capture((db) => ipAccessRules.up(db))
+    expect(statements).toHaveLength(3)
+    const [table = '', index, seed = ''] = statements
+    expect(table).toMatch(/^create table `ip_access_rules`/)
+    for (const fragment of [
+      '`rule_no` bigint unsigned primary key auto_increment',
+      '`scope_type` varchar(16) collate ascii_bin not null',
+      '`scope_ref_no` bigint unsigned comment',
+      '`cidr` varchar(43) collate ascii_bin not null',
+      '`description` varchar(200) comment',
+      '`revision` integer unsigned default 0 not null',
+    ]) {
+      expect(table).toContain(fragment)
+    }
+    expect(index).toBe(
+      'create index `idx_ip_access_rules_scope` on `ip_access_rules` (`scope_type`, `scope_ref_no`)',
+    )
+    expect(seed).toMatch(/^insert into `ip_access_rules`/)
+  })
+
+  it('🔴 scopeType 에 CHECK · ENUM · FK 가 없다 — 다형 참조, 입구는 zod(hangang)', async () => {
+    const [table = ''] = await capture((db) => ipAccessRules.up(db))
+    const outside = outsideQuotes(table).toLowerCase()
+    expect(outside).not.toContain('check')
+    expect(outside).not.toContain('enum')
+    expect(outside).not.toContain('foreign key')
+  })
+
+  it('🔴 updateAt 에 ON UPDATE 가 없다 — revision 이 오르는 쓰기가 같이 쓴다(2d ⑧ U1 과 같다)', async () => {
+    const [table = ''] = await capture((db) => ipAccessRules.up(db))
+    const start = table.indexOf('`update_at`')
+    expect(table.slice(start).toLowerCase()).toContain('default current_timestamp')
+    expect(table.slice(start).toLowerCase()).not.toContain('on update')
+  })
+
+  it('down 은 표를 버린다', async () => {
+    expect(await capture((db) => ipAccessRules.down(db))).toEqual(['drop table `ip_access_rules`'])
   })
 })

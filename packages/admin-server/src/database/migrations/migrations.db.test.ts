@@ -7,6 +7,7 @@ import { ADMIN_MIGRATIONS } from './index.js'
 const CORE_TABLES = [
   'audit_logs',
   'guard_locks',
+  'ip_access_rules',
   'legal_documents',
   'roles',
   'sessions',
@@ -121,6 +122,15 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
     expect(column('legal_documents', 'published_at').isNullable).toBe('NO')
     // 🔴 append-only — 발행 시각에 ON UPDATE 가 없다(explicit_defaults_for_timestamp=OFF 에서도)
     expect(column('legal_documents', 'published_at').extra.toLowerCase()).not.toContain('on update')
+    // IP 장(2f-1 스펙 §4)
+    expect(column('ip_access_rules', 'scope_type').collationName).toBe('ascii_bin')
+    expect(column('ip_access_rules', 'scope_type').columnType).toBe('varchar(16)')
+    expect(column('ip_access_rules', 'cidr').collationName).toBe('ascii_bin')
+    expect(column('ip_access_rules', 'cidr').columnType).toBe('varchar(43)')
+    expect(column('ip_access_rules', 'scope_ref_no').columnType).toBe('bigint(20) unsigned')
+    expect(column('ip_access_rules', 'scope_ref_no').isNullable).toBe('YES')
+    expect(column('ip_access_rules', 'description').isNullable).toBe('YES')
+    expect(column('ip_access_rules', 'update_at').extra.toLowerCase()).not.toContain('on update')
   })
 
   it('🔴 제약 이름은 snake_case(CamelCasePlugin 이 이름도 바꾼다 — 스펙 R3)', async () => {
@@ -183,6 +193,7 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
       'idx_audit_logs_target',
       'idx_audit_logs_action',
       'idx_legal_documents_kind_published',
+      'idx_ip_access_rules_scope',
     ]) {
       expect(names).toContain(expected)
     }
@@ -194,6 +205,18 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
       { lockName: 'legalPublish', description: expect.stringContaining('FOR UPDATE') },
       { lockName: 'superAdminSurvival', description: expect.stringContaining('FOR UPDATE') },
       { lockName: 'teamTree', description: expect.stringContaining('FOR UPDATE') },
+    ])
+  })
+
+  it('0012 — global 허용 두 행이 시드된다(2f-1 스펙 ③ D1, 계열마다 한 행)', async () => {
+    const rows = await t.db
+      .selectFrom('ipAccessRules')
+      .select(['scopeType', 'scopeRefNo', 'cidr', 'revision'])
+      .orderBy('ruleNo')
+      .execute()
+    expect(rows).toEqual([
+      { scopeType: 'global', scopeRefNo: null, cidr: '0.0.0.0/0', revision: 0 },
+      { scopeType: 'global', scopeRefNo: null, cidr: '::/0', revision: 0 },
     ])
   })
 })

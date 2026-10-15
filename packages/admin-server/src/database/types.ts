@@ -1,5 +1,6 @@
 import type { AdminAuditLogsTable } from './tables/audit-logs.js'
 import type { AdminGuardLocksTable } from './tables/guard-locks.js'
+import type { AdminIpAccessRulesTable } from './tables/ip-access-rules.js'
 import type { AdminLegalDocumentsTable } from './tables/legal-documents.js'
 import type { AdminRolesTable } from './tables/roles.js'
 import type { AdminSessionsTable } from './tables/sessions.js'
@@ -10,7 +11,7 @@ import type { AdminUserEmploymentPeriodsTable } from './tables/user-employment-p
 import type { AdminUsersTable } from './tables/users.js'
 
 // 정본: hangang-home apps/api/src/core/database/types.ts(테이블 파일 분리 + 조합)
-// 바꾼 점: 코어 10키만. 쓰는 쪽은 `interface Database extends AdminDatabase { posts: PostsTable }` 로 넓힌다 — 코어 테이블에
+// 바꾼 점: 코어 11키만. 쓰는 쪽은 `interface Database extends AdminDatabase { posts: PostsTable }` 로 넓힌다 — 코어 테이블에
 //   컬럼을 더하려면 `users: AdminUsersTable & { email: string | null }`. 🔴 패키지 코드는 더한 컬럼을 모르므로 NOT NULL
 //   확장 컬럼은 DEFAULT 를 둬야 한다(Phase 0 §5).
 
@@ -25,11 +26,13 @@ export interface AdminDatabase {
   auditLogs: AdminAuditLogsTable
   guardLocks: AdminGuardLocksTable
   legalDocuments: AdminLegalDocumentsTable
+  ipAccessRules: AdminIpAccessRulesTable
 }
 
 export type {
   AdminAuditLogsTable,
   AdminGuardLocksTable,
+  AdminIpAccessRulesTable,
   AdminLegalDocumentsTable,
   AdminRolesTable,
   AdminSessionsTable,
