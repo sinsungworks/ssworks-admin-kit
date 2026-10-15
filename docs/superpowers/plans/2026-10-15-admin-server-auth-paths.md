@@ -2455,13 +2455,16 @@ Expected: 컨테이너 `Up`, tarball 둘, 마지막 줄 `테스트 파일 없음
 
 ```js
 await waitForServer()
-const admin = await login('admin', 'smoke-pass-1234')
+let admin = await login('admin', 'smoke-pass-1234')
 const staff = await login('staff', 'smoke-pass-5678')
 const write = (method, path, body) => send(path, { method, cookie: admin, body })
 const read = (path) => send(path, { cookie: admin })
 const staffNo = JSON.parse((await send('/admin/auth/me', { cookie: staff })).text).data.userNo
 
-show('admin-refresh', await send('/admin/auth/refresh', { method: 'POST', cookie: admin }))
+const refreshed = await send('/admin/auth/refresh', { method: 'POST', cookie: admin })
+show('admin-refresh', refreshed)
+// 🔴 회전이 옛 세션을 끊는다 — 이후 요청은 refresh 응답의 새 쿠키로 보낸다(옛 쿠키를 쓰면 401)
+admin = `admin_at=${refreshed.cookies.admin_at}; admin_rt=${refreshed.cookies.admin_rt}`
 const rule = await write('POST', '/admin/ip-access', {
   scopeType: 'user',
   scopeRefNo: staffNo,

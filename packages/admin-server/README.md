@@ -198,7 +198,7 @@ export class AppModule {}
 
 ### 로그인 판정 · 강제 변경 · 재인증
 
-- 순서: (IP 접근 제어를 켰으면) IP → 비밀번호 → 잠김 → 퇴사. 틀리면 언제나 401 `ERR_LOGIN_FAILED`(없는 아이디 · 퇴사 · 잠긴 계정도 같은 응답). 5회 틀리면 15분 잠긴다 — 로그인 · 비밀번호 변경 · 재인증이 한 카운터를 원자적으로 쓴다. 🔴 잠긴 동안의 로그인은 비밀번호가 맞아도 같은 401 이다(정답 여부를 흘리지 않는다). 🔴 막힌 주소의 로그인도 비밀번호를 보지 않고 같은 401 이다 — 막힌 주소에서는 정답을 알아낼 수도, 틀린 비밀번호로 계정을 잠글 수도 없다. IP 접근 제어를 켜면 로그인 401 문구가 모두 "… 허용되지 않은 접속 위치입니다." 까지 말한다. 잠기지 않았고 맞으면 퇴사 403. 카운터는 로그인이 성공할 때만 0 으로 돌아간다. 로그인된 본인의 비밀번호 변경 · 재인증은 잠김을 423 으로 알린다.
+- 순서: (IP 접근 제어를 켰으면) IP → 비밀번호 → 잠김 → 퇴사. 틀리면 언제나 401 `ERR_LOGIN_FAILED`(없는 아이디 · 퇴사 · 잠긴 계정도 같은 응답). 5회 틀리면 15분 잠긴다 — 로그인 · 비밀번호 변경 · 재인증이 한 카운터를 원자적으로 쓴다. 🔴 잠긴 동안의 로그인은 비밀번호가 맞아도 같은 401 이다(정답 여부를 흘리지 않는다). 🔴 막힌 주소의 로그인도 비밀번호를 보지 않고 같은 401 이다 — 막힌 주소에서는 정답을 알아낼 수도, 틀린 비밀번호로 계정을 잠글 수도 없다. IP 접근 제어를 켜면 로그인 401 문구가 모두 "… 허용되지 않은 접속 위치입니다." 까지 말한다. 잠기지 않았고 맞으면 퇴사 403. 카운터는 로그인에서는 성공할 때만 0 으로 돌아간다(재인증 성공 · 비밀번호 변경도 되돌린다). 로그인된 본인의 비밀번호 변경 · 재인증은 잠김을 423 으로 알린다.
 - 퇴사: `users.resignAt` 은 **효력 시각**이다 — 그 시각부터 로그인 · 요청 · 갱신이 403 `ERR_RESIGNED_USER`. IP 접근 제어를 켜면 매 요청은 퇴사 다음에, 갱신은 퇴사보다 먼저 IP 를 본다(막히면 403 `ERR_IP_NOT_ALLOWED` + `details.clientIp`). 로그인은 위의 순서다. "퇴사일 당일까지 근무" 는 쓸 때 다음 날 0시(기준 시간대)로 바꿔 넣는다.
 - 강제 변경(`isPasswordChangeRequired`): 로그인은 되고 `/me` 가 `permissions: []` 와 플래그를 낸다. 그 밖의 라우트는 403 `ERR_PASSWORD_CHANGE_REQUIRED`. admin-ui `createAdminGuard({ isPasswordChangeRequired })` 가 변경 화면으로 보낸다.
 - 민감 작업 재인증: 서비스 진입부에서 `await reauth.verify(admin, body.currentPassword)`(`AdminReauthService`, 틀리면 403 `ERR_REAUTH_REQUIRED`). 🔴 트랜잭션 안에서 부르지 않는다.
@@ -218,7 +218,7 @@ class MyAuthRepository implements AdminAuthRepository {
 AdminAuthModule.withRepository(MyAuthRepository, { imports: [MyUsersDataModule] })
 ```
 
-🔴 `lockCredential(trx, userNo, mode)` 는 받은 트랜잭션 위의 **잠금 읽기**다 — `'update'` 는 `FOR UPDATE`, `'share'` 는 `LOCK IN SHARE MODE`(MariaDB 는 `FOR SHARE` 를 받지 않는다 — Kysely `.forShare()` 를 쓰지 않는다). 잠그는 행은 `sessions.user_no` FK 가 가리키는 그 `users` 행이다 — 로그인 확정 · 토큰 회전이 이 잠금을 세션보다 먼저 잡아 퇴사 · 비밀번호 초기화와 교착하지 않는다. `writeLoginState` 는 잠금 두 컬럼(`loginFailCount` · `lockUntil`)만 쓴다 — 패키지가 같은 트랜잭션에서 먼저 `lockCredential(…, 'update')` 로 잠그므로 카운터의 원자성은 패키지가 맡는다. 받는 `trx` 는 `Transaction<AdminDatabase>` 라 자기 Database 타입으로 단언해 쓴다.
+🔴 `lockCredential(trx, userNo, mode)` 는 받은 트랜잭션 위의 **잠금 읽기**다 — `'update'` 는 `FOR UPDATE`, `'share'` 는 `LOCK IN SHARE MODE`(MariaDB 는 `FOR SHARE` 를 받지 않는다 — Kysely `.forShare()` 를 쓰지 않는다). 잠그는 행은 `sessions.user_no` FK 가 가리키는 그 `users` 행이다 — 로그인 확정 · 토큰 회전이 이 잠금을 세션보다 먼저 잡아 퇴사 · 비밀번호 초기화와 교착하지 않는다. `writeLoginState` 는 잠금 두 컬럼(`loginFailCount` · `lockUntil`)만 쓴다 — 패키지가 같은 트랜잭션에서 먼저 `lockCredential(…, 'update')` 로 잠그므로 카운터의 원자성은 패키지가 맡는다. 받는 `trx` 는 `Transaction<AdminDatabase>` 라 자기 Database 타입으로 단언해 쓴다. 🔴 교체 구현이 지킬 것 셋: ① 두 원시 모두 **받은 `trx` 위에서만** 쓴다 — `writeLoginState` 를 다른 연결(`this.db`)로 쓰면 자기 요청이 쥔 X 잠금을 기다려 잠금 대기 초과가 되고 카운터가 오르지 않아 무차별 대입 잠금이 조용히 꺼진다, `lockCredential` 을 다른 연결로 하면 회전 교착과 로그인 TOCTOU 가 돌아온다. ② `lockCredential` 이 돌려주는 `passwordHash` 는 `findCredentialByUserId` 와 같은 컬럼 · 같은 값(정규화 없음)이어야 한다 — 로그인 확정이 둘을 비교하므로 다르면 모든 로그인이 "낡음" 401(`login.fail`)이 된다. ③ 그 트랜잭션에서 잠금 앞에 비잠금 SELECT 를 두지 않는다(스냅샷 격리 ON 이면 1020).
 
 ### 시드 · IP 자리
 
@@ -634,7 +634,7 @@ export { up, down } from '@ssworks/admin-server/migrations/0012_ip_access_rules'
 - **팀 삭제**는 그 팀(하위 팀 포함)을 가리키는 규칙이 있으면 409 `ERR_TEAM_HAS_IP_RULES` — 규칙을 먼저 지운다.
 - **동시 쓰기**: IP 쓰기는 `guard_locks` 행 `superAdminSurvival` 에서 역할 · 사용자의 잔존 쓰기와 함께 하나씩 돈다 — 두 관리자가 각자 통과하는 변경을 동시에 넣어도 뒤의 쪽이 자기 잠금 409 로 걸린다. 드문 잠금 충돌은 409 `ERR_COMMON_CONFLICT`("다시 시도해 주세요") — 다시 보내면 된다.
 - **캐시 없음**: 매 인증 요청이 규칙 표를 읽는다(세션 · 주체 · 규칙 — DB 왕복 셋). 규칙 변경은 다음 요청부터 모든 인스턴스에 걸린다.
-- **진단 경고**: 정책이 주소를 읽지 못해 막았을 때(`clientIp` 출처 · `trust proxy` 설정 오류)와 global 층 규칙이 하나도 없을 때 `IpAccessPolicy` 가 `Logger.warn` 을 프로세스당 한 번씩 남긴다 — 주소 값은 싣지 않는다. 모든 로그인이 401 로 막히면 이 경고와 감사 행 `auth.login.blocked.ip` 의 `ip` 칸(주소 없음이면 비었다)을 먼저 본다.
+- **진단 경고**: 정책이 주소를 읽지 못해 막았을 때(`clientIp` 출처 · `trust proxy` 설정 오류)와 global 층 규칙이 하나도 없을 때 `IpAccessPolicy` 가 `Logger.warn` 을 정책 인스턴스당 한 번씩(보통 프로세스당 한 번) 남긴다 — 주소 값은 싣지 않는다. 모든 로그인이 401 로 막히면 이 경고와 감사 행 `auth.login.blocked.ip` 의 `ip` 칸(주소 없음이면 비었다)을 먼저 본다.
 
 ## admin-ui 와 맞물리기
 
