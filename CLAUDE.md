@@ -8,12 +8,12 @@
 
 관리자 페이지 공통 코드를 npm 패키지로 꺼낸 **pnpm 모노레포**다. 소비자는 신규 웹 서비스의 관리자 앱(Vue 3 + Vuetify 4 SPA)과 API(NestJS + Kysely)다. 네 참조 프로젝트(kim5257-crm-v5 · ssworks-axion-admin · ssworks-gise-home · hangang-home)에 복사-수정으로 퍼져 있던 코드가 출처다.
 
-| 경로                    | 패키지                  | 성격                                                                                                                                                                    |
-| ----------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/admin-shared` | `@ssworks/admin-shared` | 프레임워크 무의존. 브라우저·NestJS 양쪽이 import 한다                                                                                                                   |
-| `packages/admin-ui`     | `@ssworks/admin-ui`     | Vue 3 + Vuetify 4 컴포넌트·composable. vue·vuetify 는 peer                                                                                                              |
-| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 진행 — 2a 기반 · 2b 인증 · 2c 세션 · 감사 · 2d 역할 · 사용자 · 2e-1 팀 · 2d-3 계정 정리 · 2e-2 약관 · 2f-1 IP 접근 제어 · 2f-2a 인증 경로 완료) |
-| `docs/`                 | —                       | 검토·Phase 0 대조 보고. **설계 근거는 코드 주석과 이 폴더에 있다**                                                                                                      |
+| 경로                    | 패키지                  | 성격                                                                                                                                                                                         |
+| ----------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/admin-shared` | `@ssworks/admin-shared` | 프레임워크 무의존. 브라우저·NestJS 양쪽이 import 한다                                                                                                                                        |
+| `packages/admin-ui`     | `@ssworks/admin-ui`     | Vue 3 + Vuetify 4 컴포넌트·composable. vue·vuetify 는 peer                                                                                                                                   |
+| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 진행 — 2a 기반 · 2b 인증 · 2c 세션 · 감사 · 2d 역할 · 사용자 · 2e-1 팀 · 2d-3 계정 정리 · 2e-2 약관 · 2f-1 IP 접근 제어 · 2f-2a 인증 경로 · 2f-2b 첫 발행 준비 완료) |
+| `docs/`                 | —                       | 검토·Phase 0 대조 보고. **설계 근거는 코드 주석과 이 폴더에 있다**                                                                                                                           |
 
 ## 명령어
 
@@ -131,7 +131,8 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 | Phase 2 PR 2e-2 — 약관(`AdminLegalModule`· 장 0011 ·`legalPublish` 가드 · 종류 옵션 · 서버 해시)                                       | 완료                      | 스펙 `docs/superpowers/specs/2026-10-14-admin-server-teams-legal-design.md` · 플랜 `docs/superpowers/plans/2026-10-15-admin-server-legal.md`                 |
 | Phase 2 PR 2f-1 — IP 접근 제어(`AdminIpAccessModule`· 장 0012 · clientIp · IP 를 아는 잔존)                                            | 완료                      | 스펙 `docs/superpowers/specs/2026-10-15-admin-server-ip-access-design.md` · 플랜 `docs/superpowers/plans/2026-10-15-admin-server-ip-access.md`               |
 | Phase 2 PR 2f-2a — 인증 경로(로그인 IP 먼저 · 확정 트랜잭션 · 회전 users 공유 잠금 · 리포지토리 trx 원시)                              | 완료                      | 스펙 `docs/superpowers/specs/2026-10-15-admin-server-auth-paths-design.md` · 플랜 `docs/superpowers/plans/2026-10-15-admin-server-auth-paths.md`             |
-| **Phase 2 PR 2f-2b — 첫 발행 준비(DB TLS · socketPath · peer 하한 · TS2536 · IP 파서)**                                                | **다음**                  | HANDOFF "다음 플랜"                                                                                                                                          |
+| Phase 2 PR 2f-2b — 첫 발행 준비(DB TLS · socketPath · peer 하한 · TS2536 · IP 파서)                                                    | 완료                      | 스펙 `docs/superpowers/specs/2026-10-15-admin-server-publish-prep-design.md` · 플랜 `docs/superpowers/plans/2026-10-15-admin-server-publish-prep.md`         |
+| **Version Packages PR #3(0.4.0) 머지 → 확인용 앱 실서버 확인 → admin-server 첫 발행**                                                  | **다음**                  | HANDOFF "다음 플랜" · "발행 전에 사람이 해야 하는 것"                                                                                                        |
 | 템플릿 `kim5257-project-template` `preset/admin` + `.claude/skills/admin-scaffold`                                                     | 대기                      | `docs/00-admin-common-review.md` §3                                                                                                                          |
 
 `docs/01-phase0.md` §8 표를 단계가 끝날 때마다 갱신한다.
