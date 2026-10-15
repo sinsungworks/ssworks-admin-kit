@@ -119,6 +119,10 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
   - 소켓 실접속은 재지 않았다(Windows · CI 서비스 컨테이너에서 닿지 않는다) — 설정 단위 테스트만. 관리형 DB 의 CA 묶음 · 호스트 이름 검증도 로컬로는 못 잰다(README "DB TLS · 소켓").
   - 실 DB TLS 테스트는 서버가 MariaDB 11.4.1+ 이고 TLS 를 켰다는 전제다(드라이버 지문 검증) — `ADMIN_TEST_DB_URL` 을 다른 서버로 돌리면 실패할 수 있다.
   - PR #3 머지 전까지(로컬 admin-shared 0.3.0) changesets 가 `Package "@ssworks/admin-server" must depend on the current version of "@ssworks/admin-shared": "0.3.0" vs "workspace:>=0.4.0 <1.0.0"` 경고를 낸다(changeset status · 0.4.0 을 만드는 changeset version 한 번) — 0.4.0 하한 밖이라 나는 비치명 경고이고 결과 버전 · peer 는 그대로다(드라이런 확인). 0.4.0 이 되면 사라진다.
+  - 최종 리뷰에서 이 PR 이 고친 것: README 코드 TLS 예제를 앱 · 러너 공용 함수로(한쪽만 고치면 마이그레이션이 평문), "시스템 CA" → Node 기본 CA 묶음, 실측 안 한 범위 · REQUIRE SSL 과 소켓 · IP CIDR 규칙 안내, ParsedCidr JSDoc.
+  - 파서 후속(선택 — IP 파서는 0.4.0 에서 처음 공개): `parseCidr` 의 루프백 판정을 바이트 기준으로(지금은 normalizeIp 문자열 — `0::1/128` · `::0001/128` 은 저장되지만 매칭되지 않는다, 이 PR 전과 같음), 경계 테스트(`/95` · `/96` · `/0` · `/129` · 존 인덱스) 고정.
+  - 테스트 정리(선택): `connection.tls.db.test.ts` afterAll 에서 계정 삭제가 던지면 테스트 DB 가 남는다(try/finally), 모듈 로드 때의 mkdtempSync, 도우미 이름 `root()`.
+  - 그대로 둔 것: 소켓 모드도 `DB_PASSWORD` 가 필수(비밀번호 없는 unix_socket 인증은 객체로), `DB_SSL_CA` 는 `BEGIN CERTIFICATE` 머리만 받는다, 풀을 지난 TLS · 인증 실패는 `acquireTimeout` 뒤 45028 이고 원인은 `cause` 에만 있다(드라이버 동작).
 
 ## 작업 폴더 밖에 남은 것
 

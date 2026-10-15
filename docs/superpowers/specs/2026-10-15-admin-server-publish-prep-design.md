@@ -307,4 +307,4 @@ admin-shared: `skipLibCheck: false` 에서 `dist/pagination.d.ts` 의 TS2536 3�
 
 ## 13. 구현 중 정정
 
-(구현 중 바뀐 것을 여기 적는다.)
+- **R1 — 용어 정정(최종 리뷰).** "시스템 CA" 는 Node 기본 CA 묶음이다(OS 신뢰 저장소가 아니다 — 사설 CA 는 DB_SSL_CA · NODE_EXTRA_CA_CERTS). README · 주석 · changeset 을 고쳤다. 동작은 같다.

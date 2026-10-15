@@ -24,7 +24,7 @@ export interface AdminDbConnection {
   password: string
   database: string
   /**
-   * TLS — mariadb 드라이버 `ssl` 그대로. `true` = 시스템 CA 로 검증(MariaDB 11.4.1+ 의 자체 서명은 드라이버가
+   * TLS — mariadb 드라이버 `ssl` 그대로. `true` = Node 기본 CA 묶음으로 검증(MariaDB 11.4.1+ 의 자체 서명은 드라이버가
    * 비밀번호 지문으로 검증), 객체 = `{ ca, cert, key, servername, checkServerIdentity, rejectUnauthorized … }`.
    * 🔴 `rejectUnauthorized: false` 는 검증을 끈다 — 암호화만 되고 중간자를 막지 못한다.
    */
@@ -87,7 +87,7 @@ function readCaFile(path: string): string {
   return pem
 }
 
-/** env 의 TLS — `DB_SSL_CA` 가 있으면 그 CA 로 검증(지문 검증은 드라이버가 끈다), `DB_SSL=true` 면 시스템 CA */
+/** env 의 TLS — `DB_SSL_CA` 가 있으면 그 CA 로 검증(지문 검증은 드라이버가 끈다), `DB_SSL=true` 면 Node 기본 CA 묶음 */
 function tlsFromEnv(env: Env): AdminDbConnection['ssl'] | undefined {
   const flag = sslFlag(env)
   const caPath = envText(env, 'DB_SSL_CA')

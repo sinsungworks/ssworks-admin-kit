@@ -44,7 +44,7 @@ export interface IpScope {
 export interface ParsedCidr {
   /** 정규화된 네트워크 주소 — 길이 4(IPv4) 또는 16(IPv6) */
   net: Uint8Array
-  /** net 의 계열 기준 프리픽스(v4-mapped 표기는 96 을 뺀 값) */
+  /** net 의 계열 기준 프리픽스(v4-mapped 표기는 96 을 뺀 값, `::1/128` 은 `127.0.0.1/32` 로 접혀 32) */
   prefix: number
 }
 

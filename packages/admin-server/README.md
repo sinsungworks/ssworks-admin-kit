@@ -111,48 +111,62 @@ export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 
 ## 환경 변수
 
-| 이름                    | 필수              | 기본  | 뜻                                                                                                                    |
-| ----------------------- | ----------------- | ----- | --------------------------------------------------------------------------------------------------------------------- |
-| `DB_HOST`               | 예(소켓이 아니면) |       |                                                                                                                       |
-| `DB_PORT`               |                   | 3306  | 양의 정수가 아니면 기동 실패                                                                                          |
-| `DB_SOCKET_PATH`        |                   |       | 유닉스 소켓 — 있으면 `DB_HOST` · `DB_PORT` · `DB_SSL=true` · `DB_SSL_CA` 와 함께 쓰면 기동 실패(아래 "DB TLS · 소켓") |
-| `DB_USER`               | 예                |       |                                                                                                                       |
-| `DB_PASSWORD`           | 예                |       |                                                                                                                       |
-| `DB_NAME`               | 예                |       | gise 처럼 `DB_DATABASE` 를 쓰면 `AdminDbConnection` 을 직접 만든다                                                    |
-| `DB_POOL_LIMIT`         |                   | 10    | `× API 프로세스 수` 가 DB `max_connections` 여유 안이어야 한다                                                        |
-| `DB_ACQUIRE_TIMEOUT_MS` |                   | 10000 |                                                                                                                       |
-| `DB_SSL`                |                   | 끔    | `true` 면 TLS 로 검증해 붙는다. `true` · `false` 밖이면 기동 실패                                                     |
-| `DB_SSL_CA`             |                   |       | PEM 파일 경로 — 그 CA 로 검증(TLS 를 켠다). 못 읽거나 PEM 이 아니거나 `DB_SSL=false` 와 함께면 기동 실패              |
-| `TZ`                    | 예                |       | `UTC` — 아니면 `assertUtcTimezone` 이 기동을 멈춘다                                                                   |
-| `ADMIN_JWT_SECRET`      | 예                |       | 액세스 토큰 HS256 비밀키(32자 이상). 🔴 패키지가 직접 읽지 않는다 — `auth.jwtSecret` 으로 넘기는 예시 이름            |
+| 이름                    | 필수              | 기본  | 뜻                                                                                                              |
+| ----------------------- | ----------------- | ----- | --------------------------------------------------------------------------------------------------------------- |
+| `DB_HOST`               | 예(소켓이 아니면) |       |                                                                                                                 |
+| `DB_PORT`               |                   | 3306  | 양의 정수가 아니면 기동 실패                                                                                    |
+| `DB_SOCKET_PATH`        |                   |       | 유닉스 소켓 경로. `DB_HOST` · `DB_PORT` · `DB_SSL=true` · `DB_SSL_CA` 와 함께면 기동 실패(아래 "DB TLS · 소켓") |
+| `DB_USER`               | 예                |       |                                                                                                                 |
+| `DB_PASSWORD`           | 예                |       |                                                                                                                 |
+| `DB_NAME`               | 예                |       | gise 처럼 `DB_DATABASE` 를 쓰면 `AdminDbConnection` 을 직접 만든다                                              |
+| `DB_POOL_LIMIT`         |                   | 10    | `× API 프로세스 수` 가 DB `max_connections` 여유 안이어야 한다                                                  |
+| `DB_ACQUIRE_TIMEOUT_MS` |                   | 10000 |                                                                                                                 |
+| `DB_SSL`                |                   | 끔    | `true` 면 TLS 로 검증해 붙는다. `true` · `false` 밖이면 기동 실패                                               |
+| `DB_SSL_CA`             |                   |       | PEM 파일 경로 — 그 CA 로 검증(TLS 를 켠다). 못 읽거나 PEM 이 아니거나 `DB_SSL=false` 와 함께면 기동 실패        |
+| `TZ`                    | 예                |       | `UTC` — 아니면 `assertUtcTimezone` 이 기동을 멈춘다                                                             |
+| `ADMIN_JWT_SECRET`      | 예                |       | 액세스 토큰 HS256 비밀키(32자 이상). 🔴 패키지가 직접 읽지 않는다 — `auth.jwtSecret` 으로 넘기는 예시 이름      |
 
 풀 안전 옵션(`timezone: 'Z'` · 숫자 옵션 넷 · `logParam: false`)은 바꿀 수 없다.
 
 ### DB TLS · 소켓
 
-- **TLS 켜기**: `DB_SSL=true` — 시스템 CA 로 서버 인증서와 호스트 이름을 검증한다. MariaDB 11.4 이상은 인증서를 설정하지 않아도 TLS 를 켜고 자체 서명 인증서를 만드는데, mariadb 드라이버(3.4+)가 비밀번호에서 나온 지문으로 그 인증서를 검증한다 — 비밀번호 있는 계정 · TCP 접속이면 CA 없이 `DB_SSL=true` 로 된다.
+- **TLS 켜기**: `DB_SSL=true` — Node 기본 CA 묶음(OS 신뢰 저장소가 아니다 — 사설 CA 는 `DB_SSL_CA` 로 고정하거나 `NODE_EXTRA_CA_CERTS`)으로 서버 인증서와 호스트 이름을 검증한다. MariaDB 11.4 이상은 인증서를 설정하지 않아도 TLS 를 켜고 자체 서명 인증서를 만드는데, mariadb 드라이버(3.4+)가 비밀번호에서 나온 지문으로 그 인증서를 검증한다 — 비밀번호 있는 계정 · TCP 접속이면 CA 없이 `DB_SSL=true` 로 된다.
 - **CA 고정**: `DB_SSL_CA=/run/secrets/db-ca.pem` — 그 CA 로 체인 · 호스트 이름을 검증한다(TLS 를 켜고, 드라이버의 지문 검증은 꺼진다). 관리형 DB 가 주는 CA 묶음을 여기 둔다.
-- **DB 쪽에서도 강제한다**: 서버 `require_secure_transport=ON` 또는 계정 `ALTER USER … REQUIRE SSL` — 앱 설정이 빠져도 평문 접속이 거부된다.
+- **DB 쪽에서도 강제한다**: 서버 `require_secure_transport=ON` 또는 계정 `ALTER USER … REQUIRE SSL` — 앱 설정이 빠져도 평문 접속이 거부된다. `REQUIRE SSL` 계정은 TCP + TLS 로 붙는다 — 소켓 모드에는 TLS 를 얹지 않으므로 소켓으로 붙는 계정에는 걸지 않는다.
 - **env 로 못 하는 것은 코드로** — 검증을 끄는 env 는 없다.
 
   ```ts
+  // src/database/admin-db.ts — Nest 를 싣지 않는다(러너도 import 한다)
   import { readFileSync } from 'node:fs'
+  import { adminDbConnectionFromEnv, type AdminDbConnection } from '@ssworks/admin-server/runner'
 
   // 인증서 이름이 접속 주소와 다를 때(Cloud SQL 처럼) — CA 체인만 검증하고 호스트 이름은 건너뛴다.
-  // 클라이언트 인증서(mTLS)는 같은 자리에 key · cert 를 더한다.
-  const db = {
+  // 클라이언트 인증서(mTLS)는 같은 자리에 key · cert 를 더한다. 🔴 함수다 — env 는 부를 때(부팅 뒤) 읽는다.
+  export const adminDb = (): AdminDbConnection => ({
     ...adminDbConnectionFromEnv(),
     ssl: {
       ca: readFileSync('/run/secrets/db-ca.pem', 'utf8'),
       checkServerIdentity: () => undefined,
     },
-  }
+  })
   ```
+
+  ```ts
+  // app.module.ts
+  AdminServerModule.forRootAsync({
+    useFactory: () => ({ db: adminDb(), errorCodes: projectErrors }),
+  })
+  // kysely.config.ts
+  kysely: () => createAdminKysely(adminDb())
+  ```
+
+  🔴 코드로 만든 `ssl` 은 넘긴 곳에만 닿는다 — 앱과 러너가 같은 함수를 쓰게 한다(한쪽만 고치면 마이그레이션이 평문으로 돈다).
 
   🔴 `ssl: { rejectUnauthorized: false }` 는 검증을 끈다 — 암호화는 되지만 중간자를 막지 못한다. 쓰지 말고 CA 를 고정한다.
 
+- **실측 범위**: MariaDB 11.4 + mariadb 드라이버 3.5.4 에서 `ssl: true` 지문 검증 · `REQUIRE SSL` 계정 · 엉뚱한 CA 거부를 실 DB 로 확인했다. 관리형 DB 의 CA 묶음 · 호스트 이름 검증 · 소켓 실접속은 재지 않았다 — 처음 붙을 때 `SHOW SESSION STATUS LIKE 'Ssl_cipher'` 가 비지 않은지 본다. peer `^3.4.0` 중 3.5.4 보다 낮은 mariadb 는 11.4 지문 경로를 확인하지 않았다.
 - **소켓**: `DB_SOCKET_PATH=/run/mysqld/mysqld.sock`(Windows 는 명명 파이프 경로). `DB_HOST` · `DB_PORT` · `DB_SSL=true` · `DB_SSL_CA` 와 함께 두면 기동 실패다 — 접속 대상이 모호하고, 소켓은 로컬 연결이라 TLS 를 얹지 않는다. 객체로는 `{ socketPath, user, password, database }`(`host` 와 하나만).
-- 앱(`AdminServerModule`)과 러너(`kysely.config.ts`)가 같은 `adminPoolConfig` 를 지나므로 env 하나로 둘 다 바뀐다. 기본은 지금처럼 평문 TCP 다. 오류 메시지는 env 이름(과 파일 오류의 errno 코드)만 담는다.
+- 앱(`AdminServerModule`)과 러너(`kysely.config.ts`)가 같은 `adminPoolConfig` 를 지나므로 **env** 하나로 둘 다 바뀐다(코드로 만든 `ssl` 은 위 공용 함수를 두 곳에 넘겨야 둘 다 바뀐다). 기본은 지금처럼 평문 TCP 다. 오류 메시지는 env 이름(과 파일 오류의 errno 코드)만 담는다.
 
 ## 응답 계약
 
@@ -643,7 +657,7 @@ export { up, down } from '@ssworks/admin-server/migrations/0012_ip_access_rules'
 
 - **판정**: 매 요청 · 토큰 갱신이 IP 를 본다(갱신은 퇴사보다 먼저). 막히면 403 `ERR_IP_NOT_ALLOWED` + `details.clientIp` — admin-ui `IpBlockedDialog` 가 읽는 값이다. 🔴 로그인은 비밀번호보다 먼저 IP 를 보고, 막히면 비밀번호를 확인하지 않은 채 틀린 비밀번호와 같은 401 `ERR_LOGIN_FAILED` 다(문구 "… 허용되지 않은 접속 위치입니다." — IP 접근 제어를 켜면 모든 로그인 실패가 이 문구다). 막힌 주소에서는 정답을 알아낼 수 없고 실패 카운터도 움직이지 않는다. 그래서 로그인 화면은 `IpBlockedDialog` 를 띄우지 않는다 — 로그인 뒤 막히면(매 요청 · 갱신) 띄운다. 감사 행 `auth.login.blocked.ip`(401) · `auth.access.blocked.ip`(403). 규칙을 바꿔도 세션은 끊지 않는다 — 막힌 주소의 요청이 403 을 받고, 규칙을 풀면 같은 세션이 다시 된다.
 - **팀 규칙**은 그 사람의 **대표 팀**(가장 작은 팀 번호) 하나에만 걸린다(로그인 · 잔존 · 미리보기가 같은 팀을 본다). 하위 팀으로 내려가지 않는다.
-- **CIDR**: IPv4 · IPv6, 프리픽스가 꼭 있어야 한다(`203.0.113.0/24` · `2001:db8::/32`). 앞뒤 공백은 뗀다. 호스트 비트가 남은 표기(`203.0.113.9/24`)는 네트워크처럼 매칭한다. 화면도 admin-shared `ipCidrSchema` · `isValidCidr` 로 같은 파서를 쓴다.
+- **CIDR**: IPv4 · IPv6, 프리픽스가 꼭 있어야 한다(`203.0.113.0/24` · `2001:db8::/32`). 앞뒤 공백은 뗀다. 호스트 비트가 남은 표기(`203.0.113.9/24`)는 네트워크처럼 매칭한다. IPv6 루프백 `::1` 은 `127.0.0.1` 로 접히므로 `::1` 을 허용하려면 `127.0.0.1/32` 나 `::1/128` 을 쓴다(`::1/64` 같은 다른 프리픽스는 IPv6 망으로 읽혀 루프백을 통과시키지 않는다). v4-mapped 는 `::ffff:a.b.c.d/96` 이상 꼴로만 받는다(16진 표기는 형식 오류). 화면도 admin-shared `ipCidrSchema` · `isValidCidr` 로 같은 파서를 쓴다.
 - **자기 잠금**: 저장하면 **요청자의 지금 주소**가 막히는 변경은 409 `ERR_COMMON_CONFLICT` + `details.clientIp`(쓰지 않는다). 남만 막는 변경은 막지 않는다 — 저장 전에 **미리보기**로 누가 잠기는지 본다(`becomesLocked` · 등급순 정렬 · `blockedSessions`). 미리보기는 읽은 순간의 스냅숏이라 저장이 409 일 수 있다.
 - **전권자 잔존**: 마지막 "어디서든 로그인할 수 있는 전체 권한 관리자" 를 없애는 규칙 변경(그 사람에게 사용자 규칙 · 마지막 전체 규칙 삭제 …)은 409 `lastSuperAdmin`.
 - **잠겼을 때**: API 가 막는 것은 API 로 만든 잠금뿐이다(자기 잠금 · 전권자 잔존 · 팀 삭제 409). 사무실 · ISP 주소 변경, 엣지 설정 오류(주소 없음 → 모두 403), 모듈을 뺀 동안 SQL 로 시드를 지운 뒤 다시 붙임은 막지 못한다. 모듈 import 를 빼면 판정은 멈추지만 `/admin/ip-access` 라우트도 사라진다 — 복구는 SQL 이다. 사용자 규칙이 전체 규칙을 이기므로, 자기 규칙에 묶인 사람은 그 규칙을 지워야 풀린다.
