@@ -1,7 +1,14 @@
 import { sql } from 'kysely'
 import { createConnection, type Connection } from 'mariadb'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { lockWaitsIn, sleep, snapshotKysely, whileHeld } from './concurrency.js'
+import {
+  holdGuard,
+  lockWaitsIn,
+  sleep,
+  snapshotKysely,
+  underHeld,
+  whileHeld,
+} from './concurrency.js'
 import { createTestDatabase, type TestDatabase } from './db.js'
 import { testDbServer } from './db-url.js'
 
@@ -48,7 +55,7 @@ describe('whileHeld', () => {
   it('🔴 during 이 잠금을 기다리기 시작하면 곧바로 커밋한다 — 기다린 뒤 커밋된 값을 본다', async () => {
     const started = Date.now()
     const result = await whileHeld(t, holdWith('held-1'), lockedRead)
-    expect(result).toEqual({ ok: true, value: 'held-1' })
+    expect(result).toEqual({ ok: true, value: 'held-1', reached: true })
     // 대기를 못 보면 기본 5초 뒤에야 커밋한다
     expect(Date.now() - started).toBeLessThan(2000)
   })
@@ -57,7 +64,7 @@ describe('whileHeld', () => {
     const before = await plainRead()
     const started = Date.now()
     const result = await whileHeld(t, holdWith('held-2'), plainRead)
-    expect(result).toEqual({ ok: true, value: before })
+    expect(result).toEqual({ ok: true, value: before, reached: false })
     expect(Date.now() - started).toBeLessThan(2000)
     expect(await plainRead()).toBe('held-2')
   })
@@ -72,7 +79,7 @@ describe('whileHeld', () => {
       },
       { timeoutMs: 150 },
     )
-    expect(result).toEqual({ ok: true, value: 'held-3' })
+    expect(result).toEqual({ ok: true, value: 'held-3', reached: false })
   })
 
   it('waiters — 그만큼이 다 기다릴 때까지 커밋하지 않는다', async () => {
@@ -88,9 +95,32 @@ describe('whileHeld', () => {
       },
       { waiters: 2 },
     )
+    expect(result.reached).toBe(true)
     if (!result.ok) throw result.error
     // 첫째는 둘째가 기다리기 시작한(300ms 뒤) 다음에야 풀렸다
     expect(result.value[0]).toBeGreaterThanOrEqual(250)
+  })
+})
+
+describe('underHeld', () => {
+  it('🔴 run 이 쥔 행을 기다리면 waited true — 풀린 뒤 커밋된 값을 본다', async () => {
+    const { waited, result } = await underHeld(t, holdWith('under-1'), lockedRead)
+    expect(waited).toBe(true)
+    expect(result).toEqual({ ok: true, value: 'under-1' })
+  })
+
+  it('기다리지 않는 run 은 waited false — 쥔 쪽 커밋 전 값을 읽었다', async () => {
+    const before = await plainRead()
+    const { waited, result } = await underHeld(t, holdWith('under-2'), plainRead)
+    expect(waited).toBe(false)
+    expect(result).toEqual({ ok: true, value: before })
+    expect(await plainRead()).toBe('under-2')
+  })
+
+  it('holdGuard — 가드 행 하나를 쥔다(그 행의 잠금 읽기가 기다린다)', async () => {
+    const { waited, result } = await underHeld(t, holdGuard('heldProbe'), lockedRead)
+    expect(waited).toBe(true)
+    if (!result.ok) throw result.error
   })
 })
 

@@ -1,10 +1,9 @@
-import { createConnection } from 'mariadb'
+import type { Connection } from 'mariadb'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { accountsConfig, testPrincipal } from '../test-support/accounts.js'
 import { seedRole } from '../test-support/auth.js'
-import { lockWaitsIn, settle, sleep, type Settled } from '../test-support/concurrency.js'
+import { underHeld, type UnderHeld } from '../test-support/concurrency.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
-import { testDbServer } from '../test-support/db-url.js'
 import { AdminRolesService } from './roles.service.js'
 
 // 🔴 역할 인덱스 둘(idx_roles_display_order · idx_roles_is_default — 장 0001, 2d-3 스펙 ③ I1)이 역할 쓰기의 잠금을 그
@@ -30,33 +29,14 @@ afterAll(async () => {
   await t?.drop()
 })
 
-/** 원시 연결이 held 행만 쥔 채 write 를 시작한다 — write 가 잠금 대기에 들어갔는지(waited)와 풀린 뒤의 결과 */
-async function underHeldRole(
-  write: () => Promise<unknown>,
-): Promise<{ waited: boolean; result: Settled<unknown> }> {
-  const open = () => createConnection({ ...testDbServer(), database: t.name, timezone: 'Z' })
-  const holder = await open()
-  const observer = await open()
-  try {
-    await holder.beginTransaction()
-    await holder.query('select role_no from roles where role_no = ? for update', [held])
-    let finished = false
-    const pending = settle(write()).then((result) => {
-      finished = true
-      return result
-    })
-    let waited = false
-    for (let i = 0; i < 100 && !finished && !waited; i += 1) {
-      waited = (await lockWaitsIn(observer, t.name)) > 0
-      if (!waited) await sleep(25)
-    }
-    await holder.commit()
-    return { waited, result: await pending }
-  } finally {
-    await holder.rollback().catch(() => undefined)
-    await holder.end()
-    await observer.end()
-  }
+/** 원시 연결이 held 행만 쥔 채 write 를 시작한다 — 도우미 underHeld 에 held 행 잠금을 넘긴다 */
+function underHeldRole(write: () => Promise<unknown>): Promise<UnderHeld<unknown>> {
+  return underHeld(
+    t,
+    (connection: Connection) =>
+      connection.query('select role_no from roles where role_no = ? for update', [held]),
+    write,
+  )
 }
 
 async function orderOf(roleNo: bigint): Promise<number> {
