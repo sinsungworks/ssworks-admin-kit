@@ -141,6 +141,7 @@ describe('withSuperAdminSurvival — 잠금 단계(2d-3 스펙 ① A · C2)', ()
             NO_IP,
           ),
         ),
+      { expectWait: true },
     )
     if (!result.ok) throw result.error
     // 셈이 잠금 단계 앞이면 0(셈이 연 뷰는 원시 연결의 커밋 전이다 — 2d-3 스펙 §14 R1-1)

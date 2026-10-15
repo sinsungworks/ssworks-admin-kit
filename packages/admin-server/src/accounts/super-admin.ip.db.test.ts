@@ -1,4 +1,4 @@
-import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
+import { CommonErrorCodes } from '@ssworks/admin-shared'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { AdminSessionStore } from '../auth/session.store.js'
 import { AdminRolesService } from '../roles/roles.service.js'
@@ -7,6 +7,7 @@ import { addToTeam, seedRole, seedTeam, seedUser } from '../test-support/auth.js
 import { holdGuard, underHeld } from '../test-support/concurrency.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { resetIpRules, seedIpRule } from '../test-support/ip-access.js'
+import { failure } from '../test-support/errors.js'
 import { AdminUsersService } from '../users/users.service.js'
 import { ACCOUNT_MESSAGES } from './errors.js'
 import { GUARD_LOCK_SUPER_ADMIN, countSuperAdmins } from './super-admin.js'
@@ -42,17 +43,6 @@ async function retireStars(): Promise<void> {
     .where('roleNo', '=', star)
     .where('resignAt', 'is', null)
     .execute()
-}
-
-async function failure(promise: Promise<unknown>): Promise<BusinessError> {
-  const error = await promise.then(
-    () => {
-      throw new Error('실패를 기대했다')
-    },
-    (caught: unknown) => caught,
-  )
-  expect(error).toBeInstanceOf(BusinessError)
-  return error as BusinessError
 }
 
 const users = (ipAware: boolean) =>

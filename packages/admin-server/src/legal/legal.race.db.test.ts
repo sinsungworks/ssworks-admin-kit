@@ -77,7 +77,7 @@ describe.each([false, true])('🔴 같은 종류 동시 발행 — 스냅샷 격
       t,
       holdPublisher(actor.userNo),
       publishBoth(kind, first.legalDocNo),
-      { waiters: 2 },
+      { expectWait: true, waiters: 2 },
     )
     if (!outcome.ok) throw outcome.error
     expect(outcome.value.map(codeOf).sort()).toEqual(['ERR_COMMON_REVISION_CONFLICT', 'ok'])
@@ -87,6 +87,7 @@ describe.each([false, true])('🔴 같은 종류 동시 발행 — 스냅샷 격
   it('(r2) 첫 발행 둘(baseLegalDocNo: null) — 같다', async () => {
     const kind = `race_r2_${suffix}`
     const outcome = await whileHeld(t, holdPublisher(actor.userNo), publishBoth(kind, null), {
+      expectWait: true,
       waiters: 2,
     })
     if (!outcome.ok) throw outcome.error
@@ -117,6 +118,7 @@ describe('🔴 스냅샷 격리 ON — 발행 중에 발행자 행이 바뀌어�
             { kind, body: '둘째 판', baseLegalDocNo: first.legalDocNo },
             renamed.userNo,
           ),
+        { expectWait: true },
       )
       if (!outcome.ok) throw outcome.error
       expect(outcome.value.contentHash).toBe(legalContentHash('둘째 판'))

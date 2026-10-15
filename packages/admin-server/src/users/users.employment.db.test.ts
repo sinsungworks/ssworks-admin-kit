@@ -296,6 +296,7 @@ describe('resign', () => {
         )
       },
       () => service.resign(user.userNo, { resignDate: '2030-01-31' }, root),
+      { expectWait: true },
     )
     if (!result.ok) throw result.error
     expect(result.value.meta).not.toHaveProperty('healedPeriod')

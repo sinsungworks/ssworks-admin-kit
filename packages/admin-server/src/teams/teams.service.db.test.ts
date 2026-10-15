@@ -1,9 +1,10 @@
 import { Logger } from '@nestjs/common'
-import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
+import { CommonErrorCodes } from '@ssworks/admin-shared'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { settle, whileHeld } from '../test-support/concurrency.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { closure, closureOf, displayOrders, outline, seedTeamUnder } from '../test-support/teams.js'
+import { failure } from '../test-support/errors.js'
 import { TEAM_MESSAGES } from './errors.js'
 import { AdminTeamsService } from './teams.service.js'
 
@@ -21,17 +22,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await t?.drop()
 })
-
-async function failure(promise: Promise<unknown>): Promise<BusinessError> {
-  const error = await promise.then(
-    () => {
-      throw new Error('실패를 기대했다')
-    },
-    (caught: unknown) => caught,
-  )
-  expect(error).toBeInstanceOf(BusinessError)
-  return error as BusinessError
-}
 
 const pathsOf = async (prefix: string) =>
   outline((await service.tree()).items).filter((path) => path.startsWith(prefix))
@@ -147,7 +137,7 @@ describe('만들기', () => {
           settle(service.create({ teamName: 'mk-race-1', parentTeamNo: parent })),
           settle(service.create({ teamName: 'mk-race-2', parentTeamNo: parent })),
         ]),
-      { waiters: 2 },
+      { expectWait: true, waiters: 2 },
     )
     if (!result.ok) throw result.error
     const made = result.value.map((outcome) => {
@@ -170,7 +160,7 @@ describe('만들기', () => {
           settle(service.create({ teamName: 'mk-rroot-1', parentTeamNo: null })),
           settle(service.create({ teamName: 'mk-rroot-2', parentTeamNo: null })),
         ]),
-      { waiters: 2 },
+      { expectWait: true, waiters: 2 },
     )
     if (!result.ok) throw result.error
     const made = result.value.map((outcome) => {

@@ -107,8 +107,8 @@ describe.each([
             principal(a),
             A_IP,
           ),
+        { expectWait: true },
       )
-      expect(result.reached).toBe(true)
       expect(result.ok).toBe(false)
       if (result.ok) return
       expect(codeOf(result.error)).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
@@ -133,8 +133,8 @@ describe.each([
           )
         },
         () => new AdminTeamsService(db).remove(team),
+        { expectWait: true },
       )
-      expect(result.reached).toBe(true)
       expect(result.ok).toBe(false)
       if (result.ok) return
       expect(codeOf(result.error)).toBe(CommonErrorCodes.ERR_TEAM_HAS_IP_RULES)
@@ -160,9 +160,8 @@ describe('🔴 (r2) IP 쓰기끼리 가드에서 줄을 선다', () => {
           settle(service().remove(toB!, { revision: 0 }, principal(a), A_IP)),
           settle(service().remove(toA!, { revision: 0 }, principal(b), B_IP)),
         ]),
-      { waiters: 2 },
+      { expectWait: true, waiters: 2 },
     )
-    expect(result.reached).toBe(true)
     if (!result.ok) throw result.error
     const outcomes = result.value
     expect(outcomes.filter((outcome) => outcome.ok)).toHaveLength(1)
@@ -196,8 +195,8 @@ describe('🔴 (r3) 스냅샷 격리 ON — 참조 잠금이 읽기 뷰보다 �
             principal(a),
             A_IP,
           ),
+        { expectWait: true },
       )
-      expect(result.reached).toBe(true)
       if (!result.ok) throw result.error
       expect(result.value.item).toMatchObject({ scopeType: 'user', scopeRefNo: b.userNo })
     } finally {

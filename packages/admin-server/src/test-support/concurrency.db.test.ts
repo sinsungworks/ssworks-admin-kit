@@ -54,7 +54,7 @@ const plainRead = async () =>
 describe('whileHeld', () => {
   it('🔴 during 이 잠금을 기다리기 시작하면 곧바로 커밋한다 — 기다린 뒤 커밋된 값을 본다', async () => {
     const started = Date.now()
-    const result = await whileHeld(t, holdWith('held-1'), lockedRead)
+    const result = await whileHeld(t, holdWith('held-1'), lockedRead, { expectWait: true })
     expect(result).toEqual({ ok: true, value: 'held-1', reached: true })
     // 대기를 못 보면 기본 5초 뒤에야 커밋한다
     expect(Date.now() - started).toBeLessThan(2000)
@@ -63,7 +63,7 @@ describe('whileHeld', () => {
   it('기다리지 않는 during 은 끝나는 대로 커밋한다 — 커밋 전 값을 읽었다', async () => {
     const before = await plainRead()
     const started = Date.now()
-    const result = await whileHeld(t, holdWith('held-2'), plainRead)
+    const result = await whileHeld(t, holdWith('held-2'), plainRead, { expectWait: false })
     expect(result).toEqual({ ok: true, value: before, reached: false })
     expect(Date.now() - started).toBeLessThan(2000)
     expect(await plainRead()).toBe('held-2')
@@ -77,7 +77,7 @@ describe('whileHeld', () => {
         await sleep(600)
         return plainRead()
       },
-      { timeoutMs: 150 },
+      { expectWait: false, timeoutMs: 150 },
     )
     expect(result).toEqual({ ok: true, value: 'held-3', reached: false })
   })
@@ -93,12 +93,41 @@ describe('whileHeld', () => {
         const second = lockedRead().then(() => Date.now() - started)
         return Promise.all([first, second])
       },
-      { waiters: 2 },
+      { expectWait: true, waiters: 2 },
     )
-    expect(result.reached).toBe(true)
     if (!result.ok) throw result.error
     // 첫째는 둘째가 기다리기 시작한(300ms 뒤) 다음에야 풀렸다
     expect(result.value[0]).toBeGreaterThanOrEqual(250)
+  })
+
+  it('🔴 expectWait 가 실제와 다르면 던진다 — 쥔 연결은 커밋 · 종료돼 행이 풀려 있다(2f-2a 스펙 A16)', async () => {
+    await expect(whileHeld(t, holdWith('held-5'), plainRead, { expectWait: true })).rejects.toThrow(
+      'whileHeld: 잠금 대기 기대 true · 실제 false',
+    )
+    await expect(
+      whileHeld(t, holdWith('held-6'), lockedRead, { expectWait: false }),
+    ).rejects.toThrow('whileHeld: 잠금 대기 기대 false · 실제 true')
+    const started = Date.now()
+    expect(await lockedRead()).toBe('held-6')
+    expect(Date.now() - started).toBeLessThan(2000)
+  })
+
+  it('🔴 afterReached 는 대기에 닿은 뒤 · 커밋 전에 쥔 연결로 보낸다 — 기다린 쪽이 그 값을 본다', async () => {
+    const result = await whileHeld(t, holdWith('held-7'), lockedRead, {
+      expectWait: true,
+      afterReached: holdWith('after-7'),
+    })
+    expect(result).toMatchObject({ ok: true, value: 'after-7', reached: true })
+    expect(result.afterReached?.ok).toBe(true)
+  })
+
+  it('afterReached 는 대기에 닿지 못하면 보내지 않는다', async () => {
+    const result = await whileHeld(t, holdWith('held-8'), plainRead, {
+      expectWait: false,
+      afterReached: holdWith('never-8'),
+    })
+    expect(result.afterReached).toBeUndefined()
+    expect(await plainRead()).toBe('held-8')
   })
 })
 

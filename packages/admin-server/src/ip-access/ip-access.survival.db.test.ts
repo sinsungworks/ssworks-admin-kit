@@ -1,4 +1,4 @@
-import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
+import { CommonErrorCodes } from '@ssworks/admin-shared'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import { AdminSessionStore } from '../auth/session.store.js'
@@ -6,6 +6,7 @@ import { testPrincipal, usersConfig } from '../test-support/accounts.js'
 import { seedRole, seedTeam, seedUser } from '../test-support/auth.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { ipAccessConfig, ipRulesOf, resetIpRules, seedIpRule } from '../test-support/ip-access.js'
+import { failure } from '../test-support/errors.js'
 import { AdminUsersService } from '../users/users.service.js'
 import { AdminIpAccessService } from './ip-access.service.js'
 
@@ -42,17 +43,6 @@ beforeEach(async () => {
 })
 
 const me = () => testPrincipal(requester, ['setting.ipAccess:write'])
-
-async function failure(promise: Promise<unknown>): Promise<BusinessError> {
-  const error = await promise.then(
-    () => {
-      throw new Error('실패를 기대했다')
-    },
-    (caught: unknown) => caught,
-  )
-  expect(error).toBeInstanceOf(BusinessError)
-  return error as BusinessError
-}
 
 describe('IP 쓰기의 잔존', () => {
   it('🔴 (s1) 시나리오 A — 마지막 도달 가능 전권자에게 user 규칙이면 409, 쓰지 않는다 · 전권자가 둘이면 된다', async () => {

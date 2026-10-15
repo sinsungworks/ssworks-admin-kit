@@ -11,6 +11,7 @@ import {
   seedIpRule,
   seedSessionFrom,
 } from '../test-support/ip-access.js'
+import { failure } from '../test-support/errors.js'
 import { IP_ACCESS_MESSAGES } from './errors.js'
 import { IpAccessPolicy } from './ip-access.policy.js'
 import { AdminIpAccessService } from './ip-access.service.js'
@@ -42,17 +43,6 @@ beforeEach(async () => {
 })
 
 const me = () => testPrincipal(actor.userNo, ['setting.ipAccess:write'])
-
-async function failure(promise: Promise<unknown>): Promise<BusinessError> {
-  const error = await promise.then(
-    () => {
-      throw new Error('실패를 기대했다')
-    },
-    (caught: unknown) => caught,
-  )
-  expect(error).toBeInstanceOf(BusinessError)
-  return error as BusinessError
-}
 
 const issueOf = (error: BusinessError) =>
   (error.details as { issues: { path: unknown[]; message: string }[] }).issues.map((issue) => [

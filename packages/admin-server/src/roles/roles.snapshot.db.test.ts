@@ -44,12 +44,16 @@ describe.each([
     const db = await snapshotKysely(t, snapshot)
     try {
       const service = new AdminRolesService(db, accountsConfig(), undefined)
-      const result = await whileHeld(t, moving(roleNo), () =>
-        service.update(
-          roleNo,
-          { revision: 0, permissions: ['org.users:read', 'org.roles:read'] },
-          root,
-        ),
+      const result = await whileHeld(
+        t,
+        moving(roleNo),
+        () =>
+          service.update(
+            roleNo,
+            { revision: 0, permissions: ['org.users:read', 'org.roles:read'] },
+            root,
+          ),
+        { expectWait: true },
       )
       if (!result.ok) throw result.error
       expect(result.value.item).toMatchObject({
@@ -70,8 +74,11 @@ describe.each([
     const db = await snapshotKysely(t, snapshot)
     try {
       const service = new AdminRolesService(db, accountsConfig(), undefined)
-      const result = await whileHeld(t, moving(roleNo), () =>
-        service.remove(roleNo, { revision: 0 }, root),
+      const result = await whileHeld(
+        t,
+        moving(roleNo),
+        () => service.remove(roleNo, { revision: 0 }, root),
+        { expectWait: true },
       )
       if (!result.ok) throw result.error
     } finally {
@@ -98,12 +105,16 @@ describe('스냅샷 격리 ON — 기본 켜기', () => {
     const db = await snapshotKysely(t, true)
     try {
       const service = new AdminRolesService(db, accountsConfig(), undefined)
-      const result = await whileHeld(t, moving(d.roleNo), () =>
-        service.update(
-          r.roleNo,
-          { revision: 0, isDefault: true, permissions: ['org.users:read'] },
-          root,
-        ),
+      const result = await whileHeld(
+        t,
+        moving(d.roleNo),
+        () =>
+          service.update(
+            r.roleNo,
+            { revision: 0, isDefault: true, permissions: ['org.users:read'] },
+            root,
+          ),
+        { expectWait: true },
       )
       if (!result.ok) throw result.error
       expect(result.value.clearedDefaults).toEqual([d.roleNo])

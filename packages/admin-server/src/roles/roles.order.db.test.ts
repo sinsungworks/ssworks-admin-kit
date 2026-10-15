@@ -128,6 +128,7 @@ describe('create — 동시 만들기(§14 R5-5 · R7-4)', () => {
         ),
       () =>
         service.create({ roleName: 'concurrent-mine', isDefault: false, permissions: [] }, root),
+      { expectWait: true },
     )
     if (!result.ok) throw result.error
     const rows = await t.db

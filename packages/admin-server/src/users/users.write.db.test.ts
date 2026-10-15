@@ -369,11 +369,15 @@ describe('🔴 줄 역할 잠금(lockGrantRole forUpdate — 이월 8)', () => {
       roleName: 'g-race-create',
       permissions: ['org.users:read'],
     })
-    const result = await whileHeld(t, widen(grant), () =>
-      service.create(
-        { userId: 'g-race-new', userName: '경합 계정', roleNo: grant, teamNo: null },
-        manager,
-      ),
+    const result = await whileHeld(
+      t,
+      widen(grant),
+      () =>
+        service.create(
+          { userId: 'g-race-new', userName: '경합 계정', roleNo: grant, teamNo: null },
+          manager,
+        ),
+      { expectWait: true },
     )
     if (result.ok) throw new Error('403 을 기대했다')
     expect(result.error).toBeInstanceOf(BusinessError)
@@ -389,8 +393,11 @@ describe('🔴 줄 역할 잠금(lockGrantRole forUpdate — 이월 8)', () => {
       permissions: ['org.users:read'],
     })
     const user = await fresh('g-race-target')
-    const result = await whileHeld(t, widen(grant), () =>
-      service.update(user.userNo, { revision: 0, roleNo: grant }, manager),
+    const result = await whileHeld(
+      t,
+      widen(grant),
+      () => service.update(user.userNo, { revision: 0, roleNo: grant }, manager),
+      { expectWait: true },
     )
     if (result.ok) throw new Error('403 을 기대했다')
     expect((result.error as BusinessError).message).toBe(ACCOUNT_MESSAGES.higherRoleToGrant)

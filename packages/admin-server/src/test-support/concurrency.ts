@@ -15,6 +15,8 @@ import { lockWaitThreadIds } from './lock-wait.js'
 //   경합을 재지 못하는 거짓 결과가 없다. 🔴 information_schema.innodb_trx 는 서버 전역 캐시라 쓰지 않는다(lock-wait.ts).
 // 2f-1(스펙 P15): 잠금을 쥔 채 관찰하는 루프(teams.guard · legal.guard · roles.index 의 복사본)를 underHeld 로 모았고, whileHeld 가
 //   대기에 닿았는지(reached)를 돌려준다 — 경합 테스트가 경합 창에 닿았음을 단언한다. 관찰 연결이 열리다 실패해도 쥔 연결을 닫는다.
+// 2f-2a(스펙 A16): whileHeld 의 기대 대기(expectWait)를 필수로 — 결과가 다르면 정리를 마친 뒤 던진다(26 곳이 단언을 빠뜨렸다).
+//   afterReached — 대기에 닿은 뒤 · 커밋 전에 쥔 쪽이 다음 문장을 보낸다(2d R10-3: 퇴사가 users 를 잠근 뒤 세션을 끊는 순서).
 
 export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms))
@@ -52,24 +54,36 @@ export async function lockWaitsIn(observer: Connection, database: string): Promi
 }
 
 export interface WhileHeldOptions {
+  /**
+   * 🔴 `during()` 이 잠금 대기에 닿기를 기대하는가 — 필수다. 실제(`reached`)와 다르면 정리를 마친 뒤 던진다. 경합 테스트가
+   * 경합 창에 닿았는지 단언을 빠뜨릴 수 없게 한다(2f-2a 스펙 A16).
+   */
+  expectWait: boolean
   /** 같은 데이터베이스에서 이만큼의 연결이 잠금을 기다리면 커밋한다. 기본 1 */
   waiters?: number
   /** 이 시간 안에 대기를 못 보면 그래도 커밋한다. 기본 5000ms */
   timeoutMs?: number
+  /**
+   * 대기에 닿은 뒤 · 커밋 전에 쥔 연결로 보낸다 — 쥔 쪽의 "잠근 뒤 다음 문장" 을 재현한다. 닿지 못했으면 보내지 않는다.
+   * 이 문장이 던지면(교착 희생자 1213 등) 결과의 `afterReached` 에 담는다 — InnoDB 가 이미 롤백했으니 커밋은 빈 트랜잭션이다.
+   */
+  afterReached?: (connection: Connection) => Promise<unknown>
 }
+
+export type WhileHeldResult<T> = Settled<T> & { reached: boolean; afterReached?: Settled<unknown> }
 
 /**
  * 원시 연결이 트랜잭션을 열고 `hold` 로 잠금 · 쓰기를 쥔 채 `during()` 을 시작한다. 같은 데이터베이스에서 `waiters` 개의 연결이
- * 잠금을 기다리기 시작하면 — 또는 `during()` 이 기다리지 않고 끝나면, 또는 `timeoutMs` 가 지나면 — 그 트랜잭션을 커밋하고
- * `during()` 의 결과와 대기에 닿았는지(`reached`)를 돌려준다. 🔴 실패해도 롤백 · 종료한다 — 쥔 잠금이 남으면 afterAll 의
- * DROP DATABASE 가 막힌다. 관찰 연결이 열리다 실패해도 쥔 연결을 닫는다.
+ * 잠금을 기다리기 시작하면 — 또는 `during()` 이 기다리지 않고 끝나면, 또는 `timeoutMs` 가 지나면 — (`afterReached` 를 보낸 뒤)
+ * 그 트랜잭션을 커밋하고 `during()` 의 결과와 대기에 닿았는지(`reached`)를 돌려준다. `reached` 가 `expectWait` 와 다르면 던진다.
+ * 🔴 실패해도 롤백 · 종료한다 — 쥔 잠금이 남으면 afterAll 의 DROP DATABASE 가 막힌다. 관찰 연결이 열리다 실패해도 쥔 연결을 닫는다.
  */
 export async function whileHeld<T>(
   t: TestDatabase,
   hold: (connection: Connection) => Promise<unknown>,
   during: () => Promise<T>,
-  options: WhileHeldOptions = {},
-): Promise<Settled<T> & { reached: boolean }> {
+  options: WhileHeldOptions,
+): Promise<WhileHeldResult<T>> {
   const waiters = options.waiters ?? 1
   const deadline = Date.now() + (options.timeoutMs ?? 5000)
   const connection = await openRaw(t)
@@ -91,8 +105,18 @@ export async function whileHeld<T>(
       }
       await sleep(POLL_MS)
     }
+    const after =
+      reached && options.afterReached !== undefined
+        ? await settle(options.afterReached(connection))
+        : undefined
     await connection.commit()
-    return { ...(await pending), reached }
+    const settled = await pending
+    if (reached !== options.expectWait) {
+      throw new Error(`whileHeld: 잠금 대기 기대 ${options.expectWait} · 실제 ${reached}`)
+    }
+    return after === undefined
+      ? { ...settled, reached }
+      : { ...settled, reached, afterReached: after }
   } finally {
     await connection.rollback().catch(() => undefined)
     await connection.end()

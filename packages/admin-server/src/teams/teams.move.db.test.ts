@@ -12,6 +12,7 @@ import { addToTeam, seedRole, seedUser } from '../test-support/auth.js'
 import { settle, snapshotKysely, whileHeld } from '../test-support/concurrency.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { closure, closureOf, displayOrders, outline, seedTeamUnder } from '../test-support/teams.js'
+import { failure } from '../test-support/errors.js'
 import { adminUserListQuerySchema } from '../users/users.query.js'
 import { AdminUsersService } from '../users/users.service.js'
 import { TEAM_MESSAGES } from './errors.js'
@@ -49,17 +50,6 @@ async function childrenOf(parentTeamNo: bigint | null): Promise<string[]> {
   const items = (await service.tree()).items
   const nodes = parentTeamNo === null ? items : (findNode(items, parentTeamNo)?.children ?? [])
   return nodes.map((node) => node.teamName)
-}
-
-async function failure(promise: Promise<unknown>): Promise<BusinessError> {
-  const error = await promise.then(
-    () => {
-      throw new Error('실패를 기대했다')
-    },
-    (caught: unknown) => caught,
-  )
-  expect(error).toBeInstanceOf(BusinessError)
-  return error as BusinessError
 }
 
 const issuePath = (error: BusinessError) =>
@@ -316,8 +306,11 @@ describe('경합', () => {
     const r2 = await create('b1-R2', null)
     const mid = await create('b1-mid', r1)
     const leaf = await create('b1-leaf', mid)
-    const result = await whileHeld(t, movingUnder(mid, leaf, r1, r2), () =>
-      service.create({ teamName: 'b1-new', parentTeamNo: leaf }),
+    const result = await whileHeld(
+      t,
+      movingUnder(mid, leaf, r1, r2),
+      () => service.create({ teamName: 'b1-new', parentTeamNo: leaf }),
+      { expectWait: true },
     )
     if (!result.ok) throw result.error
     const made = result.value.teamNo
@@ -348,10 +341,15 @@ describe('경합', () => {
       ).items
         .map((user) => user.userId)
         .sort()
-    const result = await whileHeld(t, movingUnder(mid, leaf, r1, r2), async () => ({
-      r1: await under(r1),
-      r2: await under(r2),
-    }))
+    const result = await whileHeld(
+      t,
+      movingUnder(mid, leaf, r1, r2),
+      async () => ({
+        r1: await under(r1),
+        r2: await under(r2),
+      }),
+      { expectWait: false },
+    )
     if (!result.ok) throw result.error
     expect(result.value).toEqual({ r1: ['b2-on-leaf', 'b2-on-mid'], r2: [] })
     expect(await under(r1)).toEqual([])
@@ -375,7 +373,7 @@ describe('경합', () => {
           settle(service.move(left, { parentTeamNo: rightChild, beforeTeamNo: null })),
           settle(service.move(right, { parentTeamNo: leftChild, beforeTeamNo: null })),
         ]),
-      { waiters: 2 },
+      { expectWait: true, waiters: 2 },
     )
     if (!result.ok) throw result.error
     const outcomes = result.value
@@ -408,6 +406,7 @@ describe('경합', () => {
           ])
         },
         () => onSnapshot.move(second, { parentTeamNo: p, beforeTeamNo: first }),
+        { expectWait: true },
       )
       if (!result.ok) throw result.error
       expect(await childrenOf(p)).toEqual(['s1-second', 's1-first-renamed'])

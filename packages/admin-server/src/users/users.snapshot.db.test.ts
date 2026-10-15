@@ -68,8 +68,11 @@ describe.each([
     const db = await snapshotKysely(t, snapshot)
     try {
       const service = new AdminUsersService(db, usersConfig(), new AdminSessionStore(db), undefined)
-      const result = await whileHeld(t, loginFailure(user.userNo), () =>
-        service.resign(user.userNo, { resignDate: '2030-01-31' }, root),
+      const result = await whileHeld(
+        t,
+        loginFailure(user.userNo),
+        () => service.resign(user.userNo, { resignDate: '2030-01-31' }, root),
+        { expectWait: true },
       )
       if (!result.ok) throw result.error
       expect(result.value.before).toMatchObject({ resignDate: null, revision: 0 })
@@ -92,8 +95,11 @@ describe.each([
     const db = await snapshotKysely(t, snapshot)
     try {
       const service = new AdminUsersService(db, usersConfig(), new AdminSessionStore(db), undefined)
-      const result = await whileHeld(t, renameTeam(team, `snap-new-${label}`), () =>
-        service.update(user.userNo, { revision: 0, roleNo: grant, teamNo: team }, root),
+      const result = await whileHeld(
+        t,
+        renameTeam(team, `snap-new-${label}`),
+        () => service.update(user.userNo, { revision: 0, roleNo: grant, teamNo: team }, root),
+        { expectWait: true },
       )
       if (!result.ok) throw result.error
       // OFF 에서 셈이 lockTeam 앞이면 item 의 팀 이름이 바뀌기 전 값이다(R10-2) — ON 이면 409

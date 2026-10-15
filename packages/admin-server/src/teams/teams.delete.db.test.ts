@@ -8,6 +8,7 @@ import { whileHeld, type Settled } from '../test-support/concurrency.js'
 import { seedIpRule } from '../test-support/ip-access.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { closureOf, seedTeamUnder } from '../test-support/teams.js'
+import { failure } from '../test-support/errors.js'
 import { AdminUsersService } from '../users/users.service.js'
 import { TEAM_MESSAGES } from './errors.js'
 import { AdminTeamsService } from './teams.service.js'
@@ -41,17 +42,6 @@ const existing = async (teamNos: bigint[]) =>
       .orderBy('teamNo')
       .execute()
   ).map((row) => row.teamNo)
-
-async function failure(promise: Promise<unknown>): Promise<BusinessError> {
-  const error = await promise.then(
-    () => {
-      throw new Error('실패를 기대했다')
-    },
-    (caught: unknown) => caught,
-  )
-  expect(error).toBeInstanceOf(BusinessError)
-  return error as BusinessError
-}
 
 describe('삭제', () => {
   it('하위 팀째 지우고 closure 를 정리한다 — before · 하위 팀 목록(깊이 · 순서 순)', async () => {
@@ -166,6 +156,7 @@ describe('경합', () => {
         ])
       },
       () => service.remove(parent),
+      { expectWait: true },
     )
     if (result.ok) throw new Error('409 를 기대했다')
     expect((result.error as BusinessError).code).toBe(CommonErrorCodes.ERR_TEAM_HAS_MEMBERS)
@@ -201,16 +192,23 @@ describe('경합', () => {
       ])
     }
     expectTeamField(
-      await whileHeld(t, deleting(goneForCreate), () =>
-        users.create(
-          { userId: 'a2-new', userName: '새 계정', roleNo, teamNo: goneForCreate },
-          root,
-        ),
+      await whileHeld(
+        t,
+        deleting(goneForCreate),
+        () =>
+          users.create(
+            { userId: 'a2-new', userName: '새 계정', roleNo, teamNo: goneForCreate },
+            root,
+          ),
+        { expectWait: true },
       ),
     )
     expectTeamField(
-      await whileHeld(t, deleting(goneForUpdate), () =>
-        users.update(member.userNo, { revision: 0, teamNo: goneForUpdate }, root),
+      await whileHeld(
+        t,
+        deleting(goneForUpdate),
+        () => users.update(member.userNo, { revision: 0, teamNo: goneForUpdate }, root),
+        { expectWait: true },
       ),
     )
   })
