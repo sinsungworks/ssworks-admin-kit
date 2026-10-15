@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { SortCondition } from '@ssworks/admin-shared'
 import { sql, type Kysely, type SqlBool, type Transaction } from 'kysely'
 import { likeContains } from '../database/like.js'
-import { runQuery, runWriteTransaction } from '../database/run.js'
+import { runQuery } from '../database/run.js'
 import type { AdminDatabase, AdminSessionRevokeReason } from '../database/types.js'
 import { KYSELY } from '../tokens.js'
 
@@ -14,6 +14,8 @@ import { KYSELY } from '../tokens.js'
 //  - 메타를 코드 포인트 단위로 자른다 — UTF-16 으로 자르면 이모지 서로게이트 반쪽이 남는다.
 //  - 패키지 내부다(스펙 ⑤ A1) — 교체 대상이 아니다. 2c 가 목록 · 조건부 폐기를 더했다(2c 스펙 §5-6) — gise
 //    listLiveSessionsOfUser · revokeOwnOtherSessionsInTransaction + axion activeSessionsQuery(검색).
+//  - 2f-2a(스펙 A12): 회전 · 로그인 확정 · 유예 발급이 users 잠금과 같은 트랜잭션에 세션을 쓴다 — rotate 는 받은 트랜잭션 위에서만,
+//    create 는 trx 를 받을 수 있다. 트랜잭션은 인증 서비스가 연다(users 를 세션보다 먼저 — 2d R10-3).
 
 export interface AdminSessionRow {
   sessionNo: bigint
@@ -127,8 +129,10 @@ async function insertSession(db: Kysely<AdminDatabase>, input: NewSessionInput):
 export class AdminSessionStore {
   constructor(@Inject(KYSELY) private readonly db: Kysely<AdminDatabase>) {}
 
-  create(input: NewSessionInput): Promise<bigint> {
-    return runQuery(() => insertSession(this.db, input))
+  /** 🔴 `trx` 를 주면 그 트랜잭션 위에서 쓴다 — 로그인 확정 · 유예 발급이 users 잠금과 한 트랜잭션에 넣는다(2f-2a 스펙 A12) */
+  create(input: NewSessionInput, trx?: Transaction<AdminDatabase>): Promise<bigint> {
+    // 트랜잭션 안이면 runQuery 로 감싸지 않는다 — runWriteTransaction 이 드라이버 오류를 바꾼다.
+    return trx ? insertSession(trx, input) : runQuery(() => insertSession(this.db, input))
   }
 
   async findByRefreshHash(refreshTokenHash: string): Promise<AdminSessionRow | null> {
@@ -154,33 +158,33 @@ export class AdminSessionStore {
   }
 
   /**
-   * 🔴 한 트랜잭션: 옛 행 조건부 폐기 → 새 행 INSERT → 옛 행 링크. 조건부 UPDATE 가 0행이면 null — 다른 요청이 먼저
-   * 회전했다(P1). InnoDB UPDATE 는 잠금 읽기라 진 쪽은 이긴 쪽 커밋까지 기다렸다가 0행을 받는다(스펙 §14 R1-4).
-   * 🔴 호출부는 null 뒤의 재조회를 이 트랜잭션 밖에서 한다(스펙 §14 R2).
+   * 🔴 받은 트랜잭션 위에서: 옛 행 조건부 폐기 → 새 행 INSERT → 옛 행 링크(스펙 B3 — 한 트랜잭션). 스스로 트랜잭션을 열지
+   * 않는다 — 인증 서비스가 users 공유 잠금을 첫 문장으로 잡은 트랜잭션을 넘긴다(2f-2a 스펙 A7 — 2d R10-3 교착). 조건부 UPDATE 가
+   * 0행이면 null — 다른 요청이 먼저 회전했거나 초기화 · 퇴사 · 로그아웃이 먼저 끊었다(P1). InnoDB UPDATE 는 잠금 읽기라 진 쪽은
+   * 이긴 쪽 커밋까지 기다렸다가 0행을 받는다(스펙 §14 R1-4). 🔴 호출부는 null 뒤의 재조회를 이 트랜잭션 밖에서 한다(스펙 §14 R2).
    */
-  rotate(
+  async rotate(
+    trx: Transaction<AdminDatabase>,
     old: { sessionNo: bigint; loginAt: Date },
     next: Omit<NewSessionInput, 'loginAt'>,
   ): Promise<bigint | null> {
-    return runWriteTransaction(this.db, async (trx) => {
-      const revoked = await trx
-        .updateTable('sessions')
-        .set({ isRevoked: true, revokedReason: 'rotated', revokedAt: next.now })
-        .where('sessionNo', '=', old.sessionNo)
-        .where('isRevoked', '=', false)
-        .executeTakeFirst()
-      if (revoked.numUpdatedRows === 0n) return null
+    const revoked = await trx
+      .updateTable('sessions')
+      .set({ isRevoked: true, revokedReason: 'rotated', revokedAt: next.now })
+      .where('sessionNo', '=', old.sessionNo)
+      .where('isRevoked', '=', false)
+      .executeTakeFirst()
+    if (revoked.numUpdatedRows === 0n) return null
 
-      const sessionNo = await insertSession(trx, { ...next, loginAt: old.loginAt })
-      // 최초 후계만 기록한다 — 유예창 판정이 그것을 본다(gise).
-      await trx
-        .updateTable('sessions')
-        .set({ replacedBySessionNo: sessionNo })
-        .where('sessionNo', '=', old.sessionNo)
-        .where('replacedBySessionNo', 'is', null)
-        .execute()
-      return sessionNo
-    })
+    const sessionNo = await insertSession(trx, { ...next, loginAt: old.loginAt })
+    // 최초 후계만 기록한다 — 유예창 판정이 그것을 본다(gise).
+    await trx
+      .updateTable('sessions')
+      .set({ replacedBySessionNo: sessionNo })
+      .where('sessionNo', '=', old.sessionNo)
+      .where('replacedBySessionNo', 'is', null)
+      .execute()
+    return sessionNo
   }
 
   /** 살아 있을 때만 폐기한다 — 🔴 이미 폐기된 행의 사유를 덮지 않는다('rotated' 를 덮으면 재사용 탐지가 꺼진다, gise). */

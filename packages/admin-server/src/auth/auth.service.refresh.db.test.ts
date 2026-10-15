@@ -172,6 +172,20 @@ describe('refresh — 회전', () => {
       kit.service.refresh(locked.tokens.refreshToken, fakeRequest()),
     ).resolves.toHaveProperty('accessToken')
   })
+
+  it('Review Focus 5 — 퇴사 효력 시각이 미래면 회전한다(잠근 행으로 판정)', async () => {
+    const kit = createAuthKit(t)
+    const { user, tokens, sessionNo } = await login(kit)
+    await t.db
+      .updateTable('users')
+      .set({ resignAt: later(24 * 3600 * 1000) })
+      .where('userNo', '=', user.userNo)
+      .execute()
+    await expect(kit.service.refresh(tokens.refreshToken, fakeRequest())).resolves.toHaveProperty(
+      'accessToken',
+    )
+    expect((await kit.store.findByNo(sessionNo))?.revokedReason).toBe('rotated')
+  })
 })
 
 describe('refresh — 회전된 토큰의 재제시(P2)', () => {
@@ -340,19 +354,22 @@ describe('refresh — IP(2f-1 스펙 P11)', () => {
     expect(await liveSessions(user.userNo)).toEqual(live)
   })
 
-  it('퇴사가 IP 보다 먼저다 — 퇴사 403 이면 정책을 묻지 않는다(로그인 · 가드와 같은 순서)', async () => {
+  it('🔴 IP 가 퇴사보다 먼저다 — 퇴사했고 막힌 주소면 403 IP · access.blocked(2f-2a 스펙 §6 #5 — 잠금을 쥔 채 정책을 묻지 않는다)', async () => {
     const kit = createAuthKit(t)
-    const { user, tokens } = await login(kit)
+    const { user, tokens, sessionNo } = await login(kit)
     await t.db
       .updateTable('users')
       .set({ resignAt: later(-2000) })
       .where('userNo', '=', user.userNo)
       .execute()
-    const calls = kit.policy.calls.length
     kit.policy.allow = false
-    const error = await rejection(kit.service.refresh(tokens.refreshToken, fakeRequest()))
-    expect(error.code).toBe(CommonErrorCodes.ERR_RESIGNED_USER)
-    expect(kit.policy.calls.length).toBe(calls)
+    const blocked = await rejection(kit.service.refresh(tokens.refreshToken, fakeRequest()))
+    expect(blocked.code).toBe(CommonErrorCodes.ERR_IP_NOT_ALLOWED)
+    expect(kit.events.events.at(-1)).toMatchObject({ type: 'access.blocked', sessionNo })
+    kit.policy.allow = true
+    const resigned = await rejection(kit.service.refresh(tokens.refreshToken, fakeRequest()))
+    expect(resigned.code).toBe(CommonErrorCodes.ERR_RESIGNED_USER)
+    expect((await kit.store.findByNo(sessionNo))?.isRevoked).toBe(false)
   })
 
   it('정책이 없으면(IP 모듈 없음) 묻지 않고 회전한다', async () => {

@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
 import type { Request } from 'express'
-import type { Kysely } from 'kysely'
+import type { Kysely, Transaction } from 'kysely'
 import { runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { validationError } from '../http/validation.js'
@@ -39,6 +39,9 @@ import { AdminSessionStore, type AdminSessionRow, type NewSessionInput } from '.
 //  - 잠김은 맞은 비밀번호 바로 다음 — 잠긴 동안은 같은 401(최종 리뷰 F1). hangang · gise 는 423 이었다.
 //  - 클라이언트 IP 는 코어 옵션 clientIp 출처(config.clientIp)로 읽는다(2f-1 스펙 ④ C1).
 //  - refresh · 유예 발급에도 IP 를 본다(2f-1 스펙 P11) — hangang 은 refresh 가 @Public 이라 막힌 주소에서도 회전했다.
+//  - 🔴 회전 · 유예 발급은 users 를 세션보다 먼저 공유 잠금으로 잡는다(lockCredential 'share' — 2f-2a 스펙 A7 · A8). 퇴사 ·
+//    초기화 · 본인 비밀번호 변경(users X → 세션)과 같은 순서라 교착이 없다(2d R10-3). IP 는 그 트랜잭션 앞 — 잠금을 쥔 채
+//    정책을 묻지 않는다(그래서 refresh 는 IP → 퇴사 순서).
 
 export interface AdminTokenPair {
   accessToken: string
@@ -212,8 +215,8 @@ export class AdminAuthService {
   }
 
   /**
-   * 회전(스펙 §5-3). 🔴 'rotated' 만 재사용 판정 대상이다 — 'terminated'(로그아웃 · 강제 종료)를 재사용으로 보면 세션
-   * 하나를 끊었을 뿐인데 전 기기가 로그아웃된다(hangang 011).
+   * 회전(스펙 §5-3 · 2f-2a 스펙 §5-2). 🔴 'rotated' 만 재사용 판정 대상이다 — 'terminated'(로그아웃 · 강제 종료)를 재사용으로
+   * 보면 세션 하나를 끊었을 뿐인데 전 기기가 로그아웃된다(hangang 011).
    */
   async refresh(refreshToken: string | undefined, req: Request): Promise<AdminTokenPair> {
     if (refreshToken == null) {
@@ -231,7 +234,7 @@ export class AdminAuthService {
     if (row.isRevoked) {
       // P2 — 다른 탭의 회전이 이 읽기보다 먼저 커밋됐다.
       if (row.revokedReason === 'rotated') return this.reuseOfRotated(row, req, now)
-      throw new BusinessError(CommonErrorCodes.ERR_INVALID_TOKEN, AUTH_MESSAGES.refreshEnded)
+      throw refreshEnded()
     }
 
     if (isSessionExpired(row.expireAt, now)) {
@@ -239,27 +242,22 @@ export class AdminAuthService {
       //    반드시 실패할 왕복을 하나 더 태운다(gise).
       throw new BusinessError(CommonErrorCodes.ERR_SESSION_EXPIRED, AUTH_MESSAGES.refreshExpired)
     }
-    // 🔴 퇴사는 회전 전에 막는다 — 새 토큰을 내주지 않는다. 강제 변경 · 잠김은 회전한다.
-    await this.assertActive(row.userNo, now)
-    await this.assertAllowedForRefresh(row, req)
 
+    // 🔴 퇴사는 회전 전에 막는다 — 새 토큰을 내주지 않는다. 강제 변경 · 잠김은 회전한다.
     const issued = this.newSession(row.userNo, req, now)
-    const sessionNo = await this.sessions.rotate(
-      { sessionNo: row.sessionNo, loginAt: row.loginAt },
-      issued.input,
+    const sessionNo = await this.underUserLock(row, req, now, (trx) =>
+      this.sessions.rotate(trx, { sessionNo: row.sessionNo, loginAt: row.loginAt }, issued.input),
     )
     if (sessionNo == null) {
-      // P1 — 두 요청이 위의 읽기를 둘 다 통과한 뒤 조건부 UPDATE 에서 갈렸다. 정본이 놓친 경로이고 실제로는 이쪽이
-      // 더 잦다(gise). 🔴 유예가 꺼져 있으면 전량 폐기하지 않는다 — 흔한 탭 경쟁 한 번에 전 기기가 로그아웃된다(hangang).
+      // P1 — 두 요청이 위의 읽기를 둘 다 통과한 뒤 조건부 UPDATE 에서 갈렸다(정본이 놓친 경로 — 실제로는 이쪽이 더 잦다, gise).
+      // 또는 초기화 · 퇴사 · 로그아웃이 먼저 끊었다. 🔴 트랜잭션 밖에서 다시 읽는다 — 위의 row 는 회전 전 스냅숏이다.
+      const current = await this.sessions.findByNo(row.sessionNo)
+      if (current == null || current.revokedReason !== 'rotated') throw refreshEnded()
+      // 🔴 유예가 꺼져 있으면 전량 폐기하지 않는다 — 흔한 탭 경쟁 한 번에 전 기기가 로그아웃된다(hangang).
       if (this.config.refreshGraceMs === 0) {
         throw new BusinessError(CommonErrorCodes.ERR_INVALID_TOKEN, AUTH_MESSAGES.refreshRaced)
       }
-      // 🔴 트랜잭션 밖에서 다시 읽는다 — 위의 row 는 회전 전 스냅숏이라 revokedAt · replacedBySessionNo 가 비어 있다.
-      const rotated = await this.sessions.findByNo(row.sessionNo)
-      if (rotated == null || rotated.revokedReason !== 'rotated') {
-        throw new BusinessError(CommonErrorCodes.ERR_INVALID_TOKEN, AUTH_MESSAGES.refreshRaced)
-      }
-      return this.reuseOfRotated(rotated, req, now)
+      return this.reuseOfRotated(current, req, now)
     }
 
     await this.emit(
@@ -373,12 +371,12 @@ export class AdminAuthService {
       row.replacedBySessionNo == null ? null : await this.sessions.findByNo(row.replacedBySessionNo)
 
     if (judgeRotatedReuse(row, successor, now, this.config.refreshGraceMs) === 'grace') {
-      await this.assertActive(row.userNo, now)
-      await this.assertAllowedForRefresh(row, req)
       // 🔴 새 세션을 하나 더 준다. 이긴 탭의 세션은 건드리지 않는다 — 원문을 저장하지 않으니 같은 쿠키를 줄 수 없고,
       //    두 응답 중 나중에 도착한 쪽이 쿠키를 덮어도 살아 있는 토큰만 남아야 한다(gise). 링크는 하지 않는다.
       const issued = this.newSession(row.userNo, req, now)
-      const sessionNo = await this.sessions.create({ ...issued.input, loginAt: row.loginAt })
+      const sessionNo = await this.underUserLock(row, req, now, (trx) =>
+        this.sessions.create({ ...issued.input, loginAt: row.loginAt }, trx),
+      )
       await this.emit(
         {
           type: 'token.refresh',
@@ -404,27 +402,35 @@ export class AdminAuthService {
     throw new BusinessError(CommonErrorCodes.ERR_REFRESH_REUSED, AUTH_MESSAGES.refreshReused)
   }
 
-  /** 회전 · 유예 발급 전 — 계정이 없으면 401, 퇴사면 403. */
-  private async assertActive(userNo: bigint, now: Date): Promise<void> {
-    const credential = await this.repo.findCredentialByNo(userNo)
-    if (credential == null) throw sessionInvalid()
-    if (isResigned(credential.resignAt, now)) {
-      throw new BusinessError(CommonErrorCodes.ERR_RESIGNED_USER, AUTH_MESSAGES.resigned)
-    }
-  }
-
   /**
-   * 회전 · 유예 발급 전 IP(2f-1 스펙 P11) — 막힌 주소에서 새 토큰을 찍어 내지 않는다. 퇴사 검사 뒤다(로그인 · 가드와 같은 순서).
-   * 🔴 회전 대상 행은 그대로 둔다 — 같은 토큰을 허용된 주소에서 다시 보내면 회전한다. 대표 팀은 가드와 같은 findPrincipal.
+   * 회전 · 유예 발급(2f-2a 스펙 A7 · A8) — IP(비잠금) → 트랜잭션: users 공유 잠금(첫 문장) → 계정 없음 401 · 퇴사 403 → write.
+   * 🔴 users 를 세션보다 먼저 잡는다 — 즉시 퇴사 · 초기화 · 본인 비밀번호 변경(users X → 세션 X)과 같은 순서라 교착이 없다
+   *    (2d R10-3). 공유 잠금이라 같은 사용자의 다른 세션 회전과는 줄을 서지 않는다(회전은 users 를 쓰지 않아 승격이 없다).
+   * 🔴 IP 는 트랜잭션 앞이다 — 잠금을 쥔 채 정책을 묻지 않는다. 막혀도 회전 대상 행은 그대로라 허용된 주소에서 같은 토큰을
+   *    다시 보내면 회전한다(2f-1 스펙 P11). 없음 · 퇴사는 이벤트가 없어 트랜잭션 안에서 던진다 — 롤백할 쓰기가 없다(§14 R2-⑧).
    */
-  private async assertAllowedForRefresh(row: AdminSessionRow, req: Request): Promise<void> {
+  private async underUserLock<R>(
+    row: AdminSessionRow,
+    req: Request,
+    now: Date,
+    write: (trx: Transaction<AdminDatabase>) => Promise<R>,
+  ): Promise<R> {
     const verdict = await this.ipVerdict(row.userNo, req)
-    if (verdict.allowed) return
-    await this.emit(
-      { type: 'access.blocked', reason: 'ip', userNo: row.userNo, sessionNo: row.sessionNo },
-      req,
-    )
-    throw ipNotAllowed(verdict.clientIp)
+    if (!verdict.allowed) {
+      await this.emit(
+        { type: 'access.blocked', reason: 'ip', userNo: row.userNo, sessionNo: row.sessionNo },
+        req,
+      )
+      throw ipNotAllowed(verdict.clientIp)
+    }
+    return runWriteTransaction(this.db, async (trx) => {
+      const credential = await this.repo.lockCredential(trx, row.userNo, 'share')
+      if (credential == null) throw sessionInvalid()
+      if (isResigned(credential.resignAt, now)) {
+        throw new BusinessError(CommonErrorCodes.ERR_RESIGNED_USER, AUTH_MESSAGES.resigned)
+      }
+      return write(trx)
+    })
   }
 
   /**
@@ -483,6 +489,10 @@ export class AdminAuthService {
 
 function loginFailed(): BusinessError {
   return new BusinessError(CommonErrorCodes.ERR_LOGIN_FAILED, AUTH_MESSAGES.loginFailed)
+}
+
+function refreshEnded(): BusinessError {
+  return new BusinessError(CommonErrorCodes.ERR_INVALID_TOKEN, AUTH_MESSAGES.refreshEnded)
 }
 
 function sessionInvalid(): BusinessError {

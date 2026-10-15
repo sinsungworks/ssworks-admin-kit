@@ -1,5 +1,6 @@
 import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { runWriteTransaction } from '../database/run.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { holdRotation, seedRole, seedUser } from '../test-support/auth.js'
 import { createRefreshToken, hashRefreshToken } from './refresh-token.js'
@@ -82,7 +83,9 @@ describe('rotate', () => {
     const oldNo = await store.create(input(user.userNo, { loginAt }))
     const now = second(new Date())
     const next = input(user.userNo, { now })
-    const newNo = await store.rotate({ sessionNo: oldNo, loginAt }, next)
+    const newNo = await runWriteTransaction(t.db, (trx) =>
+      store.rotate(trx, { sessionNo: oldNo, loginAt }, next),
+    )
     expect(newNo).not.toBeNull()
     expect(await store.findByNo(oldNo)).toMatchObject({
       isRevoked: true,
@@ -103,7 +106,9 @@ describe('rotate', () => {
     const oldNo = await store.create(input(user.userNo))
     await store.revoke(oldNo, 'terminated', new Date())
     expect(
-      await store.rotate({ sessionNo: oldNo, loginAt: new Date() }, input(user.userNo)),
+      await runWriteTransaction(t.db, (trx) =>
+        store.rotate(trx, { sessionNo: oldNo, loginAt: new Date() }, input(user.userNo)),
+      ),
     ).toBeNull()
   })
 
@@ -112,15 +117,16 @@ describe('rotate', () => {
     const taken = input(user.userNo)
     await store.create(taken)
     const oldNo = await store.create(input(user.userNo))
-    const error = await store
-      .rotate(
+    const error = await runWriteTransaction(t.db, (trx) =>
+      store.rotate(
+        trx,
         { sessionNo: oldNo, loginAt: new Date() },
         input(user.userNo, { refreshTokenHash: taken.refreshTokenHash }),
-      )
-      .then(
-        () => undefined,
-        (caught: unknown) => caught,
-      )
+      ),
+    ).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    )
     expect(error).toBeInstanceOf(BusinessError)
     expect((error as BusinessError).code).toBe(CommonErrorCodes.ERR_COMMON_DUPLICATED)
     expect(await store.findByNo(oldNo)).toMatchObject({ isRevoked: false, revokedReason: null })
@@ -131,7 +137,9 @@ describe('rotate', () => {
     const oldNo = await store.create(input(user.userNo))
     const successorNo = await store.create(input(user.userNo))
     const hold = await holdRotation(t, oldNo, successorNo)
-    const pending = store.rotate({ sessionNo: oldNo, loginAt: new Date() }, input(user.userNo))
+    const pending = runWriteTransaction(t.db, (trx) =>
+      store.rotate(trx, { sessionNo: oldNo, loginAt: new Date() }, input(user.userNo)),
+    )
     await new Promise((resolve) => setTimeout(resolve, 300))
     await hold.release()
     expect(await pending).toBeNull()
@@ -139,6 +147,21 @@ describe('rotate', () => {
       revokedReason: 'rotated',
       replacedBySessionNo: successorNo,
     })
+  })
+
+  it('create(input, trx) 는 받은 트랜잭션에 든다 — 롤백되면 행이 없다(2f-2a 스펙 A12)', async () => {
+    const user = await seedUser(t.db, { roleNo })
+    let created: bigint | undefined
+    const error = await runWriteTransaction(t.db, async (trx) => {
+      created = await store.create(input(user.userNo), trx)
+      throw new Error('되돌린다')
+    }).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    )
+    expect(error).toBeInstanceOf(Error)
+    expect(created).toBeDefined()
+    expect(await store.findByNo(created!)).toBeNull()
   })
 })
 
@@ -155,9 +178,8 @@ describe('revoke · revokeAllOfUser', () => {
     const user = await seedUser(t.db, { roleNo })
     const other = await seedUser(t.db, { roleNo })
     const rotatedOld = await store.create(input(user.userNo))
-    const live = await store.rotate(
-      { sessionNo: rotatedOld, loginAt: new Date() },
-      input(user.userNo),
+    const live = await runWriteTransaction(t.db, (trx) =>
+      store.rotate(trx, { sessionNo: rotatedOld, loginAt: new Date() }, input(user.userNo)),
     )
     const ended = await store.create(input(user.userNo))
     await store.revoke(ended, 'terminated', new Date())
