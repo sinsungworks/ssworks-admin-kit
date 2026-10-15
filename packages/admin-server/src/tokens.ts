@@ -45,3 +45,6 @@ export const CUSTOM_AUTH_REPOSITORY = Symbol('CUSTOM_AUTH_REPOSITORY')
 
 /** 내부 — 해석된 계정 설정(`ResolvedAccountsConfig`). 역할 · 사용자 모듈이 코어 옵션의 `permissionCatalog` · `reauth` 로 만든다(2d) */
 export const ADMIN_ACCOUNTS_CONFIG = Symbol('ADMIN_ACCOUNTS_CONFIG')
+
+/** 내부 — 해석된 약관 설정(`ResolvedLegalConfig`). `AdminLegalModule` 이 코어 옵션의 `legal` 로 만든다(2e-2) */
+export const ADMIN_LEGAL_CONFIG = Symbol('ADMIN_LEGAL_CONFIG')

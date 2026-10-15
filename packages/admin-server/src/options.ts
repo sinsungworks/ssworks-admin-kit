@@ -5,6 +5,7 @@ import type { AdminAuditOptions } from './audit/options.js'
 import type { AdminAuthOptions } from './auth/options.js'
 import type { AdminPermissionMap } from './auth/permission-slots.js'
 import type { AdminDbConnection } from './database/connection.js'
+import type { AdminLegalOptions } from './legal/options.js'
 
 export interface AdminServerOptions {
   /** DB 접속. 보통 `adminDbConnectionFromEnv()` */
@@ -38,6 +39,12 @@ export interface AdminServerOptions {
    * `AdminUsersModule` 이 기동에서 검증한다(`'+09:00'` 같은 오프셋 표기는 거부).
    */
   timeZone?: string
+  /**
+   * 약관 종류 카탈로그(2e 스펙 ⑨ K1) — 예: `{ kinds: ['TERMS', 'PRIVACY'] }`. 🔴 `AdminLegalModule` 을 쓰면 필수 — 없거나
+   * 종류가 비었거나 형식(영숫자 · `_` 1~32자) 밖 · 겹침이면 기동에서 멈춘다(B14). admin-ui `useLegalDocuments` 의 `kinds`
+   * 와 한 상수에서 만든다.
+   */
+  legal?: AdminLegalOptions
 }
 
 /** 정적 옵션 — `RouterModule` 이 모듈 정의 시점의 값을 요구한다(스펙 F2). */
