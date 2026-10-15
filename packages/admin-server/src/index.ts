@@ -61,3 +61,7 @@ export type { AdminPermissionCatalog } from './accounts/options.js'
 export { AdminUsersModule } from './users/users.module.js'
 
 export { AdminTeamsModule } from './teams/teams.module.js'
+
+// 약관(PR 2e-2)
+export { AdminLegalModule } from './legal/legal.module.js'
+export type { AdminLegalOptions } from './legal/options.js'

@@ -47,7 +47,7 @@ describe('resolvePermissionMap', () => {
     }
   })
 
-  it('슬롯은 아홉 — 2c 셋 + 역할 둘(2d-1) + 사용자 둘(2d-2) + 팀 둘(2e-1)', () => {
+  it('슬롯은 열하나 — 2c 셋 + 역할 둘(2d-1) + 사용자 둘(2d-2) + 팀 둘(2e-1) + 약관 둘(2e-2)', () => {
     expect(ADMIN_PERMISSION_SLOTS).toEqual([
       'sessions.read',
       'sessions.manage',
@@ -58,6 +58,8 @@ describe('resolvePermissionMap', () => {
       'users.manage',
       'teams.read',
       'teams.manage',
+      'legal.read',
+      'legal.publish',
     ])
   })
 })
