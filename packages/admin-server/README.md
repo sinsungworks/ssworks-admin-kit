@@ -576,7 +576,7 @@ export class PublicLegalController {
 
 ## IP 접근 제어
 
-관리자의 접속 위치를 제한한다. 규칙은 **사용자 > 팀 > 전체** 층이고, **가장 가까운 층 하나만** 본다 — 그 사람에게 사용자 규칙이 하나라도 있으면 팀 · 전체 규칙은 보지 않는다. 걸리는 규칙이 하나도 없으면 막는다(기본 거부). 장 `0012` 가 전체 허용 두 행(`0.0.0.0/0` · `::/0` — 계열이 다르면 매칭하지 않아 둘이다)을 넣으므로 모듈을 붙여도 아무도 잠기지 않는다.
+관리자의 접속 위치를 제한한다. 규칙은 **사용자 > 팀 > 전체** 층이고, **가장 가까운 층 하나만** 본다 — 그 사람에게 사용자 규칙이 하나라도 있으면 팀 · 전체 규칙은 보지 않는다. 걸리는 규칙이 하나도 없으면 막는다(기본 거부). 장 `0012` 가 전체 허용 두 행(`0.0.0.0/0` · `::/0` — 계열이 다르면 매칭하지 않아 둘이다)을 넣으므로 클라이언트 주소를 읽을 수 있는 한 모듈을 붙여도 아무도 잠기지 않는다. 주소를 못 얻으면(`clientIp` 출처에서 읽지 못함 — `'x-real-ip'` 의 쉼표 · 배열 · 잘못된 헤더, 유닉스 소켓 등) 정책은 `null` 을 보고 규칙과 상관없이 **모두** 막는다(fail-closed) — 출처 설정을 먼저 확인한다.
 
 ```ts
 imports: [
@@ -616,6 +616,20 @@ export { up, down } from '@ssworks/admin-server/migrations/0012_ip_access_rules'
 - **CIDR**: IPv4 · IPv6, 프리픽스가 꼭 있어야 한다(`203.0.113.0/24` · `2001:db8::/32`). 앞뒤 공백은 뗀다. 호스트 비트가 남은 표기(`203.0.113.9/24`)는 네트워크처럼 매칭한다. 화면도 admin-shared `ipCidrSchema` · `isValidCidr` 로 같은 파서를 쓴다.
 - **자기 잠금**: 저장하면 **요청자의 지금 주소**가 막히는 변경은 409 `ERR_COMMON_CONFLICT` + `details.clientIp`(쓰지 않는다). 남만 막는 변경은 막지 않는다 — 저장 전에 **미리보기**로 누가 잠기는지 본다(`becomesLocked` · 등급순 정렬 · `blockedSessions`). 미리보기는 읽은 순간의 스냅숏이라 저장이 409 일 수 있다.
 - **전권자 잔존**: 마지막 "어디서든 로그인할 수 있는 전체 권한 관리자" 를 없애는 규칙 변경(그 사람에게 사용자 규칙 · 마지막 전체 규칙 삭제 …)은 409 `lastSuperAdmin`.
+- **잠겼을 때**: API 가 막는 것은 API 로 만든 잠금뿐이다(자기 잠금 · 전권자 잔존 · 팀 삭제 409). 사무실 · ISP 주소 변경, 엣지 설정 오류(주소 없음 → 모두 403), 모듈을 뺀 동안 SQL 로 시드를 지운 뒤 다시 붙임은 막지 못한다. 모듈 import 를 빼면 판정은 멈추지만 `/admin/ip-access` 라우트도 사라진다 — 복구는 SQL 이다. 사용자 규칙이 전체 규칙을 이기므로, 자기 규칙에 묶인 사람은 그 규칙을 지워야 풀린다.
+
+  ```sql
+  -- 전체 허용 두 행을 되살린다(장 0012 의 시드와 같다)
+  INSERT INTO ip_access_rules (scope_type, scope_ref_no, cidr, description) VALUES
+    ('global', NULL, '0.0.0.0/0', '기본 허용(IPv4)'),
+    ('global', NULL, '::/0', '기본 허용(IPv6)');
+
+  -- 특정 사용자 · 팀의 규칙을 지운다(번호를 바꿔 쓴다)
+  DELETE FROM ip_access_rules WHERE scope_type = 'user' AND scope_ref_no = 12;
+  DELETE FROM ip_access_rules WHERE scope_type = 'team' AND scope_ref_no = 3;
+  ```
+
+- **주의**: `ipAccess.manage` 는 사실상 전권급 슬롯이다 — 좁은 보유자도 마지막 도달 가능 전권자를 뺀 전권자를 가두고 일반 관리자를 모두 잠글 수 있다(2f-1 스펙 §9-2 s1 의 의도). 전체 권한 관리자에게만 준다. `AdminIpAccessModule` 이 `ADMIN_ACCESS_POLICY` 를 제공하므로 쓰는 쪽 자체 정책과 함께 쓰지 않는다. 미리보기 `op=update` 는 부분 패치가 아니라 **바뀐 뒤 규칙 전체**(`scopeType` · `scopeRefNo` · `cidr`)와 대상 `ruleNo` 를 받는다.
 - **쓰기 보호**: 수정 · 삭제는 `revision`(409 `ERR_COMMON_REVISION_CONFLICT`). `reauth: true` 면 본문 `currentPassword`. 가리키는 팀 · 사용자가 없으면 400 `issues[scopeRefNo]`. 전체 규칙에 대상을 두거나 팀 · 사용자 규칙에 대상을 빼면 400 `issues[scopeRefNo]`.
 - **팀 삭제**는 그 팀(하위 팀 포함)을 가리키는 규칙이 있으면 409 `ERR_TEAM_HAS_IP_RULES` — 규칙을 먼저 지운다.
 - **동시 쓰기**: IP 쓰기는 `guard_locks` 행 `superAdminSurvival` 에서 역할 · 사용자의 잔존 쓰기와 함께 하나씩 돈다 — 두 관리자가 각자 통과하는 변경을 동시에 넣어도 뒤의 쪽이 자기 잠금 409 로 걸린다. 드문 잠금 충돌은 409 `ERR_COMMON_CONFLICT`("다시 시도해 주세요") — 다시 보내면 된다.

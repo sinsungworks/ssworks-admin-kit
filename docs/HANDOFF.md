@@ -64,7 +64,7 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
   - 후속(최종 리뷰 Minor): 계정 유무 타이밍 차(틀린 비밀번호는 argon2 뒤에 실패 카운터 쓰기 트랜잭션이 붙는다 — BEGIN · SELECT FOR UPDATE · UPDATE · COMMIT 왕복 넷과 redo fsync, 없는 아이디는 더미 argon2 만. 대칭화는 throttling 층과 함께 정한다. 맞은 비밀번호의 정상 로그인은 바뀌지 않으면 UPDATE 를 건너뛴다 — 스펙 §14 R8), `refreshPath` · `domain` 기동 검증(`;` · 공백), 로그인 본문의 form-encoded 허용(로그인 CSRF — JSON 만 받기), JWT `aud` 클레임, `emit` 이 요청 안에서 기다림 · 경고에 sink 오류 문구(2c) → 2c: 기다림 유지(⑤ T1) · 경고 문구 B12, `users.updateAt` 이 로그인 실패마다 바뀜(2d 의 "수정일" 표시) → **2d-2 에서 닫음**(장 0002 정정 — ⑧ U1), 유예 발급이 남기는 고아 세션(2c 세션 목록) → 2c: 그대로 보이고 README 에 적음(⑫ O1), 빈 `@RequirePermissions()` 를 데코레이터 시점에 던지기, 로그아웃 실패 경로 · `revision` 불변 테스트, decorator-metadata 테스트에 새 서비스 생성자.
 - **PR 2c 가 넘긴 것(2026-10-14)**
   - 2d: 남의 세션을 끊을 때의 권한 상승 검사(⑪ D1 — `DELETE /sessions/:sessionNo` · `/sessions/user/:userNo`), 사용자 · 역할 슬롯을 `AdminPermissionSlot` · `ADMIN_PERMISSION_SLOTS` 에, 코어 감사 액션 `org.user.*` · `org.role.*` 를 admin-shared `CoreAuditActions` · 라벨에(개수 테스트를 함께 고친다). → **2d-1 에서 닫음**(세션 끊기 검사 · 역할 슬롯 · org.role.* — 사용자 슬롯 · org.user.* 는 2d-2) → **2d-2 에서 닫음**, AuditOptions → AuditDeclaration
-  - 2e · 2f: 팀 · 약관 · IP 슬롯과 액션(`org.team.*` · `setting.ipAccess.*`), IP 차단의 `access.blocked` 는 이미 감사 행이 된다. → 팀은 **2e-1 에서 닫음**, 약관은 **2e-2 에서 닫음**(IP 는 2f)
+  - 2e · 2f: 팀 · 약관 · IP 슬롯과 액션(`org.team.*` · `setting.ipAccess.*`), IP 차단의 `access.blocked` 는 이미 감사 행이 된다. → 팀은 **2e-1 에서 닫음**, 약관은 **2e-2 에서 닫음**(IP 는 **2f-1 에서 닫음**)
   - 감사 화면(admin-ui 에 없다 — 템플릿 B 가 `adminAuditLogSchema` · `labelOf` 로), 보존 · 청소(B), 가드 거부(401 · 403)는 남지 않는다(⑧ F1).
 - **PR 2d-1 최종 리뷰가 넘긴 것 → 2d-2 스펙에서 정한다(2026-10-14)** → **2d-2 에서 닫음**(스펙 §14 R5 — M1 은 README 복구 절차, 나머지 다섯은 코드)
   - M1: 카탈로그에서 빠진 키 · 새로 함의된 키를 아직 든 역할은 `'*'` 가 아닌 관리자의 지배 판정에서 실패한다(`details.outside` 가 화면에 없는 키를 가리킨다). `current` 를 `catalog.isPermission` 으로 거를지, "`'*'` 관리자가 다시 저장한다" 를 문서로 둘지 정한다.
@@ -97,7 +97,14 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
   - 테스트 도우미: `whileHeld` 가 대기 수에 닿았는지 돌려주지 않는다(시간 초과면 그냥 커밋 — 경합 창에 닿았는지 단언 불가). 가드 관찰 루프 `underHeldGuard` 가 teams.guard · roles.index · legal.guard 에 복사돼 있고 observer 연결이 열리다 실패하면 holder 가 남는다 — `test-support/concurrency.ts` 로 모은다(2f). → **2f-1 에서 닫음**(underHeld · holdGuard · whileHeld reached).
   - 쓰는 쪽 감사 카탈로그가 이미 `setting.legal.publish` · `legalDocument`(또는 키 `LEGAL_PUBLISH` · `LEGAL_DOCUMENT`)를 정의했다면 `defineAuditCatalog` 의 겹침 검사가 던진다 — 2e-1 의 팀 액션도 같다(changeset 에 적음).
 - **PR 2f-1 최종 리뷰가 넘긴 것(2026-10-15)**
-  - (최종 리뷰 뒤에 채운다)
+  - 이 PR 이 최종 리뷰에서 고친 것: 표시 토큰이 DI 로 역할 · 사용자 서비스에 닿는지 HTTP 테스트(시나리오 B · 역할 권한), 자기 잠금 팀 경로 테스트, README "잠겼을 때"(SQL 복구) · 주소 없음 전원 403 · 주의 셋, JSDoc · 주석.
+  - admin-shared 파서 조이기(patch): `normalizeIp` 가 점 표기 IPv4 없이도 `::ffff:` 를 뗀다(`::ffff:1::/120` → `1::/120` 으로 받음) · 머리 그룹의 내장 IPv4 를 받는다(`1.2.3.4::`) · 유효한 `::ffff:1:2:3:4:5:6` 을 거부 · `::1/64` 거부. `/^::ffff:(?=[0-9]+[.])/i` 일 때만 떼고 내장 IPv4 는 마지막 그룹에만. 보안 영향 없음(규칙은 관리자 입력, 주소는 Node · 엣지).
+  - 경합 테스트: `whileHeld` 호출 약 21곳(roles · teams · users · legal · super-admin)이 `reached` 를 단언하지 않는다 — 훑어서 더한다.
+  - `auth.service.ts` 의 정책 판정 블록 셋(로그인 · refresh · 유예)을 도우미 하나로 — 2f-2 인증 경로 작업과 함께.
+  - `resolveAuthConfig` · `resolveAuditConfig` 의 `clientIp` 인자를 필수로.
+  - 진단 경고(선택): 정책이 `null` 클라이언트 IP 를 볼 때 · 모듈이 켜졌는데 `global` 규칙이 없을 때 warn.
+  - 로그인은 맞은 비밀번호 뒤에만 IP 를 본다(2b B7 · F1 순서 — 스펙 §5-1 유지) — 막힌 주소에서도 비밀번호가 맞았음을 알 수 있고 실패 카운터가 초기화된다. 2f-2 로그인 TOCTOU 브레인스토밍에서 다시 본다.
+  - 테스트 도우미 `failure()` 중복 — 정리 후보.
 
 ## 작업 폴더 밖에 남은 것
 
