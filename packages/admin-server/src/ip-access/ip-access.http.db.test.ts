@@ -178,6 +178,15 @@ describe('쓰기', () => {
     expect(issues(expectError(bad, 400, CommonErrorCodes.ERR_COMMON_VALIDATION).details)).toEqual([
       ['cidr', IP_ACCESS_SCHEMA_MESSAGES.cidr],
     ])
+    // 2f-2b 파서 조이기 — `::ffff:` 를 점 표기 앞에서만 떼므로 `::` 가 두 번인 표기가 서버 본문에서도 400 이다
+    const twoGaps = await sendJson(agent.post(IP_PATH), {
+      scopeType: 'global',
+      scopeRefNo: null,
+      cidr: '::ffff:1::/120',
+    })
+    expect(
+      issues(expectError(twoGaps, 400, CommonErrorCodes.ERR_COMMON_VALIDATION).details),
+    ).toEqual([['cidr', IP_ACCESS_SCHEMA_MESSAGES.cidr]])
     const forbidden = await sendJson(agent.post(IP_PATH), {
       scopeType: 'global',
       scopeRefNo: 1n,
