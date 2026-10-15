@@ -12,6 +12,8 @@ export const TEAM_MESSAGES = Object.freeze({
   duplicateTeamName: '이미 있는 팀 이름입니다.',
   teamHasMembers:
     '이 팀이나 하위 팀에 소속된 계정이 있어 지울 수 없습니다. 계정을 먼저 다른 팀으로 옮기세요.',
+  teamHasIpRules:
+    '이 팀(하위 팀 포함)을 가리키는 IP 규칙이 있어 지울 수 없습니다. 규칙을 먼저 지우세요.',
   moveCycle: '팀을 자기 자신이나 하위 팀 아래로 옮길 수 없습니다.',
   beforeNotSibling: '기준 팀이 옮겨 갈 상위 팀의 하위 팀이 아닙니다.',
   beforeIsSelf: '옮길 팀 자신을 기준 팀으로 고를 수 없습니다.',
@@ -36,6 +38,13 @@ export function duplicateTeamName(): BusinessError {
 export function teamHasMembers(memberCount: number): BusinessError {
   return new BusinessError(CommonErrorCodes.ERR_TEAM_HAS_MEMBERS, TEAM_MESSAGES.teamHasMembers, {
     memberCount,
+  })
+}
+
+/** ruleCount 는 서브트리 팀을 가리키는 IP 규칙 수(2f-1 ⑤ T1) — 규칙 삭제는 IP 모듈의 자기 잠금 · 잔존 · 감사를 지난다 */
+export function teamHasIpRules(ruleCount: number): BusinessError {
+  return new BusinessError(CommonErrorCodes.ERR_TEAM_HAS_IP_RULES, TEAM_MESSAGES.teamHasIpRules, {
+    ruleCount,
   })
 }
 

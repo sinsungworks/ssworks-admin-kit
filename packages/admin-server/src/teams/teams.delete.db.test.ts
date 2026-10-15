@@ -5,6 +5,7 @@ import { AdminSessionStore } from '../auth/session.store.js'
 import { testPrincipal, usersConfig } from '../test-support/accounts.js'
 import { addToTeam, seedRole, seedUser } from '../test-support/auth.js'
 import { whileHeld, type Settled } from '../test-support/concurrency.js'
+import { seedIpRule } from '../test-support/ip-access.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { closureOf, seedTeamUnder } from '../test-support/teams.js'
 import { AdminUsersService } from '../users/users.service.js'
@@ -118,6 +119,35 @@ describe('삭제', () => {
     })
     await service.remove(parent)
     expect(await existing([parent, child])).toEqual([])
+  })
+
+  it('🔴 서브트리 팀을 가리키는 IP 규칙이 있으면 409 ERR_TEAM_HAS_IP_RULES + ruleCount, 아무것도 지우지 않는다(2f-1 ⑤ T1)', async () => {
+    const top = await create('dl-ip-top', null)
+    const sub = await create('dl-ip-sub', top)
+    await seedIpRule(t.db, { scopeType: 'team', scopeRefNo: sub, cidr: '10.0.0.0/8' })
+    await seedIpRule(t.db, { scopeType: 'team', scopeRefNo: top, cidr: '192.168.0.0/16' })
+    const error = await failure(service.remove(top))
+    expect(error.code).toBe(CommonErrorCodes.ERR_TEAM_HAS_IP_RULES)
+    expect(error.message).toBe(TEAM_MESSAGES.teamHasIpRules)
+    expect(error.details).toEqual({ ruleCount: 2 })
+    expect(await existing([top, sub])).toEqual([top, sub])
+  })
+
+  it('소속 409 가 먼저다 — 소속과 규칙이 둘 다 있으면 ERR_TEAM_HAS_MEMBERS', async () => {
+    const both = await create('dl-ip-both', null)
+    const member = await seedUser(t.db, { roleNo, userId: 'dl-ip-member' })
+    await addToTeam(t.db, both, member.userNo)
+    await seedIpRule(t.db, { scopeType: 'team', scopeRefNo: both, cidr: '10.0.0.0/8' })
+    const error = await failure(service.remove(both))
+    expect(error.code).toBe(CommonErrorCodes.ERR_TEAM_HAS_MEMBERS)
+  })
+
+  it('다른 팀 · global · user 규칙은 막지 않는다', async () => {
+    const free = await create('dl-ip-free', null)
+    const other = await create('dl-ip-other', null)
+    await seedIpRule(t.db, { scopeType: 'team', scopeRefNo: other, cidr: '10.0.0.0/8' })
+    await seedIpRule(t.db, { scopeType: 'user', scopeRefNo: free, cidr: '10.0.0.0/8' })
+    expect((await service.remove(free)).before.teamName).toBe('dl-ip-free')
   })
 })
 

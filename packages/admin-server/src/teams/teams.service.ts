@@ -16,6 +16,7 @@ import {
   beforeTeamError,
   duplicateTeamName,
   moveCycle,
+  teamHasIpRules,
   teamHasMembers,
 } from './errors.js'
 import { closurePairs, planTeamMove, type ClosureLink } from './move.js'
@@ -233,6 +234,17 @@ export class AdminTeamsService {
         .executeTakeFirstOrThrow()
       const memberCount = Number(counted.n)
       if (memberCount > 0) throw teamHasMembers(memberCount)
+      // 🔴 IP 규칙 셈(2f-1 스펙 ⑤ T1 · P9) — 소속 셈과 같은 읽기 뷰(서브트리 팀 행을 X 로 쥔 뒤)라 기다리는 사이 커밋된 규칙을
+      //    본다. 규칙 쓰기는 가리키는 팀 행을 먼저 잠그므로(rule-locks lockScopeRef) 지금은 새 규칙이 생길 수 없다(§14 R1-①).
+      //    🔴 FOR UPDATE 로 세지 않는다 — 팀 쓰기는 ipAccessRules 를 잠그지 않는다(전역 잠금 순서 §5-5).
+      const rules = await trx
+        .selectFrom('ipAccessRules')
+        .select((eb) => eb.fn.countAll<number | string | bigint>().as('n'))
+        .where('scopeType', '=', 'team')
+        .where('scopeRefNo', 'in', teamNos)
+        .executeTakeFirstOrThrow()
+      const ruleCount = Number(rules.n)
+      if (ruleCount > 0) throw teamHasIpRules(ruleCount)
       await trx.deleteFrom('teams').where('teamNo', 'in', teamNos).execute()
       return {
         before: { teamName: target.teamName, parentTeamNo: target.parentTeamNo },
