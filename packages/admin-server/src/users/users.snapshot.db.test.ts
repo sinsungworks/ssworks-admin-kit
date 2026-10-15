@@ -35,7 +35,7 @@ async function target(userId: string) {
   return user
 }
 
-/** 로그인 실패 한 번(2b updateLoginState 와 같은 모양) — 센티넬을 잡지 않는다 */
+/** 로그인 실패 한 번(패키지 도우미 password-check.ts updateLoginState 와 같은 모양 — lockCredential update 뒤 writeLoginState) — 센티넬을 잡지 않는다 */
 function loginFailure(userNo: bigint) {
   return async (connection: Connection) => {
     await connection.query('select login_fail_count from users where user_no = ? for update', [

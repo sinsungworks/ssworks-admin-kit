@@ -70,7 +70,7 @@ export class AdminAuthService {
     @Inject(AUTH_REPOSITORY) private readonly repo: AdminAuthRepository,
     private readonly sessions: AdminSessionStore,
     private readonly tokens: AdminAccessTokenService,
-    /** 비밀번호 변경 트랜잭션 */
+    /** 로그인 확정 · 회전 · 유예 · 카운터 · 비밀번호 변경 트랜잭션 */
     @Inject(KYSELY) private readonly db: Kysely<AdminDatabase>,
     @Optional() @Inject(ADMIN_ACCESS_POLICY) private readonly accessPolicy?: AdminAccessPolicy,
     @Optional() @Inject(ADMIN_AUTH_EVENTS) private readonly events?: AdminAuthEventSink,
