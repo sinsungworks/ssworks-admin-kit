@@ -81,7 +81,7 @@ function context(
 function guard(failClosed = true): AdminPermissionGuard {
   return new AdminPermissionGuard(
     new Reflector(),
-    resolveAuthConfig({ jwtSecret: 's'.repeat(32), failClosed }, undefined),
+    resolveAuthConfig({ jwtSecret: 's'.repeat(32), failClosed }, undefined, undefined, undefined),
   )
 }
 
@@ -128,10 +128,15 @@ const selfOnlySlotRoutes = new SelfOnlySlotRoutes()
 function slotGuard(): AdminPermissionGuard {
   return new AdminPermissionGuard(
     new Reflector(),
-    resolveAuthConfig({ jwtSecret: 's'.repeat(32) }, undefined, {
-      'sessions.read': 'org.users:read',
-      'sessions.manage': 'org.users:write',
-    }),
+    resolveAuthConfig(
+      { jwtSecret: 's'.repeat(32) },
+      undefined,
+      {
+        'sessions.read': 'org.users:read',
+        'sessions.manage': 'org.users:write',
+      },
+      undefined,
+    ),
   )
 }
 
@@ -293,6 +298,8 @@ describe('AdminPermissionGuard — 권한 슬롯(2c 스펙 ① P1)', () => {
   })
 
   it('셋째 인자가 없으면 슬롯 맵은 비어 있다(2b 호출부 그대로)', () => {
-    expect(resolveAuthConfig({ jwtSecret: 's'.repeat(32) }, undefined).permissions).toEqual({})
+    expect(
+      resolveAuthConfig({ jwtSecret: 's'.repeat(32) }, undefined, undefined, undefined).permissions,
+    ).toEqual({})
   })
 })

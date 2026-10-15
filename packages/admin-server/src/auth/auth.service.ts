@@ -45,6 +45,9 @@ export interface AdminTokenPair {
   refreshToken: string
 }
 
+/** IP 판정 하나의 결과(2f-2a 스펙 A13) — 판정만 담는다. 이벤트 · 오류는 부른 쪽이 낸다 */
+type IpVerdict = { allowed: true } | { allowed: false; clientIp: string | null }
+
 @Injectable()
 export class AdminAuthService {
   private readonly logger = new Logger('AdminAuthService')
@@ -134,21 +137,13 @@ export class AdminAuthService {
       throw new BusinessError(CommonErrorCodes.ERR_RESIGNED_USER, AUTH_MESSAGES.resigned)
     }
 
-    if (this.accessPolicy != null) {
-      const principal = await this.repo.findPrincipal(credential.userNo)
-      const { clientIp } = requestMetaOf(req, this.config.clientIp)
-      const allowed = await this.accessPolicy.allows({
-        clientIp,
-        userNo: credential.userNo,
-        teamNos: principal?.teamNo == null ? [] : [principal.teamNo],
-      })
-      if (!allowed) {
-        await this.emit(
-          { type: 'login.blocked', reason: 'ip', userId: input.userId, userNo: credential.userNo },
-          req,
-        )
-        throw ipNotAllowed(clientIp)
-      }
+    const verdict = await this.ipVerdict(credential.userNo, req)
+    if (!verdict.allowed) {
+      await this.emit(
+        { type: 'login.blocked', reason: 'ip', userId: input.userId, userNo: credential.userNo },
+        req,
+      )
+      throw ipNotAllowed(verdict.clientIp)
     }
 
     const issued = this.newSession(credential.userNo, req, now)
@@ -186,26 +181,19 @@ export class AdminAuthService {
       throw new BusinessError(CommonErrorCodes.ERR_RESIGNED_USER, AUTH_MESSAGES.resigned)
     }
 
-    if (this.accessPolicy != null) {
-      const { clientIp } = requestMetaOf(req, this.config.clientIp)
-      const allowed = await this.accessPolicy.allows({
-        clientIp,
-        userNo: record.userNo,
-        teamNos: record.teamNo == null ? [] : [record.teamNo],
-      })
-      if (!allowed) {
-        // 🔴 거부를 던지기 전에 남긴다 — 감사 인터셉터는 가드 뒤라 이 요청을 보지 못한다(hangang I4).
-        await this.emit(
-          {
-            type: 'access.blocked',
-            reason: 'ip',
-            userNo: record.userNo,
-            sessionNo: session.sessionNo,
-          },
-          req,
-        )
-        throw ipNotAllowed(clientIp)
-      }
+    const verdict = await this.ipVerdict(record.userNo, req, record.teamNo)
+    if (!verdict.allowed) {
+      // 🔴 거부를 던지기 전에 남긴다 — 감사 인터셉터는 가드 뒤라 이 요청을 보지 못한다(hangang I4).
+      await this.emit(
+        {
+          type: 'access.blocked',
+          reason: 'ip',
+          userNo: record.userNo,
+          sessionNo: session.sessionNo,
+        },
+        req,
+      )
+      throw ipNotAllowed(verdict.clientIp)
     }
 
     return {
@@ -430,20 +418,34 @@ export class AdminAuthService {
    * 🔴 회전 대상 행은 그대로 둔다 — 같은 토큰을 허용된 주소에서 다시 보내면 회전한다. 대표 팀은 가드와 같은 findPrincipal.
    */
   private async assertAllowedForRefresh(row: AdminSessionRow, req: Request): Promise<void> {
-    if (this.accessPolicy == null) return
-    const principal = await this.repo.findPrincipal(row.userNo)
-    const { clientIp } = requestMetaOf(req, this.config.clientIp)
-    const allowed = await this.accessPolicy.allows({
-      clientIp,
-      userNo: row.userNo,
-      teamNos: principal?.teamNo == null ? [] : [principal.teamNo],
-    })
-    if (allowed) return
+    const verdict = await this.ipVerdict(row.userNo, req)
+    if (verdict.allowed) return
     await this.emit(
       { type: 'access.blocked', reason: 'ip', userNo: row.userNo, sessionNo: row.sessionNo },
       req,
     )
-    throw ipNotAllowed(clientIp)
+    throw ipNotAllowed(verdict.clientIp)
+  }
+
+  /**
+   * IP 판정 하나(2f-2a 스펙 A13) — 로그인 · 가드 · refresh · 유예 발급이 부른다. 정책이 없으면(IP 모듈 없음) 늘 허용.
+   * 대표 팀은 `teamNo` 를 주면 그것(가드 — 이미 읽은 주체), 아니면 findPrincipal(가드와 같은 MIN(teamNo) — hangang R34).
+   */
+  private async ipVerdict(
+    userNo: bigint,
+    req: Request,
+    teamNo?: bigint | null,
+  ): Promise<IpVerdict> {
+    if (this.accessPolicy == null) return { allowed: true }
+    const team =
+      teamNo !== undefined ? teamNo : ((await this.repo.findPrincipal(userNo))?.teamNo ?? null)
+    const { clientIp } = requestMetaOf(req, this.config.clientIp)
+    const allowed = await this.accessPolicy.allows({
+      clientIp,
+      userNo,
+      teamNos: team == null ? [] : [team],
+    })
+    return allowed ? { allowed: true } : { allowed: false, clientIp }
   }
 
   /** 새 refresh 토큰과 세션 입력(loginAt 제외). 원문은 응답 쿠키로만 나가고 DB 에는 해시만 들어간다. */

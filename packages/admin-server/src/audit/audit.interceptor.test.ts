@@ -88,7 +88,7 @@ function interceptor(
   return new AdminAuditInterceptor(
     new Reflector(),
     audit as unknown as AdminAuditService,
-    resolveAuditConfig(undefined),
+    resolveAuditConfig(undefined, undefined),
     options as AdminServerOptions | undefined,
   )
 }

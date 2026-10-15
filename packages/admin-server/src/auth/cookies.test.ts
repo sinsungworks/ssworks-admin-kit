@@ -22,7 +22,7 @@ function fakeResponse() {
 }
 
 function config(cookies: AdminAuthCookieOptions = {}) {
-  return resolveAuthConfig({ jwtSecret: 's'.repeat(32), cookies }, undefined)
+  return resolveAuthConfig({ jwtSecret: 's'.repeat(32), cookies }, undefined, undefined, undefined)
 }
 
 afterEach(() => {

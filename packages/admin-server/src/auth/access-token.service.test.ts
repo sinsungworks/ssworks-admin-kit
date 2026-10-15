@@ -6,7 +6,9 @@ import { AUTH_MESSAGES } from './errors.js'
 import { resolveAuthConfig } from './options.js'
 
 const secret = 'access-token-test-secret'.padEnd(32, 'x')
-const service = new AdminAccessTokenService(resolveAuthConfig({ jwtSecret: secret }, undefined))
+const service = new AdminAccessTokenService(
+  resolveAuthConfig({ jwtSecret: secret }, undefined, undefined, undefined),
+)
 
 function payloadOf(token: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString('utf8')) as Record<

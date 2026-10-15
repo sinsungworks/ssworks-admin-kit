@@ -6,7 +6,7 @@ const secret = 's'.repeat(MIN_JWT_SECRET_LENGTH)
 
 describe('resolveAuthConfig', () => {
   it('기본값', () => {
-    const config = resolveAuthConfig({ jwtSecret: secret }, undefined)
+    const config = resolveAuthConfig({ jwtSecret: secret }, undefined, undefined, undefined)
     expect(config).toMatchObject({
       jwtSecret: secret,
       accessTtlMs: 900_000,
@@ -47,6 +47,8 @@ describe('resolveAuthConfig', () => {
         failClosed: false,
       },
       policy,
+      undefined,
+      undefined,
     )
     expect(config).toMatchObject({
       accessTtlMs: 60_000,
@@ -88,12 +90,12 @@ describe('resolveAuthConfig', () => {
       /refreshPath/,
     ],
   ])('%s → 던진다', (_label, auth, message) => {
-    expect(() => resolveAuthConfig(auth, undefined)).toThrow(message)
+    expect(() => resolveAuthConfig(auth, undefined, undefined, undefined)).toThrow(message)
   })
 
   it("clientIp — 기본 'req.ip' · 'x-real-ip' · 모르는 값은 기동에서 멈춘다(2f-1 ④ C1)", () => {
     const auth = { jwtSecret: 'x'.repeat(32) }
-    expect(resolveAuthConfig(auth, undefined).clientIp).toBe('req.ip')
+    expect(resolveAuthConfig(auth, undefined, undefined, undefined).clientIp).toBe('req.ip')
     expect(resolveAuthConfig(auth, undefined, undefined, 'x-real-ip').clientIp).toBe('x-real-ip')
     expect(() => resolveAuthConfig(auth, undefined, undefined, 'X-Real-IP')).toThrow(
       "clientIp 는 'req.ip' 또는 'x-real-ip' 여야 한다.",
@@ -103,7 +105,7 @@ describe('resolveAuthConfig', () => {
   it('🔴 오류 메시지에 비밀키 값이 없다', () => {
     const short = 'TOP-SECRET-VALUE'
     try {
-      resolveAuthConfig({ jwtSecret: short }, undefined)
+      resolveAuthConfig({ jwtSecret: short }, undefined, undefined, undefined)
       expect.unreachable()
     } catch (error) {
       expect(String(error)).not.toContain(short)

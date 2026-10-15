@@ -20,9 +20,10 @@ export interface ResolvedAuditConfig {
   clientIp: AdminClientIpSource
 }
 
+/** 🔴 `clientIp` 는 필수다(2f-2a 스펙 A14) — 감사 행 ip 가 인증과 다른 출처를 보면 안 된다 */
 export function resolveAuditConfig(
   options: AdminAuditOptions | undefined,
-  clientIp?: unknown,
+  clientIp: unknown,
 ): ResolvedAuditConfig {
   const extra = options?.secretKeys ?? []
   for (const key of extra) {

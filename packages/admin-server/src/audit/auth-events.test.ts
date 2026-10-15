@@ -147,7 +147,7 @@ const req = {
 function sink(audit: FakeAudit, options?: Partial<AdminServerOptions>): AdminAuditEventSink {
   return new AdminAuditEventSink(
     audit as unknown as AdminAuditService,
-    resolveAuditConfig(undefined),
+    resolveAuditConfig(undefined, undefined),
     options as AdminServerOptions | undefined,
   )
 }

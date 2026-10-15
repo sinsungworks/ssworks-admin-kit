@@ -17,7 +17,7 @@ class Routes {
 }
 
 const routes = new Routes()
-const config = resolveAuthConfig({ jwtSecret: 's'.repeat(32) }, undefined)
+const config = resolveAuthConfig({ jwtSecret: 's'.repeat(32) }, undefined, undefined, undefined)
 
 const principal = { userNo: 1n, sessionNo: 10n, userId: 'u' } as unknown as AdminPrincipal
 

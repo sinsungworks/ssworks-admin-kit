@@ -4,25 +4,25 @@ import { resolveAuditConfig } from './options.js'
 
 describe('resolveAuditConfig', () => {
   it('없으면 코어 카탈로그 · 기본 비밀 키', () => {
-    const config = resolveAuditConfig(undefined)
+    const config = resolveAuditConfig(undefined, undefined)
     expect(config.catalog).toBe(coreAuditCatalog)
     expect(config.secretKeys.has('password')).toBe(true)
   })
 
   it('프로젝트 카탈로그 · 쓰는 쪽 비밀 키(소문자로)', () => {
     const catalog = defineAuditCatalog({ actions: { X: 'probe.x' }, labels: { 'probe.x': 'x' } })
-    const config = resolveAuditConfig({ catalog, secretKeys: ['S3SecretKeyEnc'] })
+    const config = resolveAuditConfig({ catalog, secretKeys: ['S3SecretKeyEnc'] }, undefined)
     expect(config.catalog).toBe(catalog)
     expect(config.secretKeys.has('s3secretkeyenc')).toBe(true)
     expect(config.secretKeys.has('token')).toBe(true)
   })
 
   it('빈 비밀 키 이름은 기동에서 멈춘다', () => {
-    expect(() => resolveAuditConfig({ secretKeys: [' '] })).toThrow('audit.secretKeys')
+    expect(() => resolveAuditConfig({ secretKeys: [' '] }, undefined)).toThrow('audit.secretKeys')
   })
 
   it("clientIp — 기본 'req.ip' · 'x-real-ip' · 모르는 값은 멈춘다(2f-1 ④ C1)", () => {
-    expect(resolveAuditConfig(undefined).clientIp).toBe('req.ip')
+    expect(resolveAuditConfig(undefined, undefined).clientIp).toBe('req.ip')
     expect(resolveAuditConfig(undefined, 'x-real-ip').clientIp).toBe('x-real-ip')
     expect(() => resolveAuditConfig(undefined, 'xff')).toThrow(
       "clientIp 는 'req.ip' 또는 'x-real-ip' 여야 한다.",

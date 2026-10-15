@@ -193,7 +193,12 @@ export function createAuthKit(
   options: { auth?: Partial<AdminAuthOptions>; policy?: boolean; db?: Kysely<AdminDatabase> } = {},
 ): AuthKit {
   const db = options.db ?? t.db
-  const config = resolveAuthConfig({ jwtSecret: TEST_JWT_SECRET, ...options.auth }, undefined)
+  const config = resolveAuthConfig(
+    { jwtSecret: TEST_JWT_SECRET, ...options.auth },
+    undefined,
+    undefined,
+    undefined,
+  )
   const repo = new KyselyAuthRepository(db)
   const store = new AdminSessionStore(db)
   const tokens = new AdminAccessTokenService(config)

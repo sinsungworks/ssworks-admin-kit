@@ -84,13 +84,14 @@ function cookieName(name: string, value: string | undefined, fallback: string): 
 }
 
 /**
- * 코어 옵션의 `auth` · `passwordPolicy` · `permissions` 를 해석한다. 🔴 메시지에는 옵션 이름만 담는다 — 비밀키 값을 싣지 않는다.
+ * 코어 옵션의 `auth` · `passwordPolicy` · `permissions` · `clientIp` 를 해석한다. 🔴 메시지에는 옵션 이름만 담는다 — 비밀키 값을
+ * 싣지 않는다. 🔴 인자는 모두 필수다(2f-2a 스펙 A14) — 모듈 팩토리가 `clientIp` 를 빠뜨리면 조용히 'req.ip' 로 떨어진다.
  */
 export function resolveAuthConfig(
   auth: AdminAuthOptions | undefined,
   passwordPolicy: PasswordPolicy | undefined,
-  permissions?: AdminPermissionMap,
-  clientIp?: unknown,
+  permissions: AdminPermissionMap | undefined,
+  clientIp: unknown,
 ): ResolvedAuthConfig {
   if (auth == null) {
     throw new Error(
