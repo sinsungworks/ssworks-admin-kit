@@ -32,7 +32,7 @@ import { AdminSessionStore, type AdminSessionRow, type NewSessionInput } from '.
 //       (매 요청: 세션 → 사용자 → 퇴사 → IP) + ssworks-axion-admin checkSession(sessionNo, userNo) 소유 대조
 // 바꾼 점:
 //  - 사용자 쪽은 AUTH_REPOSITORY, 세션은 AdminSessionStore(스펙 ⑤ A1). Kysely 를 직접 쓰는 곳은 비밀번호 변경
-//    트랜잭션 하나(Task 10).
+//    트랜잭션 · 로그인 확정 · 회전/유예 · 카운터 트랜잭션(2f-2a)이다.
 //  - 감사 직접 호출 대신 ADMIN_AUTH_EVENTS, IP 평가 대신 ADMIN_ACCESS_POLICY — 둘 다 선택(스펙 ⑧ H1).
 //  - 퇴사는 resignAt ≤ now(스펙 ④ R1 — hangang 사이트 시간대 · gise isActive 대신).
 //  - 로그인 실패는 401 ERR_LOGIN_FAILED(hangang 은 404 ERR_NO_USER).

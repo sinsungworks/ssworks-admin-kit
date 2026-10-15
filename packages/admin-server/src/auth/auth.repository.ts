@@ -51,6 +51,10 @@ export interface AdminAuthRepository {
    * 🔴 받은 트랜잭션 위의 **잠금 읽기** — `'update'` = `FOR UPDATE`, `'share'` = `LOCK IN SHARE MODE`(MariaDB 는 `FOR SHARE` 를
    * 받지 않는다 — Kysely `.forShare()` 를 쓰지 않는다). 잠그는 행은 sessions FK(`fkSessionsUser`)가 가리키는 그 users 행이다 —
    * 로그인 확정 · 토큰 회전이 이 잠금을 세션보다 먼저 잡아 퇴사 · 초기화와 교착하지 않는다(2f-2a 스펙 §5-3). 없으면 null.
+   * 🔴 교체 구현의 규칙: (a) 반드시 받은 `trx` 위에서 — 다른 연결(`this.db`)이면 R10-3 교착 · 로그인 TOCTOU 가 돌아온다.
+   * (b) 돌려주는 `passwordHash` 는 `findCredentialByUserId` 와 같은 컬럼 · 같은 값(정규화 없음) — 로그인 확정이 둘을 비교하고,
+   * 다르면 모든 로그인이 "낡음" 401(`login.fail`)이 된다. (c) 그 트랜잭션에서 이 잠금 앞에 비잠금 SELECT 를 두지 않는다
+   * (스냅샷 격리 ON 이면 1020).
    */
   lockCredential(
     trx: Transaction<AdminDatabase>,
@@ -60,6 +64,8 @@ export interface AdminAuthRepository {
   /**
    * 잠금 두 컬럼(`loginFailCount` · `lockUntil`)만 쓴다. 🔴 패키지가 같은 트랜잭션에서 먼저 `lockCredential(…, 'update')` 로
    * 잠근다 — 카운터의 원자성은 패키지가 맡는다(2b 스펙 §14 R8 · 2f-2a 스펙 A10).
+   * 🔴 반드시 받은 `trx` 위에서 쓴다 — 다른 연결이면 자기 요청이 쥔 X 잠금을 기다려 잠금 대기 초과가 되고, 카운터가 오르지 않아
+   * 무차별 대입 잠금이 조용히 꺼진다.
    */
   writeLoginState(
     trx: Transaction<AdminDatabase>,

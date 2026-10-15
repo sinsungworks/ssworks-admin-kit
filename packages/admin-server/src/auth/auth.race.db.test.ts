@@ -113,28 +113,36 @@ describe('회전 ∥ 사용자 쓰기 — 2d R10-3', () => {
     },
   )
 
-  it('🔴 (R2) 비밀번호 초기화(users 잠금 → 새 해시 → 세션 폐기) ∥ refresh — 교착 없이 401 refreshEnded', async () => {
-    const kit = createAuthKit(t, { policy: false })
-    const { user, tokens, sessionNo } = await signIn()
-    const result = await whileHeld(
-      t,
-      async (connection) => {
-        await lockUser(user.userNo)(connection)
-        await connection.query(
-          "update users set password = 'reset-hash', is_password_change_required = 1, login_fail_count = 0, lock_until = null where user_no = ?",
-          [user.userNo],
+  it.each([false, true])(
+    '🔴 (R2) 비밀번호 초기화(users 잠금 → 새 해시 → 세션 폐기) ∥ refresh — 교착 없이 401 refreshEnded(스냅샷 격리 %s)',
+    async (snapshot) => {
+      const db = await snapshotKysely(t, snapshot)
+      try {
+        const kit = createAuthKit(t, { policy: false, db })
+        const { user, tokens, sessionNo } = await signIn()
+        const result = await whileHeld(
+          t,
+          async (connection) => {
+            await lockUser(user.userNo)(connection)
+            await connection.query(
+              "update users set password = 'reset-hash', is_password_change_required = 1, login_fail_count = 0, lock_until = null where user_no = ?",
+              [user.userNo],
+            )
+          },
+          () => kit.service.refresh(tokens.refreshToken, fakeRequest()),
+          { expectWait: true, afterReached: revokeSessions(user.userNo) },
         )
-      },
-      () => kit.service.refresh(tokens.refreshToken, fakeRequest()),
-      { expectWait: true, afterReached: revokeSessions(user.userNo) },
-    )
-    expect(result.afterReached?.ok).toBe(true)
-    expect(codeOf(result)).toBe(CommonErrorCodes.ERR_INVALID_TOKEN)
-    expect(messageOf(result)).toBe(AUTH_MESSAGES.refreshEnded)
-    expect(await sessionRows(user.userNo)).toEqual([
-      { sessionNo, isRevoked: true, revokedReason: 'terminated' },
-    ])
-  })
+        expect(result.afterReached?.ok).toBe(true)
+        expect(codeOf(result)).toBe(CommonErrorCodes.ERR_INVALID_TOKEN)
+        expect(messageOf(result)).toBe(AUTH_MESSAGES.refreshEnded)
+        expect(await sessionRows(user.userNo)).toEqual([
+          { sessionNo, isRevoked: true, revokedReason: 'terminated' },
+        ])
+      } finally {
+        await db.destroy()
+      }
+    },
+  )
 
   it('🔴 (R3) 본인 비밀번호 변경(users 갱신 → 다른 세션 폐기) ∥ 다른 세션의 refresh — 교착 없이 401 refreshEnded, 현재 세션은 산다', async () => {
     const kit = createAuthKit(t, { policy: false })
