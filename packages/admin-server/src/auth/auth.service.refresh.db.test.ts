@@ -3,10 +3,12 @@ import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import {
+  addToTeam,
   createAuthKit,
   fakeRequest,
   holdRotation,
   seedRole,
+  seedTeam,
   seedUser,
   type AuthKit,
 } from '../test-support/auth.js'
@@ -295,6 +297,69 @@ describe('refresh — 동시 회전 경합(P1, 결정적 재현)', () => {
     expect(error.code).toBe(CommonErrorCodes.ERR_INVALID_TOKEN)
     expect(error.message).toBe(AUTH_MESSAGES.refreshRaced)
     expect(await liveSessions(user.userNo)).toEqual([successor])
+  })
+})
+
+describe('refresh — IP(2f-1 스펙 P11)', () => {
+  it('🔴 정책이 거부하면 회전 전에 403 ERR_IP_NOT_ALLOWED + clientIp · access.blocked — 행은 그대로, 허용되면 다시 회전한다', async () => {
+    const kit = createAuthKit(t)
+    const { user, tokens, sessionNo } = await login(kit)
+    const team = await seedTeam(t.db, 'refresh-ip-team')
+    await addToTeam(t.db, team, user.userNo)
+    kit.policy.allow = false
+    const error = await rejection(
+      kit.service.refresh(tokens.refreshToken, fakeRequest({ ip: '::ffff:198.51.100.9' })),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_IP_NOT_ALLOWED)
+    expect(error.details).toEqual({ clientIp: '198.51.100.9' })
+    expect(kit.policy.calls.at(-1)).toEqual({
+      clientIp: '198.51.100.9',
+      userNo: user.userNo,
+      teamNos: [team],
+    })
+    expect(kit.events.events.at(-1)).toEqual({
+      type: 'access.blocked',
+      reason: 'ip',
+      userNo: user.userNo,
+      sessionNo,
+    })
+    expect((await kit.store.findByNo(sessionNo))?.isRevoked).toBe(false)
+    kit.policy.allow = true
+    await kit.service.refresh(tokens.refreshToken, fakeRequest())
+    expect((await kit.store.findByNo(sessionNo))?.revokedReason).toBe('rotated')
+  })
+
+  it('🔴 유예 발급도 막는다 — 새 세션을 만들지 않는다', async () => {
+    const kit = createAuthKit(t)
+    const { user, tokens } = await login(kit)
+    await kit.service.refresh(tokens.refreshToken, fakeRequest())
+    const live = await liveSessions(user.userNo)
+    kit.policy.allow = false
+    const error = await rejection(kit.service.refresh(tokens.refreshToken, fakeRequest()))
+    expect(error.code).toBe(CommonErrorCodes.ERR_IP_NOT_ALLOWED)
+    expect(await liveSessions(user.userNo)).toEqual(live)
+  })
+
+  it('퇴사가 IP 보다 먼저다 — 퇴사 403 이면 정책을 묻지 않는다(로그인 · 가드와 같은 순서)', async () => {
+    const kit = createAuthKit(t)
+    const { user, tokens } = await login(kit)
+    await t.db
+      .updateTable('users')
+      .set({ resignAt: later(-2000) })
+      .where('userNo', '=', user.userNo)
+      .execute()
+    const calls = kit.policy.calls.length
+    kit.policy.allow = false
+    const error = await rejection(kit.service.refresh(tokens.refreshToken, fakeRequest()))
+    expect(error.code).toBe(CommonErrorCodes.ERR_RESIGNED_USER)
+    expect(kit.policy.calls.length).toBe(calls)
+  })
+
+  it('정책이 없으면(IP 모듈 없음) 묻지 않고 회전한다', async () => {
+    const kit = createAuthKit(t, { policy: false })
+    const { tokens } = await login(kit)
+    await kit.service.refresh(tokens.refreshToken, fakeRequest())
+    expect(kit.policy.calls).toEqual([])
   })
 })
 

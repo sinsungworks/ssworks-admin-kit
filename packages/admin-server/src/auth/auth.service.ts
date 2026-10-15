@@ -38,6 +38,7 @@ import { AdminSessionStore, type AdminSessionRow, type NewSessionInput } from '.
 //  - 로그인 실패는 401 ERR_LOGIN_FAILED(hangang 은 404 ERR_NO_USER).
 //  - 잠김은 맞은 비밀번호 바로 다음 — 잠긴 동안은 같은 401(최종 리뷰 F1). hangang · gise 는 423 이었다.
 //  - 클라이언트 IP 는 코어 옵션 clientIp 출처(config.clientIp)로 읽는다(2f-1 스펙 ④ C1).
+//  - refresh · 유예 발급에도 IP 를 본다(2f-1 스펙 P11) — hangang 은 refresh 가 @Public 이라 막힌 주소에서도 회전했다.
 
 export interface AdminTokenPair {
   accessToken: string
@@ -251,6 +252,7 @@ export class AdminAuthService {
     }
     // 🔴 퇴사는 회전 전에 막는다 — 새 토큰을 내주지 않는다. 강제 변경 · 잠김은 회전한다.
     await this.assertActive(row.userNo, now)
+    await this.assertAllowedForRefresh(row, req)
 
     const issued = this.newSession(row.userNo, req, now)
     const sessionNo = await this.sessions.rotate(
@@ -382,6 +384,7 @@ export class AdminAuthService {
 
     if (judgeRotatedReuse(row, successor, now, this.config.refreshGraceMs) === 'grace') {
       await this.assertActive(row.userNo, now)
+      await this.assertAllowedForRefresh(row, req)
       // 🔴 새 세션을 하나 더 준다. 이긴 탭의 세션은 건드리지 않는다 — 원문을 저장하지 않으니 같은 쿠키를 줄 수 없고,
       //    두 응답 중 나중에 도착한 쪽이 쿠키를 덮어도 살아 있는 토큰만 남아야 한다(gise). 링크는 하지 않는다.
       const issued = this.newSession(row.userNo, req, now)
@@ -418,6 +421,27 @@ export class AdminAuthService {
     if (isResigned(credential.resignAt, now)) {
       throw new BusinessError(CommonErrorCodes.ERR_RESIGNED_USER, AUTH_MESSAGES.resigned)
     }
+  }
+
+  /**
+   * 회전 · 유예 발급 전 IP(2f-1 스펙 P11) — 막힌 주소에서 새 토큰을 찍어 내지 않는다. 퇴사 검사 뒤다(로그인 · 가드와 같은 순서).
+   * 🔴 회전 대상 행은 그대로 둔다 — 같은 토큰을 허용된 주소에서 다시 보내면 회전한다. 대표 팀은 가드와 같은 findPrincipal.
+   */
+  private async assertAllowedForRefresh(row: AdminSessionRow, req: Request): Promise<void> {
+    if (this.accessPolicy == null) return
+    const principal = await this.repo.findPrincipal(row.userNo)
+    const { clientIp } = requestMetaOf(req, this.config.clientIp)
+    const allowed = await this.accessPolicy.allows({
+      clientIp,
+      userNo: row.userNo,
+      teamNos: principal?.teamNo == null ? [] : [principal.teamNo],
+    })
+    if (allowed) return
+    await this.emit(
+      { type: 'access.blocked', reason: 'ip', userNo: row.userNo, sessionNo: row.sessionNo },
+      req,
+    )
+    throw ipNotAllowed(clientIp)
   }
 
   /** 새 refresh 토큰과 세션 입력(loginAt 제외). 원문은 응답 쿠키로만 나가고 DB 에는 해시만 들어간다. */
