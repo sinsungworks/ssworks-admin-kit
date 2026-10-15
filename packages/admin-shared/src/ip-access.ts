@@ -12,6 +12,8 @@ import { queryBigIntSchema } from './audit.js'
 //  - 범위 불변식은 함수(ipScopeProblem)로 낸다 — 객체 스키마에 refine 을 걸면 서버가 재인증 칸을 extend 할 수 없다(zod 4).
 //  - 미리보기 쿼리는 판별 합집합 대신 평평한 객체 + superRefine — 빠진 칸이 그 칸의 오류로 나온다.
 //  - 정규식에 백슬래시 문자 클래스를 쓰지 않는다(저장소 규칙) — [0-9] 로 적는다.
+//  - 파서 조이기(2f-2b 스펙 §5-5): ::ffff: 는 점 표기 앞에서만 떼고, 내장 IPv4 는 마지막 그룹에만, 루프백 CIDR 접기는 /128 에만,
+//    v4-mapped 영역은 ::ffff:a.b.c.d 꼴만 받는다.
 // 🔴 CIDR 을 읽는 곳은 parseCidr 하나다(hangang R30). 검증과 평가가 다른 파서를 쓰면 "저장은 됐는데 아무도 안 통과하는" 규칙이
 //    생긴다 — ipInCidr 은 잘못된 문자열에 예외 대신 false 를 낸다.
 // 🔴 기본 거부 · 가장 가까운 층 하나(user → team → global). 앞 층에 규칙이 하나라도 있으면 뒤는 보지 않는다 — user 규칙 한 줄이
@@ -49,10 +51,12 @@ export interface ParsedCidr {
 const IPV4_OCTET = /^(0|[1-9][0-9]{0,2})$/
 const IPV6_GROUP = /^[0-9a-fA-F]{1,4}$/
 const PREFIX_DIGITS = /^[0-9]{1,3}$/
+/** 점 표기 IPv4 를 담은 v4-mapped 머리. 🔴 점 표기 앞에서만 뗀다 — `::ffff:1::` 을 `1::` 로 바꾸지 않는다 */
+const V4_MAPPED_DOTTED = /^::ffff:(?=[0-9]+[.])/i
 
 /** `::ffff:a.b.c.d` → `a.b.c.d`, IPv6 루프백 → `127.0.0.1`. 🔴 서버의 세션 · 감사 · 정책이 이 값을 같이 쓴다 */
 export function normalizeIp(ip: string): string {
-  const unmapped = ip.replace(/^::ffff:/i, '')
+  const unmapped = ip.replace(V4_MAPPED_DOTTED, '')
   if (unmapped === '::1' || unmapped === '0:0:0:0:0:0:0:1') return '127.0.0.1'
   return unmapped
 }
@@ -89,8 +93,9 @@ function parseIpv6(ip: string): Uint8Array | null {
   const gap = text.indexOf('::')
   if (gap !== text.lastIndexOf('::')) return null
   const split = (part: string): string[] => (part === '' ? [] : part.split(':'))
-  const head = expandEmbeddedIpv4(gap >= 0 ? split(text.slice(0, gap)) : split(text))
-  const tail = expandEmbeddedIpv4(gap >= 0 ? split(text.slice(gap + 2)) : [])
+  // 🔴 내장 IPv4 는 주소 전체의 마지막 그룹에만 — `::` 앞쪽(`1.2.3.4::`)의 점 표기는 아래 16진 그룹 검사에서 떨어진다
+  const head = gap >= 0 ? split(text.slice(0, gap)) : expandEmbeddedIpv4(split(text))
+  const tail = gap >= 0 ? expandEmbeddedIpv4(split(text.slice(gap + 2))) : []
   if (head === null || tail === null) return null
   const total = head.length + tail.length
   if (gap >= 0 ? total > 8 : total !== 8) return null
@@ -104,7 +109,16 @@ function parseIpv6(ip: string): Uint8Array | null {
     out[i * 2] = value >> 8
     out[i * 2 + 1] = value & 0xff
   }
+  // 🔴 v4-mapped 영역(::ffff:0:0/96)은 `::ffff:a.b.c.d` 꼴만 받는다 — 그 꼴은 normalizeIp · parseCidr 가 먼저 v4 로 접으므로
+  //    여기 온 것은 16진 · 풀어 쓴 표기다. 받으면 저장은 되고 아무도 통과하지 못한다(hangang R16).
+  if (isV4MappedBytes(out)) return null
   return out
+}
+
+/** 앞 80비트가 0 이고 다음 16비트가 ffff — `::ffff:0:0/96` 안의 주소 */
+function isV4MappedBytes(bytes: Uint8Array): boolean {
+  for (let i = 0; i < 10; i += 1) if (bytes[i] !== 0) return false
+  return bytes[10] === 0xff && bytes[11] === 0xff
 }
 
 function parseIp(ip: string): Uint8Array | null {
@@ -127,8 +141,9 @@ function prefixMatches(a: Uint8Array, b: Uint8Array, prefix: number): boolean {
 
 /**
  * CIDR 하나를 읽는다. 형식이 아니면 null.
- * 🔴 net 도 주소처럼 normalizeIp 를 지난다(hangang R16) — `::ffff:203.0.113.0/120` 같은 v4-mapped 표기가 v4 로 접힌 주소와
- *    계열이 어긋나 조용히 아무것도 매칭하지 않던 자리다. 접히면 프리픽스에서 96 을 빼고, 96 미만이면 v4 로 표현할 수 없어 거부한다.
+ * 🔴 접히는 경우는 둘뿐이다(2f-2b 스펙 §5-5) — 점 표기 v4-mapped(`::ffff:203.0.113.0/120` — 마지막 32비트가 v4 라
+ *    프리픽스에서 96 을 빼고, 96 미만이면 v4 로 표현할 수 없어 거부한다 · hangang R16)와 `/128` 루프백(한 주소라
+ *    `127.0.0.1/32`). 루프백의 다른 프리픽스는 비트 그대로 IPv6 망이다 — `::1/120` 을 127.0.0.0/24 로 읽지 않는다.
  */
 export function parseCidr(cidr: string): ParsedCidr | null {
   const slash = cidr.lastIndexOf('/')
@@ -136,16 +151,19 @@ export function parseCidr(cidr: string): ParsedCidr | null {
   const prefixText = cidr.slice(slash + 1)
   if (!PREFIX_DIGITS.test(prefixText)) return null
   const rawNet = cidr.slice(0, slash)
-  const normalizedNet = normalizeIp(rawNet)
-  const folded = rawNet.includes(':') && !normalizedNet.includes(':')
-  let prefix = Number(prefixText)
-  if (folded) {
+  const prefix = Number(prefixText)
+  if (V4_MAPPED_DOTTED.test(rawNet)) {
     if (prefix < 96) return null
-    prefix -= 96
+    return withinFamily(parseIpv4(rawNet.replace(V4_MAPPED_DOTTED, '')), prefix - 96)
   }
-  const net = parseIp(normalizedNet)
-  if (net === null) return null
-  if (prefix > net.length * 8) return null
+  // 여기서 normalizeIp 가 바꾸는 것은 루프백 표기뿐이다(v4-mapped 는 위에서 끝났다)
+  const loopback = normalizeIp(rawNet) !== rawNet
+  if (loopback && prefix === 128) return withinFamily(parseIpv4('127.0.0.1'), 32)
+  return withinFamily(parseIp(rawNet), prefix)
+}
+
+function withinFamily(net: Uint8Array | null, prefix: number): ParsedCidr | null {
+  if (net === null || prefix > net.length * 8) return null
   return { net, prefix }
 }
 

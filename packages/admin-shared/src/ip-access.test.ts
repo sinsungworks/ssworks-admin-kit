@@ -159,6 +159,62 @@ describe('isValidCidr — 검증과 평가가 같은 파서(hangang R30)', () =>
   })
 })
 
+describe('파서 조이기 — 2f-2b 스펙 §5-5 측정표', () => {
+  it('🔴 ::ffff: 는 점 표기 IPv4 앞에서만 뗀다(규칙 1)', () => {
+    expect(normalizeIp('::ffff:1::')).toBe('::ffff:1::')
+    expect(normalizeIp('::FFFF:1.2.3.4')).toBe('1.2.3.4')
+    expect(normalizeIp('::ffff:7f00:1')).toBe('::ffff:7f00:1')
+  })
+
+  it.each<[string, boolean]>([
+    ['1.2.3.4::', false], // 규칙 2 — 내장 IPv4 는 마지막 그룹에만
+    ['1.2.3.4::5', false],
+    ['::1.2.3.4', true],
+    ['1:2:3:4:5:6:1.2.3.4', true],
+    ['::ffff:1:2:3:4:5:6', true], // 규칙 1 — 점 표기가 아니면 떼지 않는다
+    ['::FFFF:1.2.3.4', true],
+    ['::ffff:7f00:1', false], // 규칙 4 — v4-mapped 영역은 점 표기만
+    ['::FFFF:7F00:1', false],
+    ['0:0:0:0:0:ffff:1.2.3.4', false],
+  ])('isValidIp(%s) → %s', (ip, expected) => {
+    expect(isValidIp(ip)).toBe(expected)
+  })
+
+  it.each<[string, boolean]>([
+    ['::ffff:1::/120', false], // 규칙 1 — 떼지 않으니 :: 가 두 번
+    ['::1/64', true], // 규칙 3 — 루프백 접기는 /128 에만
+    ['::1/120', true],
+    ['::1/128', true],
+    ['::ffff:7f00:1/128', false], // 규칙 4
+    ['::FFFF:7F00:1/128', false],
+    ['0:0:0:0:0:ffff:1.2.3.4/128', false],
+    ['::ffff:203.0.113.0/120', true],
+    ['::ffff:0.0.0.0/64', false],
+  ])('isValidCidr(%s) → %s', (cidr, expected) => {
+    expect(isValidCidr(cidr)).toBe(expected)
+  })
+
+  it.each<[string, string, boolean]>([
+    ['127.0.0.5', '::1/120', false], // 지금은 127.0.0.0/24 로 오독한다
+    ['::5', '::1/120', true],
+    ['::1', '::1/128', true],
+    ['127.0.0.1', '::1/128', true],
+    ['0:0:0:0:0:0:0:1', '::1/128', true],
+    ['::1', '::1/64', false], // 루프백은 v4 로 접힌다 — ::/0 이 IPv4 를 통과시키지 않는 것과 같다
+    ['::2', '::1/64', true],
+    ['203.0.113.9', '::ffff:203.0.113.0/120', true],
+  ])('ipInCidr(%s, %s) → %s', (ip, cidr, expected) => {
+    expect(ipInCidr(ip, cidr)).toBe(expected)
+  })
+
+  it('🔴 /128 루프백만 v4 로 접힌다 — 다른 프리픽스는 비트 그대로 IPv6 망(규칙 3)', () => {
+    expect(parseCidr('::1/128')).toEqual({ net: new Uint8Array([127, 0, 0, 1]), prefix: 32 })
+    const wide = parseCidr('::1/64')
+    expect(wide?.net.length).toBe(16)
+    expect(wide?.prefix).toBe(64)
+  })
+})
+
 describe('층 · 평가', () => {
   it('🔴 규칙이 하나도 없으면 거부한다(기본 거부)', () => {
     expect(evaluateIpAccess('203.0.113.9', [], subject)).toBe(false)
