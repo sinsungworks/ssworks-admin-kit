@@ -2,7 +2,7 @@
 
 관리자 API 공통 NestJS 모듈 — NestJS 12 · Kysely 0.29 · MariaDB. **Phase 2 진행 중**이고 `private: true` 라 아직 발행하지 않는다(Phase 2 마지막 PR 뒤 첫 발행).
 
-지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 11장(PR 2a · 2c · 2d-1 · 2e-1 · 2e-2)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1), 사용자 · 계정(PR 2d-2), 팀(PR 2e-1), 약관(PR 2e-2)이다. IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
+지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 12장(PR 2a · 2c · 2d-1 · 2e-1 · 2e-2 · 2f-1)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1), 사용자 · 계정(PR 2d-2), 팀(PR 2e-1), 약관(PR 2e-2), IP 접근 제어(PR 2f-1)이다. 인증 경로 정리 · 첫 발행 준비는 다음 PR(2f-2)이다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
 
 ## 설치
 
@@ -91,19 +91,20 @@ export default defineConfig({
 export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 ```
 
-| 장 ID                          | 테이블                                                  |
-| ------------------------------ | ------------------------------------------------------- |
-| `0001_roles`                   | `roles`                                                 |
-| `0002_users`                   | `users`                                                 |
-| `0003_teams`                   | `teams`                                                 |
-| `0004_team_closure`            | `team_closure`                                          |
-| `0005_team_user_map`           | `team_user_map`                                         |
-| `0006_user_employment_periods` | `user_employment_periods`                               |
-| `0007_sessions`                | `sessions`                                              |
-| `0008_audit_logs`              | `audit_logs`                                            |
-| `0009_guard_locks`             | `guard_locks`(센티넬 행 하나)                           |
-| `0010_team_tree_lock`          | `guard_locks` 에 행 하나(팀 트리)                       |
-| `0011_legal_documents`         | `legal_documents` + `guard_locks` 에 행 하나(약관 발행) |
+| 장 ID                          | 테이블                                                      |
+| ------------------------------ | ----------------------------------------------------------- |
+| `0001_roles`                   | `roles`                                                     |
+| `0002_users`                   | `users`                                                     |
+| `0003_teams`                   | `teams`                                                     |
+| `0004_team_closure`            | `team_closure`                                              |
+| `0005_team_user_map`           | `team_user_map`                                             |
+| `0006_user_employment_periods` | `user_employment_periods`                                   |
+| `0007_sessions`                | `sessions`                                                  |
+| `0008_audit_logs`              | `audit_logs`                                                |
+| `0009_guard_locks`             | `guard_locks`(센티넬 행 하나)                               |
+| `0010_team_tree_lock`          | `guard_locks` 에 행 하나(팀 트리)                           |
+| `0011_legal_documents`         | `legal_documents` + `guard_locks` 에 행 하나(약관 발행)     |
+| `0012_ip_access_rules`         | `ip_access_rules` + global 허용 두 행(`0.0.0.0/0` · `::/0`) |
 
 🔴 패키지가 새 장을 내면 changeset 이 알린다 — 스텁 한 줄을 더한다. `assertAdminMigrationStubs` 가 빠진 장을 잡는다. 시드(첫 관리자 계정 · 역할)는 프로젝트 몫이다.
 
@@ -198,7 +199,7 @@ export class AppModule {}
 ### 로그인 판정 · 강제 변경 · 재인증
 
 - 비밀번호가 먼저다 — 틀리면 언제나 401 `ERR_LOGIN_FAILED`(없는 아이디 · 퇴사 · 잠긴 계정도 같은 응답). 5회 틀리면 15분 잠긴다 — 로그인 · 비밀번호 변경 · 재인증이 한 카운터를 원자적으로 쓴다. 🔴 잠긴 동안의 로그인은 비밀번호가 맞아도 같은 401 이다(정답 여부를 흘리지 않는다). 잠기지 않았고 맞으면 퇴사 403 → IP 403 순서. 로그인된 본인의 비밀번호 변경 · 재인증은 잠김을 423 으로 알린다.
-- 퇴사: `users.resignAt` 은 **효력 시각**이다 — 그 시각부터 로그인 · 요청 · 갱신이 403 `ERR_RESIGNED_USER`. "퇴사일 당일까지 근무" 는 쓸 때 다음 날 0시(기준 시간대)로 바꿔 넣는다.
+- 퇴사: `users.resignAt` 은 **효력 시각**이다 — 그 시각부터 로그인 · 요청 · 갱신이 403 `ERR_RESIGNED_USER`. IP 접근 제어를 켜면 로그인 · 매 요청 · 갱신이 퇴사 다음에 IP 를 본다(막히면 403 `ERR_IP_NOT_ALLOWED` + `details.clientIp`). "퇴사일 당일까지 근무" 는 쓸 때 다음 날 0시(기준 시간대)로 바꿔 넣는다.
 - 강제 변경(`isPasswordChangeRequired`): 로그인은 되고 `/me` 가 `permissions: []` 와 플래그를 낸다. 그 밖의 라우트는 403 `ERR_PASSWORD_CHANGE_REQUIRED`. admin-ui `createAdminGuard({ isPasswordChangeRequired })` 가 변경 화면으로 보낸다.
 - 민감 작업 재인증: 서비스 진입부에서 `await reauth.verify(admin, body.currentPassword)`(`AdminReauthService`, 틀리면 403 `ERR_REAUTH_REQUIRED`). 🔴 트랜잭션 안에서 부르지 않는다.
 - 로그인 시도 제한(IP 단위)은 쓰는 쪽이 edge(nginx) · `@nestjs/throttler` 로 건다. 패키지는 계정 잠금과 argon2 비용을 맡는다.
@@ -222,7 +223,8 @@ AdminAuthModule.withRepository(MyAuthRepository, { imports: [MyUsersDataModule] 
 ### 시드 · IP 자리
 
 - 첫 관리자는 `@ssworks/admin-server/runner` 의 `hashPassword` 로 만든다(Nest 없이).
-- 인증 이벤트(로그인 · 갱신 · 재사용 · 로그아웃 · 비밀번호 변경)는 `AdminAuditModule` 이 감사 행으로 남긴다(아래 "감사"). `ADMIN_ACCESS_POLICY`(IP 판정)는 IP 접근 제어(2f)가 채운다.
+- 인증 이벤트(로그인 · 갱신 · 재사용 · 로그아웃 · 비밀번호 변경)는 `AdminAuditModule` 이 감사 행으로 남긴다(아래 "감사"). `ADMIN_ACCESS_POLICY`(IP 판정)는 `AdminIpAccessModule` 이 채운다(아래 "IP 접근 제어").
+- 🔴 **클라이언트 IP 의 출처**는 코어 옵션 `clientIp` 다. 기본 `'req.ip'` — Express `trust proxy` 를 따른다(엣지 뒤면 `app.set('trust proxy', 1)` 등). 엣지 프록시(nginx `set_real_ip_from` + `proxy_set_header X-Real-IP`)가 `X-Real-IP` 를 덮어쓰면 `clientIp: 'x-real-ip'` — 헤더가 없으면 `req.ip`, 중복 · 형식 오류면 주소 없음(IP 정책이 막는다). 🔴 엣지 없이 노출된 서버에 `'x-real-ip'` 를 쓰면 헤더 한 줄로 IP 제한을 우회한다. 유닉스 소켓 뒤(`req.ip` 가 빈다)는 `'x-real-ip'` 를 쓴다. 세션 행 · 감사 행 · IP 정책이 같은 정규화 값(`::ffff:a.b.c.d` → `a.b.c.d`, `::1` → `127.0.0.1`)을 본다.
 
 ## 권한 슬롯
 
@@ -245,6 +247,8 @@ AdminServerModule.forRootAsync({
       'teams.manage': 'org.teams:write', // POST · PATCH · DELETE /teams…
       'legal.read': 'setting.legal:read', // GET /legal-documents…
       'legal.publish': 'setting.legal:publish', // POST /legal-documents
+      'ipAccess.read': 'setting.ipAccess:read', // GET /ip-access
+      'ipAccess.manage': 'setting.ipAccess:write', // GET /ip-access/preview · POST · PATCH · DELETE /ip-access…
     },
   }),
 })
@@ -428,6 +432,7 @@ imports: [
 - **재직 이력**: 퇴사 · 재입사마다 구간이 쌓인다. 재입사일은 직전 퇴사일 **다음 날**부터, 퇴사일은 입사일과 같거나 뒤. 시드에서 이력 없이 만든 계정은 첫 퇴사 때 `users.joinAt` 으로 구간을 치유한다.
 - **확장 필드**(전화 · 이메일)는 패키지 라우트가 받지 않는다 — 쓰는 쪽 자기 라우트가 다룬다. 🔴 NOT NULL 확장 컬럼은 DEFAULT 를 둔다(패키지 INSERT 가 모른다).
 - 🔴 **카탈로그를 바꿨을 때**: 카탈로그에서 키를 지우거나 `implies` 를 더했다면, 전체 권한(`'*'`) 관리자가 그 키를 가진 역할 · 관리자 역할을 **한 번 다시 저장**한다(화면이 옛 키를 버리고 서버가 함의를 채운다). 그 전에는 좁은 관리자가 그 역할 · 그 역할의 계정을 다루지 못한다(403 — 판정은 저장된 권한을 본다, 스펙 §14 R5-1).
+- **전권자 잔존과 IP**: IP 접근 제어를 쓰면 "마지막 전체 권한 관리자" 를 셀 때 **어디서든 로그인할 수 있는**(적용 층이 global 인) 사람만 센다. 그래서 역할 변경 · 퇴사에 더해 **팀 변경**(`teamNo`)도 그 사람을 팀 규칙이 있는 팀으로 옮겨 마지막 도달 가능 전권자를 없애면 409 다. 이미 전권자 전원이 주소로 묶인 조직은 막지 않는다("있었는데 0 이 되는" 변경만 막는다).
 - **동시 쓰기 재시도**: 역할 만들기는 순서 맨 끝 역할의 이동 · 삭제 · 기본 켜기 수정과 겹치면 드물게 교착(1213)해 409 다 — 다시 보내면 된다. 퇴사 · 역할 변경은 대상의 로그인 · 같은 팀의 이름 바꾸기 · 줄 역할의 이동과 겹쳐도 기다렸다가 끝난다(대상 · 역할 · 팀을 먼저 잠근 뒤 전권자 수를 센다). MariaDB 11.6.2+(`innodb_snapshot_isolation` 기본 ON)에서는 즉시 퇴사가 그 계정의 로그아웃(또는 다른 관리자의 세션 끊기)과 겹치면 드물게 409 `ERR_COMMON_CONFLICT`("다시 시도해 주세요")로 끝난다 — 다시 보내면 된다. 즉시 퇴사 · 비밀번호 초기화가 그 계정의 토큰 갱신과 겹치면 드물게 교착(1213)해 어느 한쪽이 409 다 — 대개 끊길 세션 쪽이다.
 - 감사: `org.user.create` · `update` · `resign` · `resignDate.update` · `rehire` · `password.reset` · `unlock`. 퇴사 · 정정 · 재입사 meta 에 사유 · 끊은 세션 수 · 기준 시간대가 남는다(끊은 세션 수는 초기화와 같이 살아 있던 세션만 센다 — 만료된 세션은 건드리지 않는다). 임시 비밀번호 · 재인증 비밀번호는 남지 않는다.
 
@@ -481,7 +486,7 @@ export { up, down } from '@ssworks/admin-server/migrations/0010_team_tree_lock'
 - admin-ui `useTeamTree` 배선(admin-ui README "조직")이 그대로 맞는다 — 아래 `baseURL: '/api/admin'` 이면 `load: () => api.get<AdminTeamTree>('/teams/tree').then((r) => r.items)`, ``move: ({ teamNo, ...body }) => api.patch(`/teams/${teamNo}/move`, body)``. 2열 인원 목록은 `GET /users?filter[teamNo]=…&filter[recursive]=true`("사용자 · 계정").
 - **루트가 여럿이다.** `parentTeamNo: null` 이 최상위다. 화면에서 최상위 팀을 만들고 옮기려면 `useTeamTree({ topLevel: true })`. 루트 팀을 지우거나 옮기지 못하게 하려면 화면의 `canAct` 와 자기 라우트로 막는다(패키지는 시스템 팀을 모른다).
 - **이동**은 기준 형제 번호다(`beforeTeamNo: null` = 맨 끝). 서버가 받는 형제 묶음을 0..n-1 로 다시 매긴다 — 시드의 빈 번호 · 같은 값은 그 묶음을 한 번 움직이면 사라진다. 자기 자신 · 하위 팀 아래로는 400 `ERR_TEAM_MOVE_CYCLE`, 기준 팀이 그 상위 팀의 자식이 아니면 400 `issues[beforeTeamNo]`, 없는 상위 팀은 404 `ERR_NO_TEAM`.
-- **지우기**는 하위 팀째다. 서브트리에 소속 계정이 하나라도 있으면(퇴사자 포함) 409 `ERR_TEAM_HAS_MEMBERS` + `details.memberCount`(계정 수) — 먼저 `PATCH /admin/users/:userNo { teamNo }` 로 옮긴다.
+- **지우기**는 하위 팀째다. 서브트리에 소속 계정이 하나라도 있으면(퇴사자 포함) 409 `ERR_TEAM_HAS_MEMBERS` + `details.memberCount`(계정 수) — 먼저 `PATCH /admin/users/:userNo { teamNo }` 로 옮긴다. 서브트리 팀을 가리키는 IP 규칙이 있으면 409 `ERR_TEAM_HAS_IP_RULES` + `details.ruleCount` — 규칙을 먼저 지운다("IP 접근 제어").
 - **이름**은 전체에서 하나다(같은 상위 팀 안이 아니다). 대소문자 · 끝 공백만 다른 이름도 같은 이름이라 409 `ERR_DUPLICATE_TEAM_NAME` 이다(`utf8mb4_unicode_ci`). 앞뒤 공백은 떼고 저장한다.
 - 재인증 · revision 이 없다(`reauth: true` 여도).
 - **쓰는 쪽 시드의 closure**: 계층은 `team_closure` 에만 있다. 상위 팀은 깊이 1 행이고, 조상마다 한 행(깊이 = 거리)을 넣는다. 자기 행(깊이 0)은 넣어도 안 넣어도 패키지 결과가 같다 — 패키지가 만드는 팀은 자기 행을 넣는다.
@@ -568,6 +573,53 @@ export class PublicLegalController {
 
 - **동의 기록**(가입 동의 등)은 쓰는 쪽 표다. 판 번호를 FK 로 걸면 `legal_doc_no` 는 `bigint unsigned` 다. 시행본은 (`published_at` DESC, `legal_doc_no` DESC) 첫 행이다 — 같은 초 발행이 있으니 두 키를 다 쓴다.
 - 재인증(`reauth`)은 약관 발행에 걸리지 않는다 — 낡은 쓰기는 기준 판이 막는다.
+
+## IP 접근 제어
+
+관리자의 접속 위치를 제한한다. 규칙은 **사용자 > 팀 > 전체** 층이고, **가장 가까운 층 하나만** 본다 — 그 사람에게 사용자 규칙이 하나라도 있으면 팀 · 전체 규칙은 보지 않는다. 걸리는 규칙이 하나도 없으면 막는다(기본 거부). 장 `0012` 가 전체 허용 두 행(`0.0.0.0/0` · `::/0` — 계열이 다르면 매칭하지 않아 둘이다)을 넣으므로 모듈을 붙여도 아무도 잠기지 않는다.
+
+```ts
+imports: [
+  AdminServerModule.forRootAsync({
+    useFactory: () => ({
+      // …
+      permissions: {
+        // …
+        'ipAccess.read': 'setting.ipAccess:read',
+        'ipAccess.manage': 'setting.ipAccess:write',
+      },
+      clientIp: 'x-real-ip', // 엣지 프록시가 X-Real-IP 를 덮어쓸 때만(위 "시드 · IP 자리")
+    }),
+  }),
+  AdminAuthModule,
+  AdminIpAccessModule, // 옵션 없음 — import 하면 켜진다
+]
+```
+
+마이그레이션 폴더에 스텁 한 줄을 더한다(모든 장 필수):
+
+```ts
+// src/database/migrations/012_admin_ip_access_rules.migration.ts
+export { up, down } from '@ssworks/admin-server/migrations/0012_ip_access_rules'
+```
+
+| 라우트                            | 슬롯              | 본문 → 응답                                                                                                                          | 감사                                      |
+| --------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `GET /admin/ip-access`            | `ipAccess.read`   | → `{ items }` 전량 — 정렬 전체 · 팀 · 사용자 → 번호, 행에 `scopeName`(팀 · 사용자 이름) · `scopeUserId`                              | —                                         |
+| `GET /admin/ip-access/preview`    | `ipAccess.manage` | 쿼리 `op?`(create · update · delete) · `ruleNo` · `scopeType` · `scopeRefNo` · `cidr` → `{ clientIp, clientPasses, summary, items }` | —                                         |
+| `POST /admin/ip-access`           | `ipAccess.manage` | `{ scopeType, scopeRefNo, cidr, description? }` → 201 `{ item }`                                                                     | `setting.ipAccess.create`(after)          |
+| `PATCH /admin/ip-access/:ruleNo`  | `ipAccess.manage` | `{ revision, scopeType?, scopeRefNo?, cidr?, description? }` → `{ item }`                                                            | `setting.ipAccess.update`(before · after) |
+| `DELETE /admin/ip-access/:ruleNo` | `ipAccess.manage` | `{ revision }` → `{}`                                                                                                                | `setting.ipAccess.delete`(before)         |
+
+- **판정**: 로그인(비밀번호 · 잠김 · 퇴사 다음) · 매 요청 · 토큰 갱신이 IP 를 본다. 막히면 403 `ERR_IP_NOT_ALLOWED` + `details.clientIp` — admin-ui `IpBlockedDialog` 가 읽는 값이다. 감사 행 `auth.login.blocked.ip` · `auth.access.blocked.ip`. 규칙을 바꿔도 세션은 끊지 않는다 — 막힌 주소의 요청이 403 을 받고, 규칙을 풀면 같은 세션이 다시 된다.
+- **팀 규칙**은 그 사람의 **대표 팀**(가장 작은 팀 번호) 하나에만 걸린다(로그인 · 잔존 · 미리보기가 같은 팀을 본다). 하위 팀으로 내려가지 않는다.
+- **CIDR**: IPv4 · IPv6, 프리픽스가 꼭 있어야 한다(`203.0.113.0/24` · `2001:db8::/32`). 앞뒤 공백은 뗀다. 호스트 비트가 남은 표기(`203.0.113.9/24`)는 네트워크처럼 매칭한다. 화면도 admin-shared `ipCidrSchema` · `isValidCidr` 로 같은 파서를 쓴다.
+- **자기 잠금**: 저장하면 **요청자의 지금 주소**가 막히는 변경은 409 `ERR_COMMON_CONFLICT` + `details.clientIp`(쓰지 않는다). 남만 막는 변경은 막지 않는다 — 저장 전에 **미리보기**로 누가 잠기는지 본다(`becomesLocked` · 등급순 정렬 · `blockedSessions`). 미리보기는 읽은 순간의 스냅숏이라 저장이 409 일 수 있다.
+- **전권자 잔존**: 마지막 "어디서든 로그인할 수 있는 전체 권한 관리자" 를 없애는 규칙 변경(그 사람에게 사용자 규칙 · 마지막 전체 규칙 삭제 …)은 409 `lastSuperAdmin`.
+- **쓰기 보호**: 수정 · 삭제는 `revision`(409 `ERR_COMMON_REVISION_CONFLICT`). `reauth: true` 면 본문 `currentPassword`. 가리키는 팀 · 사용자가 없으면 400 `issues[scopeRefNo]`. 전체 규칙에 대상을 두거나 팀 · 사용자 규칙에 대상을 빼면 400 `issues[scopeRefNo]`.
+- **팀 삭제**는 그 팀(하위 팀 포함)을 가리키는 규칙이 있으면 409 `ERR_TEAM_HAS_IP_RULES` — 규칙을 먼저 지운다.
+- **동시 쓰기**: IP 쓰기는 `guard_locks` 행 `superAdminSurvival` 에서 역할 · 사용자의 잔존 쓰기와 함께 하나씩 돈다 — 두 관리자가 각자 통과하는 변경을 동시에 넣어도 뒤의 쪽이 자기 잠금 409 로 걸린다. 드문 잠금 충돌은 409 `ERR_COMMON_CONFLICT`("다시 시도해 주세요") — 다시 보내면 된다.
+- **캐시 없음**: 매 인증 요청이 규칙 표를 읽는다(세션 · 주체 · 규칙 — DB 왕복 셋). 규칙 변경은 다음 요청부터 모든 인스턴스에 걸린다.
 
 ## admin-ui 와 맞물리기
 

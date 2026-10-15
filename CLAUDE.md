@@ -8,12 +8,12 @@
 
 관리자 페이지 공통 코드를 npm 패키지로 꺼낸 **pnpm 모노레포**다. 소비자는 신규 웹 서비스의 관리자 앱(Vue 3 + Vuetify 4 SPA)과 API(NestJS + Kysely)다. 네 참조 프로젝트(kim5257-crm-v5 · ssworks-axion-admin · ssworks-gise-home · hangang-home)에 복사-수정으로 퍼져 있던 코드가 출처다.
 
-| 경로                    | 패키지                  | 성격                                                                                                                              |
-| ----------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/admin-shared` | `@ssworks/admin-shared` | 프레임워크 무의존. 브라우저·NestJS 양쪽이 import 한다                                                                             |
-| `packages/admin-ui`     | `@ssworks/admin-ui`     | Vue 3 + Vuetify 4 컴포넌트·composable. vue·vuetify 는 peer                                                                        |
-| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 진행 — 2a 기반 · 2b 인증 · 2c 세션 · 감사 · 2d 역할 · 사용자 · 2e-1 팀 · 2d-3 계정 정리 · 2e-2 약관 완료) |
-| `docs/`                 | —                       | 검토·Phase 0 대조 보고. **설계 근거는 코드 주석과 이 폴더에 있다**                                                                |
+| 경로                    | 패키지                  | 성격                                                                                                                                                  |
+| ----------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/admin-shared` | `@ssworks/admin-shared` | 프레임워크 무의존. 브라우저·NestJS 양쪽이 import 한다                                                                                                 |
+| `packages/admin-ui`     | `@ssworks/admin-ui`     | Vue 3 + Vuetify 4 컴포넌트·composable. vue·vuetify 는 peer                                                                                            |
+| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 진행 — 2a 기반 · 2b 인증 · 2c 세션 · 감사 · 2d 역할 · 사용자 · 2e-1 팀 · 2d-3 계정 정리 · 2e-2 약관 · 2f-1 IP 접근 제어 완료) |
+| `docs/`                 | —                       | 검토·Phase 0 대조 보고. **설계 근거는 코드 주석과 이 폴더에 있다**                                                                                    |
 
 ## 명령어
 
@@ -98,6 +98,7 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 - 사용자 날짜는 `'YYYY-MM-DD'` — 효력 시각(퇴사일 다음 날 0시, 기준 시간대 `timeZone`)은 `accounts/calendar.ts` 의 `effectiveResignAt` 하나로 셈한다. 사용자 쓰기 트랜잭션 안의 결정 읽기(대상 · 역할 · 팀 · 재직 이력)는 모두 `FOR UPDATE` 다(스냅샷 격리 · 낡은 읽기 — 스펙 §14 R5-6 · R7). 임시 비밀번호는 응답에만 싣는다.
 - 팀 쓰기 넷(만들기 · 이름 · 이동 · 삭제)은 `lockGuardRow(trx, GUARD_LOCK_TEAM_TREE)` 가 트랜잭션 첫 문장이고 그 뒤 읽기는 모두 `FOR UPDATE` 다 — 예외는 삭제의 소속 셈(서브트리 팀 행을 잠근 뒤 첫 비잠금 읽기, 2e 스펙 ② D1). closure 자기 행(depth 0)은 쓰되 기대지 않는다. 경합 테스트의 `whileHeld` 는 잠금 대기를 `SHOW ENGINE INNODB STATUS` 로 본다(`information_schema.innodb_trx` 는 서버 전역 캐시라 못 쓴다).
 - 약관 발행은 `lockGuardRow(trx, GUARD_LOCK_LEGAL_PUBLISH)` 가 트랜잭션 첫 문장이고 시행본 읽기(`publishedAt` DESC, `legalDocNo` DESC)는 `FOR UPDATE` 다 — 비잠금 읽기는 스냅샷 격리 ON 에서 INSERT 의 FK 검사를 1020 으로 만든다(2e 스펙 B15 · §14 R5-5). `legalDocuments` 는 append-only — UPDATE · DELETE 경로를 만들지 않는다(`legal-append-only.test.ts`). 해시는 서버만 셈하고 본문은 감사 meta 에 싣지 않는다.
+- IP 쓰기(만들기 · 수정 · 삭제)는 `withSuperAdminSurvival(trx, { lock, write }, { ipAware: true })` 안이다 — 잠금 단계는 대상 규칙 · 가리키는 팀/사용자 행 FOR UPDATE, 자기 잠금은 쓴 뒤 같은 트랜잭션에서 규칙을 다시 읽어 판정한다. `ipAccessRules` 를 잠그는 곳은 IP 쓰기의 대상 행뿐이다(정책 · 셈 · 팀 삭제 셈 · 미리보기는 비잠금). 층 판정은 admin-shared `applicableIpLayer` · `evaluateIpAccess` 하나, 대표 팀은 `MIN(teamNo)`. 잔존 셈의 `ipAware` 는 표시 토큰 `IP_ACCESS_ENABLED` 유무로만 정한다. 클라이언트 IP 는 코어 옵션 `clientIp` 를 `requestMetaOf(req, source)` 로 읽는다.
 
 ## 변경 흐름
 
@@ -125,7 +126,8 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 | Phase 2 PR 2e-1 — 팀(`AdminTeamsModule`· 장 0010 ·`lockGuardRow` · 소속 셈 · 다시 매김)                                                | 완료                      | 스펙 `docs/superpowers/specs/2026-10-14-admin-server-teams-legal-design.md` · 플랜 `docs/superpowers/plans/2026-10-14-admin-server-teams.md`                 |
 | Phase 2 PR 2d-3 — 계정 정리(잔존 잠금 단계 · 역할 인덱스 · 본인 재입사 403 · timeZone · liveOnly)                                      | 완료                      | 스펙 `docs/superpowers/specs/2026-10-15-admin-server-accounts-cleanup-design.md` · 플랜 `docs/superpowers/plans/2026-10-15-admin-server-accounts-cleanup.md` |
 | Phase 2 PR 2e-2 — 약관(`AdminLegalModule`· 장 0011 ·`legalPublish` 가드 · 종류 옵션 · 서버 해시)                                       | 완료                      | 스펙 `docs/superpowers/specs/2026-10-14-admin-server-teams-legal-design.md` · 플랜 `docs/superpowers/plans/2026-10-15-admin-server-legal.md`                 |
-| **Phase 2 PR 2f — IP 접근 제어 · 인증 경로 이월**                                                                                      | **다음**                  | HANDOFF "다음 플랜"                                                                                                                                          |
+| Phase 2 PR 2f-1 — IP 접근 제어(`AdminIpAccessModule`· 장 0012 · clientIp · IP 를 아는 잔존)                                            | 완료                      | 스펙 `docs/superpowers/specs/2026-10-15-admin-server-ip-access-design.md` · 플랜 `docs/superpowers/plans/2026-10-15-admin-server-ip-access.md`               |
+| **Phase 2 PR 2f-2 — 인증 경로 이월 · 첫 발행 준비**                                                                                    | **다음**                  | HANDOFF "다음 플랜"                                                                                                                                          |
 | 템플릿 `kim5257-project-template` `preset/admin` + `.claude/skills/admin-scaffold`                                                     | 대기                      | `docs/00-admin-common-review.md` §3                                                                                                                          |
 
 `docs/01-phase0.md` §8 표를 단계가 끝날 때마다 갱신한다.

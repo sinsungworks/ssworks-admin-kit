@@ -160,14 +160,15 @@ superAdminSurvival(가드) → users → roles → teamTree(가드) → teams �
 legalPublish(가드) → legalDocuments (→ FK 검사로 발행자 users 행 S)
 ```
 
-| 쓰기                 | 잡는 것(차례대로)                                                          | 겹칠 때                                                         |
-| -------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| IP 만들기 · 수정     | 잔존 가드 → (users \| teams 참조 행) → (수정: 대상 규칙) → INSERT · UPDATE | 다른 잔존 쓰기와 가드에서 줄을 선다. 팀 삭제와는 팀 행 하나에서 |
-| IP 삭제              | 잔존 가드 → 대상 규칙 → DELETE                                             | 〃                                                              |
-| 사용자 수정(팀 변경) | 잔존 가드 → users ⋈ roles → 줄 역할 → `lockTeam` → teamUserMap             | 2e 표 그대로 — 가드를 잡는 갈래가 늘었을 뿐 순서는 같다         |
-| 팀 삭제              | teamTree → 대상 → 하위 팀 → 소속 셈 · 규칙 셈(비잠금) → DELETE             | 2e 표 + 규칙 쓰기와 팀 행 하나에서                              |
+| 쓰기                 | 잡는 것(차례대로)                                                                                                   | 겹칠 때                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| IP 만들기 · 수정     | 잔존 가드 → (수정 · 삭제: 대상 규칙) → (만들기 · 수정: users \| teams 참조 행 — 수정은 병합 결과) → INSERT · UPDATE | 다른 잔존 쓰기와 가드에서 줄을 선다. 팀 삭제와는 팀 행 하나에서 |
+| IP 삭제              | 잔존 가드 → 대상 규칙 → DELETE                                                                                      | 〃                                                              |
+| 사용자 수정(팀 변경) | 잔존 가드 → users ⋈ roles → 줄 역할 → `lockTeam` → teamUserMap                                                      | 2e 표 그대로 — 가드를 잡는 갈래가 늘었을 뿐 순서는 같다         |
+| 팀 삭제              | teamTree → 대상 → 하위 팀 → 소속 셈 · 규칙 셈(비잠금) → DELETE                                                      | 2e 표 + 규칙 쓰기와 팀 행 하나에서                              |
 
 - 🔴 2e §5-1 의 "2f 메모"(팀 쓰기에 잔존 가드가 필요하면 가드 행 둘의 고정 순서)는 **생기지 않는다**: 팀 쓰기 넷은 소속을 바꾸지 않아(삭제는 소속 있으면 409, 조상 상속 없음) 아무의 층도 바꾸지 않는다. 층을 바꾸는 것은 사용자 수정의 `teamNo` 이고, 그것은 이미 users 쪽 트랜잭션이다(가드 행 하나).
+- 🔴 IP 수정은 대상 규칙 행을 먼저 잠그고(병합 결과를 알려면 규칙을 읽어야 한다) 그다음 참조 행을 잠근다 — 위 전역 순서의 teams → … → ipAccessRules 와 반대지만, ipAccessRules 행을 잠그는 트랜잭션은 모두 잔존 가드를 먼저 잡으므로 사이클이 생기지 않는다. 가드 없이 규칙 행을 잠그는 새 경로를 만들지 않는다.
 - 이름만 바꾸는 사용자 수정(가드 없음)이 사용자 행을 X 로 쥐면, 그 사용자를 가리키는 IP 쓰기는 그 행만 기다린다 — 그쪽은 가드를 원하지 않으므로 사이클이 없다. 로그인의 `updateLoginState` 도 같다.
 
 ### 5-6. 미리보기 (`GET /ip-access/preview`)
@@ -327,3 +328,4 @@ TDD — 실패하는 테스트부터. 구현자는 테스트를 먼저 만들고
   - ② (a) 대상 사용자의 로그인 실패(users 행 FOR UPDATE → UPDATE)를 쥔 동안 규칙 쓰기 모양(가드 → users 행 FOR UPDATE → 셈 비잠금 → INSERT)이 기다렸다 성공 — ON · OFF 같다. 🔴 RED 모양(가드 → 셈 → users 행 FOR UPDATE)은 ON 에서 `1020 Record has changed since last read in table 'users'`, OFF 는 성공 — §9-2 (r3) 의 RED 실험이 실제로 RED 다.
   - ③ (c) 대표 팀 `LEFT JOIN (SELECT userNo, MIN(teamNo) … GROUP BY userNo)` — 소속 둘이면 작은 번호(`bigint`), 무소속이면 `null`. `json_contains(r.permissions, '"*"')` 와 함께 써도 그대로다. 사용자 수정이 `teamNo` 만으로 가드를 잡게 된 뒤의 기존 경합 테스트(`users.snapshot` · `users.team`)와 (d) refresh 의 회전 경합 테스트는 구현 Task 가 `pnpm test:db` 전량으로 잰다.
   - ④ (e) 헤더 — `X-Real-IP` 를 두 번 보내면 `req.headers['x-real-ip']` 는 배열이 아니라 `'1.2.3.4, 5.6.7.8'` 한 문자열이다(Node 가 이어 붙인다) — P10 의 쉼표 거부가 이 모양을 막는다. 헤더가 없으면 `undefined`. `listen(0, '127.0.0.1')` 의 `req.ip` 는 `'127.0.0.1'`, 듀얼스택(`'::'`)에 IPv4 로 붙으면 `'::ffff:127.0.0.1'`. 기존 테스트 중 `::ffff:` 값을 기대하는 것은 없다(서비스 테스트의 `fakeRequest` 는 `10.0.0.1` 등 일반 IPv4) — 정규화로 바뀌는 기대값은 `request-meta.test.ts` 뿐이다.
+- **R2 — 플랜이 더한 작은 결정(2026-10-15, 2f-1 플랜).** ① 범위 불변식 문구 둘(`scopeRefRequired` · `scopeRefForbidden`)과 미리보기 빠진 칸 문구는 admin-shared `IP_ACCESS_SCHEMA_MESSAGES` 에 둔다(화면과 같은 문구) — §6 의 `IP_ACCESS_MESSAGES` 는 서버 문구 다섯(규칙 없음 · revision · 자기 잠금 · 대상 팀 · 대상 사용자)이다. 판정 함수는 `ipScopeProblem`(문구 또는 null) + `isValidIpScope`. ② 팀 삭제 문구는 `TEAM_MESSAGES.teamHasIpRules`(팀 문구 표). ③ `clientIp` 해석은 인증(`ResolvedAuthConfig.clientIp`) · 감사(`ResolvedAuditConfig.clientIp`) · IP 모듈(`ResolvedIpAccessConfig.clientIp`)이 같은 `resolveClientIpSource` 로 각자 한다 — 코어 토큰을 따로 두지 않는다. ④ 만들기 응답은 `{ item }`(역할의 `{ roleNo }` 와 다르다 — 화면이 revision · 대상 이름을 바로 쓴다). ⑤ 테스트 앱 `bootAdminApp` 이 IP 모듈을 늘 붙인다 — 모든 HTTP 테스트가 IP 판정 · IP 를 아는 잔존과 함께 돈다. ⑥ 잔존 (s2) 시나리오 B 는 `accounts/super-admin.ip.db.test.ts` 에 둔다(사용자 서비스의 셈 갈래와 같이). ⑦ `decorator-metadata.test.ts` 는 고치지 않는다(새 생성자를 재는 테스트가 아니다 — 모듈 테스트가 전역 주입을 잰다). ⑧ §5-5 의 IP 수정 잠금 순서를 코드(§5-3)대로 고쳤다 — 규칙 행 → 참조 행, 모든 규칙 행 잠금이 잔존 가드 뒤라 안전.
