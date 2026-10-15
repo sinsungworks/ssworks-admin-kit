@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import type { Kysely, Transaction } from 'kysely'
+import { sql, type Kysely, type Transaction } from 'kysely'
 import { readJsonColumn } from '../database/json.js'
-import { runQuery, runWriteTransaction } from '../database/run.js'
+import { runQuery } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { KYSELY } from '../tokens.js'
 import type {
@@ -17,6 +17,7 @@ import type {
 //  - 코어 users 컬럼(hangang 이름)을 읽는다. 대표 팀은 LEFT JOIN — 팀 없는 계정도 인증된다(hangang 은 INNER 라 팀 미배정
 //    계정이 401 이었다). IP team 층은 2f 가 teamNos 가 빈 경우를 다룬다.
 //  - 권한 JSON 이 배열이 아니면 [] + 경고(fail-closed) — 깨진 JSON 이 500 으로 그 역할 전원을 막지 않는다.
+//  - 2f-2a: updateLoginState(자체 트랜잭션) 대신 받은 트랜잭션 위의 lockCredential · writeLoginState(스펙 A9 · A10).
 
 @Injectable()
 export class KyselyAuthRepository implements AdminAuthRepository {
@@ -26,14 +27,14 @@ export class KyselyAuthRepository implements AdminAuthRepository {
 
   async findCredentialByUserId(userId: string): Promise<AdminCredential | null> {
     const row = await runQuery(() =>
-      this.credentialQuery().where('userId', '=', userId).executeTakeFirst(),
+      credentialQuery(this.db).where('userId', '=', userId).executeTakeFirst(),
     )
     return row ?? null
   }
 
   async findCredentialByNo(userNo: bigint): Promise<AdminCredential | null> {
     const row = await runQuery(() =>
-      this.credentialQuery().where('userNo', '=', userNo).executeTakeFirst(),
+      credentialQuery(this.db).where('userNo', '=', userNo).executeTakeFirst(),
     )
     return row ?? null
   }
@@ -88,30 +89,28 @@ export class KyselyAuthRepository implements AdminAuthRepository {
     }
   }
 
-  updateLoginState(
+  async lockCredential(
+    trx: Transaction<AdminDatabase>,
     userNo: bigint,
-    next: (current: AdminLoginState) => AdminLoginState,
-  ): Promise<AdminLoginState> {
-    return runWriteTransaction(this.db, async (trx) => {
-      const current = await trx
-        .selectFrom('users')
-        .select(['loginFailCount', 'lockUntil'])
-        .where('userNo', '=', userNo)
-        .forUpdate()
-        .executeTakeFirst()
-      if (current == null) return next({ loginFailCount: 0, lockUntil: null })
-      const state = next(current)
-      // 바뀌지 않으면 쓰지 않는다 — 맞은 비밀번호 로그인은 늘 이 메서드로 잠김을 판정하므로(스펙 §14 R8), 카운터가 이미
-      // { 0, null } 인 정상 로그인이 매번 UPDATE 를 치르지 않게 한다. 행 잠금은 커밋 때 풀린다.
-      if (!isSameLoginState(state, current)) {
-        await trx
-          .updateTable('users')
-          .set({ loginFailCount: state.loginFailCount, lockUntil: state.lockUntil })
-          .where('userNo', '=', userNo)
-          .execute()
-      }
-      return state
-    })
+    mode: 'share' | 'update',
+  ): Promise<AdminCredential | null> {
+    // 트랜잭션 안이라 runQuery 로 감싸지 않는다 — runWriteTransaction 이 드라이버 오류를 바꾼다.
+    const query = credentialQuery(trx).where('userNo', '=', userNo)
+    // 🔴 MariaDB 11.4 는 FOR SHARE 를 1064 로 거부한다(2f-2a 스펙 §14 R1-⑤) — forShare() 를 쓰지 않는다.
+    const locked = mode === 'update' ? query.forUpdate() : query.modifyEnd(sql`lock in share mode`)
+    return (await locked.executeTakeFirst()) ?? null
+  }
+
+  async writeLoginState(
+    trx: Transaction<AdminDatabase>,
+    userNo: bigint,
+    state: AdminLoginState,
+  ): Promise<void> {
+    await trx
+      .updateTable('users')
+      .set({ loginFailCount: state.loginFailCount, lockUntil: state.lockUntil })
+      .where('userNo', '=', userNo)
+      .execute()
   }
 
   async changePassword(
@@ -135,19 +134,6 @@ export class KyselyAuthRepository implements AdminAuthRepository {
     return Number(result.numUpdatedRows)
   }
 
-  private credentialQuery() {
-    return this.db
-      .selectFrom('users')
-      .select([
-        'userNo',
-        'password as passwordHash',
-        'resignAt',
-        'loginFailCount',
-        'lockUntil',
-        'isPasswordChangeRequired',
-      ])
-  }
-
   private readPermissions(roleNo: bigint, value: unknown): string[] {
     let parsed: unknown
     try {
@@ -163,7 +149,16 @@ export class KyselyAuthRepository implements AdminAuthRepository {
   }
 }
 
-/** 같은 순간을 담은 다른 Date 객체도 같다고 본다 — `next` 가 잠금 시각을 새로 만들어 돌려줄 수 있다. */
-function isSameLoginState(a: AdminLoginState, b: AdminLoginState): boolean {
-  return a.loginFailCount === b.loginFailCount && a.lockUntil?.getTime() === b.lockUntil?.getTime()
+/** 자격 증명 여섯 칸 — 비잠금 읽기 둘과 잠금 읽기가 같은 모양을 읽는다 */
+function credentialQuery(db: Kysely<AdminDatabase>) {
+  return db
+    .selectFrom('users')
+    .select([
+      'userNo',
+      'password as passwordHash',
+      'resignAt',
+      'loginFailCount',
+      'lockUntil',
+      'isPasswordChangeRequired',
+    ])
 }

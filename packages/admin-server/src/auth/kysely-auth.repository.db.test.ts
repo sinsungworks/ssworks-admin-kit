@@ -1,6 +1,7 @@
-import type { KyselyPlugin } from 'kysely'
+import type { Connection } from 'mariadb'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { runWriteTransaction } from '../database/run.js'
+import { whileHeld } from '../test-support/concurrency.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { addToTeam, seedRole, seedTeam, seedUser } from '../test-support/auth.js'
 import { KyselyAuthRepository } from './kysely-auth.repository.js'
@@ -105,86 +106,64 @@ describe('findPrincipal', () => {
   })
 })
 
-describe('updateLoginState', () => {
-  it('next 는 현재 행 값을 받고, 돌려준 상태가 저장된다', async () => {
+describe('lockCredential · writeLoginState(2f-2a 스펙 A9 · A10)', () => {
+  const lockFor = (userNo: bigint, mode: 'share' | 'update') => () =>
+    runWriteTransaction(t.db, (trx) => repo.lockCredential(trx, userNo, mode))
+
+  it('자격 증명 행을 돌려준다 — 없으면 null', async () => {
+    const roleNo = await seedRole(t.db)
+    const user = await seedUser(t.db, { roleNo, loginFailCount: 2 })
+    expect(await lockFor(user.userNo, 'share')()).toEqual(
+      await repo.findCredentialByNo(user.userNo),
+    )
+    expect(await lockFor(999_999n, 'update')()).toBeNull()
+  })
+
+  it.each(['share', 'update'] as const)(
+    '🔴 %s 는 잠금 읽기다 — 원시 연결이 행을 FOR UPDATE 로 쥔 동안 기다린다',
+    async (mode) => {
+      const roleNo = await seedRole(t.db)
+      const user = await seedUser(t.db, { roleNo })
+      const result = await whileHeld(
+        t,
+        (connection) =>
+          connection.query('select user_no from users where user_no = ? for update', [user.userNo]),
+        lockFor(user.userNo, mode),
+        { expectWait: true },
+      )
+      expect(result.ok).toBe(true)
+    },
+  )
+
+  it("🔴 'share' 끼리는 막지 않고 'update' 는 막힌다 — 원시 연결이 LOCK IN SHARE MODE 로 쥐었을 때", async () => {
     const roleNo = await seedRole(t.db)
     const user = await seedUser(t.db, { roleNo })
+    const holdShared = (connection: Connection) =>
+      connection.query('select user_no from users where user_no = ? lock in share mode', [
+        user.userNo,
+      ])
+    expect(
+      (await whileHeld(t, holdShared, lockFor(user.userNo, 'share'), { expectWait: false })).ok,
+    ).toBe(true)
+    expect(
+      (await whileHeld(t, holdShared, lockFor(user.userNo, 'update'), { expectWait: true })).ok,
+    ).toBe(true)
+  })
+
+  it('writeLoginState 는 잠금 두 컬럼만 바꾼다', async () => {
+    const roleNo = await seedRole(t.db)
+    const user = await seedUser(t.db, { roleNo })
+    const before = await repo.findCredentialByNo(user.userNo)
     const lockUntil = new Date('2031-02-03T04:05:06.000Z')
-    const seen: unknown[] = []
-    const first = await repo.updateLoginState(user.userNo, (current) => {
-      seen.push({ ...current })
-      return { loginFailCount: 5, lockUntil }
+    await runWriteTransaction(t.db, async (trx) => {
+      await repo.lockCredential(trx, user.userNo, 'update')
+      await repo.writeLoginState(trx, user.userNo, { loginFailCount: 4, lockUntil })
     })
-    expect(seen).toEqual([{ loginFailCount: 0, lockUntil: null }])
-    expect(first).toEqual({ loginFailCount: 5, lockUntil })
-    expect(await repo.findCredentialByNo(user.userNo)).toMatchObject({
-      loginFailCount: 5,
+    expect(await repo.findCredentialByNo(user.userNo)).toEqual({
+      ...before,
+      loginFailCount: 4,
       lockUntil,
     })
-    const second = await repo.updateLoginState(user.userNo, (current) => {
-      seen.push({ ...current })
-      return { loginFailCount: 0, lockUntil: null }
-    })
-    expect(seen[1]).toEqual({ loginFailCount: 5, lockUntil })
-    expect(second).toEqual({ loginFailCount: 0, lockUntil: null })
-    expect(await repo.findCredentialByNo(user.userNo)).toMatchObject({
-      loginFailCount: 0,
-      lockUntil: null,
-    })
-  })
-
-  it('🔴 병렬 8건이 모두 센다 — 행 잠금(F2)', async () => {
-    const roleNo = await seedRole(t.db)
-    const user = await seedUser(t.db, { roleNo })
-    await Promise.all(
-      Array.from({ length: 8 }, () =>
-        repo.updateLoginState(user.userNo, (current) => ({
-          loginFailCount: current.loginFailCount + 1,
-          lockUntil: current.lockUntil,
-        })),
-      ),
-    )
-    expect(await repo.findCredentialByNo(user.userNo)).toMatchObject({ loginFailCount: 8 })
-  })
-
-  it('next 가 값을 바꾸지 않으면 UPDATE 를 보내지 않는다 — 카운터가 이미 { 0, null } 인 정상 로그인', async () => {
-    const roleNo = await seedRole(t.db)
-    const user = await seedUser(t.db, { roleNo })
-    const kinds: string[] = []
-    const recorder: KyselyPlugin = {
-      transformQuery: (args) => {
-        kinds.push(args.node.kind)
-        return args.node
-      },
-      transformResult: async (args) => args.result,
-    }
-    const recorded = new KyselyAuthRepository(t.db.withPlugin(recorder))
-
-    const unchanged = await recorded.updateLoginState(user.userNo, (current) => ({ ...current }))
-    expect(unchanged).toEqual({ loginFailCount: 0, lockUntil: null })
-    expect(kinds).toEqual(['SelectQueryNode'])
-
-    kinds.length = 0
-    const lockUntil = new Date('2031-02-03T04:05:06.000Z')
-    await recorded.updateLoginState(user.userNo, () => ({ loginFailCount: 5, lockUntil }))
-    expect(kinds).toEqual(['SelectQueryNode', 'UpdateQueryNode'])
-
-    // 같은 순간을 담은 다른 Date 객체도 "바뀌지 않음" 이다
-    kinds.length = 0
-    await recorded.updateLoginState(user.userNo, (current) => ({
-      loginFailCount: current.loginFailCount,
-      lockUntil: new Date(lockUntil.getTime()),
-    }))
-    expect(kinds).toEqual(['SelectQueryNode'])
-  })
-
-  it('없는 사용자는 next({ 0, null }) 를 돌려주고 아무것도 쓰지 않는다', async () => {
-    const state = await repo.updateLoginState(999_999n, (current) => ({
-      loginFailCount: current.loginFailCount + 1,
-      lockUntil: null,
-    }))
-    expect(state).toEqual({ loginFailCount: 1, lockUntil: null })
-    expect(await repo.findCredentialByNo(999_999n)).toBeNull()
   })
 })
 
@@ -234,10 +213,13 @@ describe('🔴 updateAt(2d 스펙 ⑧ U1)', () => {
       .where('userNo', '=', user.userNo)
       .execute()
 
-    await repo.updateLoginState(user.userNo, () => ({
-      loginFailCount: 5,
-      lockUntil: new Date(Date.now() + 60_000),
-    }))
+    await runWriteTransaction(t.db, async (trx) => {
+      await repo.lockCredential(trx, user.userNo, 'update')
+      await repo.writeLoginState(trx, user.userNo, {
+        loginFailCount: 5,
+        lockUntil: new Date(Date.now() + 60_000),
+      })
+    })
     const credential = await repo.findCredentialByNo(user.userNo)
     if (credential === null) throw new Error('자격 증명이 없다')
     await runWriteTransaction(t.db, (trx) =>

@@ -19,7 +19,7 @@ import { AUTH_MESSAGES } from './errors.js'
 import type { AdminAccessPolicy, AdminAuthEvent, AdminAuthEventSink } from './hooks.js'
 import { isLocked, nextLoginState } from './login-policy.js'
 import type { ResolvedAuthConfig } from './options.js'
-import { checkPasswordWithCounter } from './password-check.js'
+import { checkPasswordWithCounter, updateLoginState } from './password-check.js'
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.js'
 import type { AdminPrincipal } from './principal.js'
 import { createRefreshToken, hashRefreshToken } from './refresh-token.js'
@@ -79,6 +79,7 @@ export class AdminAuthService {
     }
 
     const check = await checkPasswordWithCounter(
+      this.db,
       this.repo,
       credential,
       input.password,
@@ -101,7 +102,7 @@ export class AdminAuthService {
     // 🔴 잠김은 맞은 비밀번호 바로 다음, 퇴사 · IP 보다 먼저 본다. 잠긴 동안은 맞든 틀리든 같은 401 이다 — 맞은 비밀번호에만
     //    다른 응답(423 · 퇴사 403 · IP 403)을 주면 잠금 중에도 대입을 계속해 정답을 알아낸다(최종 리뷰 F1, 2026-10-13 사용자 결정).
     //    잠금 판정은 방금 잠근 행으로 한다 — 비밀번호 검증 전에 읽은 스냅숏이면 동시 요청이 잠근 뒤에도 통과한다.
-    const settled = await this.repo.updateLoginState(credential.userNo, (current) =>
+    const settled = await updateLoginState(this.db, this.repo, credential.userNo, (current) =>
       isLocked(current.lockUntil, now)
         ? current
         : nextLoginState(current, 'success', now, this.config.lockout),
@@ -322,6 +323,7 @@ export class AdminAuthService {
       throw new BusinessError(CommonErrorCodes.ERR_ACCOUNT_LOCKED, AUTH_MESSAGES.locked)
     }
     const check = await checkPasswordWithCounter(
+      this.db,
       this.repo,
       credential,
       body.currentPassword,

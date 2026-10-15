@@ -206,19 +206,19 @@ export class AppModule {}
 
 ### 사용자 테이블이 다를 때
 
-컬럼 매핑 옵션은 없다. `AdminAuthRepository` 다섯 메서드를 구현해 바꾼다.
+컬럼 매핑 옵션은 없다. `AdminAuthRepository` 여섯 메서드를 구현해 바꾼다.
 
 ```ts
 @Injectable()
 class MyAuthRepository implements AdminAuthRepository {
-  // findCredentialByUserId · findCredentialByNo · findPrincipal · updateLoginState · changePassword
+  // findCredentialByUserId · findCredentialByNo · findPrincipal · lockCredential · writeLoginState · changePassword
   // 예: isActive 컬럼이면 resignAt: row.isActive ? null : new Date(0)
 }
 
 AdminAuthModule.withRepository(MyAuthRepository, { imports: [MyUsersDataModule] })
 ```
 
-🔴 `updateLoginState` 는 원자적이어야 한다(행 잠금 또는 compare-and-set). `changePassword` 의 `trx` 는 `Transaction<AdminDatabase>` 라 자기 Database 타입으로 단언해 쓴다.
+🔴 `lockCredential(trx, userNo, mode)` 는 받은 트랜잭션 위의 **잠금 읽기**다 — `'update'` 는 `FOR UPDATE`, `'share'` 는 `LOCK IN SHARE MODE`(MariaDB 는 `FOR SHARE` 를 받지 않는다 — Kysely `.forShare()` 를 쓰지 않는다). 잠그는 행은 `sessions.user_no` FK 가 가리키는 그 `users` 행이다 — 로그인 확정 · 토큰 회전이 이 잠금을 세션보다 먼저 잡아 퇴사 · 비밀번호 초기화와 교착하지 않는다. `writeLoginState` 는 잠금 두 컬럼(`loginFailCount` · `lockUntil`)만 쓴다 — 패키지가 같은 트랜잭션에서 먼저 `lockCredential(…, 'update')` 로 잠그므로 카운터의 원자성은 패키지가 맡는다. 받는 `trx` 는 `Transaction<AdminDatabase>` 라 자기 Database 타입으로 단언해 쓴다.
 
 ### 시드 · IP 자리
 

@@ -6,6 +6,9 @@ import type { AdminLoginState } from './login-policy.js'
 // 바꾼 점: 사용자 쪽 다섯 메서드만이다(스펙 ⑤ A1) — 세션은 패키지 코어 장(0007)이라 컬럼 차이가 없어 패키지 내부
 //   AdminSessionStore 가 맡는다. `isActive` 대신 `resignAt`(효력 시각, 스펙 ④ R1). `touchLastLogin` 은 코어 컬럼이 없어
 //   뺐다(쓰는 쪽은 login.success 이벤트로 남긴다).
+// 2f-2a(스펙 ③ P1 · A9 · A10): updateLoginState 를 지우고 트랜잭션을 받는 원시 둘(lockCredential · writeLoginState)을 더했다 —
+//   로그인 확정 · 회전이 users 를 세션보다 먼저 같은 트랜잭션에서 잠가야 한다(2d R10-3 · 로그인 TOCTOU). 카운터 원자성은 패키지
+//   도우미(password-check.ts updateLoginState)가 맡는다.
 
 export type { AdminLoginState }
 
@@ -45,15 +48,24 @@ export interface AdminAuthRepository {
   findCredentialByNo(userNo: bigint): Promise<AdminCredential | null>
   findPrincipal(userNo: bigint): Promise<AdminPrincipalRecord | null>
   /**
-   * 🔴 원자적으로 바꾼다 — 현재 행을 잠그고(SELECT … FOR UPDATE) `next(current)` 를 써서 그 결과를 돌려준다. 호출부가
-   * 비밀번호 검증 전에 읽은 스냅숏으로 다음 상태를 셈하면 동시 요청이 같은 값을 읽어 덜 센다(최종 리뷰 F2).
-   * 교체 구현도 원자성을 지킨다(행 잠금 또는 compare-and-set 재시도). 행이 없으면 쓰지 않고 next({ 0, null }) 를 돌려준다.
-   * 🔴 argon2 를 이 안에서 부르지 않는다 — 호출부가 검증을 끝낸 뒤에 부른다.
+   * 🔴 받은 트랜잭션 위의 **잠금 읽기** — `'update'` = `FOR UPDATE`, `'share'` = `LOCK IN SHARE MODE`(MariaDB 는 `FOR SHARE` 를
+   * 받지 않는다 — Kysely `.forShare()` 를 쓰지 않는다). 잠그는 행은 sessions FK(`fkSessionsUser`)가 가리키는 그 users 행이다 —
+   * 로그인 확정 · 토큰 회전이 이 잠금을 세션보다 먼저 잡아 퇴사 · 초기화와 교착하지 않는다(2f-2a 스펙 §5-3). 없으면 null.
    */
-  updateLoginState(
+  lockCredential(
+    trx: Transaction<AdminDatabase>,
     userNo: bigint,
-    next: (current: AdminLoginState) => AdminLoginState,
-  ): Promise<AdminLoginState>
+    mode: 'share' | 'update',
+  ): Promise<AdminCredential | null>
+  /**
+   * 잠금 두 컬럼(`loginFailCount` · `lockUntil`)만 쓴다. 🔴 패키지가 같은 트랜잭션에서 먼저 `lockCredential(…, 'update')` 로
+   * 잠근다 — 카운터의 원자성은 패키지가 맡는다(2b 스펙 §14 R8 · 2f-2a 스펙 A10).
+   */
+  writeLoginState(
+    trx: Transaction<AdminDatabase>,
+    userNo: bigint,
+    state: AdminLoginState,
+  ): Promise<void>
   /**
    * 🔴 기대 해시(`expectedHash`)가 그대로일 때만 바꾼다 — 바꿀 때 `isPasswordChangeRequired = false` · `loginFailCount = 0`
    * · `lockUntil = null` 을 함께 쓴다. 바뀐 행 수(0 = 검증 뒤 다른 쓰기가 먼저 커밋). 받은 트랜잭션 위에서만 쓴다.

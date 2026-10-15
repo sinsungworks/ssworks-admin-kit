@@ -184,14 +184,18 @@ export interface AuthKit {
   policy: SwitchablePolicy
 }
 
-/** Nest 없이 서비스를 조립한다. `policy: false` 면 정책을 주입하지 않는다 */
+/**
+ * Nest 없이 서비스를 조립한다. `policy: false` 면 정책을 주입하지 않는다. `db` 를 주면(스냅샷 격리 Kysely 등) 리포지토리 · 세션
+ * 저장소 · 서비스 · 재인증이 모두 그 Kysely 를 쓴다(2f-2a 스펙 §14 R2-⑨).
+ */
 export function createAuthKit(
   t: TestDatabase,
-  options: { auth?: Partial<AdminAuthOptions>; policy?: boolean } = {},
+  options: { auth?: Partial<AdminAuthOptions>; policy?: boolean; db?: Kysely<AdminDatabase> } = {},
 ): AuthKit {
+  const db = options.db ?? t.db
   const config = resolveAuthConfig({ jwtSecret: TEST_JWT_SECRET, ...options.auth }, undefined)
-  const repo = new KyselyAuthRepository(t.db)
-  const store = new AdminSessionStore(t.db)
+  const repo = new KyselyAuthRepository(db)
+  const store = new AdminSessionStore(db)
   const tokens = new AdminAccessTokenService(config)
   const events = new RecordingEvents()
   const policy = new SwitchablePolicy()
@@ -200,7 +204,7 @@ export function createAuthKit(
     repo,
     store,
     tokens,
-    t.db,
+    db,
     options.policy === false ? undefined : policy,
     events,
   )
@@ -210,7 +214,7 @@ export function createAuthKit(
     store,
     tokens,
     service,
-    reauth: new AdminReauthService(config, repo),
+    reauth: new AdminReauthService(config, repo, db),
     events,
     policy,
   }

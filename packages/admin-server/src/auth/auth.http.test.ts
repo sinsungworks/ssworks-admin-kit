@@ -28,15 +28,10 @@ class MemoryRepository implements AdminAuthRepository {
   async findPrincipal() {
     return null
   }
-  async updateLoginState(
-    _userNo: bigint,
-    next: (current: { loginFailCount: number; lockUntil: Date | null }) => {
-      loginFailCount: number
-      lockUntil: Date | null
-    },
-  ) {
-    return next({ loginFailCount: 0, lockUntil: null })
+  async lockCredential() {
+    return null
   }
+  async writeLoginState() {}
   async changePassword() {
     return 0
   }
