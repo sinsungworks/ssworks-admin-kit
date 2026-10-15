@@ -1,4 +1,5 @@
 import { coreAuditCatalog, type AuditCatalog } from '@ssworks/admin-shared'
+import { resolveClientIpSource, type AdminClientIpSource } from '../auth/request-meta.js'
 import { secretKeySet } from './scrub.js'
 
 // 정본: 없음 — Phase 0 §3-2 `audit: { enabled, sink?, catalog, blacklist }` 를 실제로 갈리는 값만 남겼다(2c 스펙 §4-1).
@@ -15,9 +16,14 @@ export interface ResolvedAuditConfig {
   catalog: AuditCatalog
   /** 소문자 */
   secretKeys: ReadonlySet<string>
+  /** 코어 옵션 clientIp(2f-1 ④ C1) — 감사 행 ip 의 출처. 인증과 같은 해석 */
+  clientIp: AdminClientIpSource
 }
 
-export function resolveAuditConfig(options: AdminAuditOptions | undefined): ResolvedAuditConfig {
+export function resolveAuditConfig(
+  options: AdminAuditOptions | undefined,
+  clientIp?: unknown,
+): ResolvedAuditConfig {
   const extra = options?.secretKeys ?? []
   for (const key of extra) {
     if (typeof key !== 'string' || key.trim() === '') {
@@ -27,5 +33,6 @@ export function resolveAuditConfig(options: AdminAuditOptions | undefined): Reso
   return Object.freeze({
     catalog: options?.catalog ?? coreAuditCatalog,
     secretKeys: secretKeySet(extra),
+    clientIp: resolveClientIpSource(clientIp),
   })
 }

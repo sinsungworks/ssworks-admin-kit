@@ -83,7 +83,14 @@ export class AdminAuditInterceptor implements NestInterceptor {
       // 주체 없음 = @Public 라우트 — 기동 검사가 @Public + @Audit 을 미리 막는다(2c 스펙 B11).
       if (principal == null) return
       await this.audit.insert(
-        buildAuditEntry(req, principal, meta, outcome(), this.config.secretKeys),
+        buildAuditEntry(
+          req,
+          principal,
+          meta,
+          outcome(),
+          this.config.secretKeys,
+          this.config.clientIp,
+        ),
       )
     } catch (error) {
       this.audit.warn(`감사 기록 준비 실패 — action=${meta.action}: ${reasonOf(error)}`)

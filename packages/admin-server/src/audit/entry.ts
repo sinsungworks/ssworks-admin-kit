@@ -1,6 +1,6 @@
 import type { Request } from 'express'
 import type { AdminPrincipal } from '../auth/principal.js'
-import { requestMetaOf } from '../auth/request-meta.js'
+import { requestMetaOf, type AdminClientIpSource } from '../auth/request-meta.js'
 import type { AuditDeclaration } from './audit.decorator.js'
 import { readAuditBag } from './audit-bag.js'
 import { serializeAuditMeta } from './scrub.js'
@@ -67,8 +67,8 @@ function pathOf(req: Request): string {
   return queryIndex === -1 ? url : url.slice(0, queryIndex)
 }
 
-export function requestFieldsOf(req: Request): AuditRequestFields {
-  const meta = requestMetaOf(req)
+export function requestFieldsOf(req: Request, clientIp: AdminClientIpSource): AuditRequestFields {
+  const meta = requestMetaOf(req, clientIp)
   return {
     method: clampCodePoints(
       typeof req.method === 'string' ? req.method : '',
@@ -120,6 +120,7 @@ export function buildAuditEntry(
   options: AuditDeclaration,
   outcome: AuditOutcome,
   secretKeys: ReadonlySet<string>,
+  clientIp: AdminClientIpSource,
 ): AuditInsert {
   const bag = readAuditBag(req)
   return {
@@ -128,7 +129,7 @@ export function buildAuditEntry(
     action: options.action,
     targetType: options.targetType ?? null,
     targetRefNo: pickTargetRefNo(req, options.paramKey, bag?.targetRefNo),
-    ...requestFieldsOf(req),
+    ...requestFieldsOf(req, clientIp),
     statusCode: outcome.status,
     errorCode: clampErrorCode(outcome.errorCode),
     meta: bag ? serializeAuditMeta(bag.meta, secretKeys) : null,

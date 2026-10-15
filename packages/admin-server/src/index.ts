@@ -22,6 +22,7 @@ export { LIKE_ESCAPE, escapeLike, likeContains, likePrefix } from './database/li
 export { AdminAuthModule } from './auth/admin-auth.module.js'
 export { AUTH_REPOSITORY, ADMIN_ACCESS_POLICY, ADMIN_AUTH_EVENTS } from './tokens.js'
 export type { AdminAuthOptions, AdminAuthCookieOptions } from './auth/options.js'
+export type { AdminClientIpSource } from './auth/request-meta.js'
 export type { AdminPermissionSlot, AdminPermissionMap } from './auth/permission-slots.js'
 export type {
   AdminAuthRepository,

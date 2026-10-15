@@ -1,6 +1,7 @@
 import { definePasswordPolicy, type PasswordPolicy } from '@ssworks/admin-shared'
 import { DEFAULT_LOCKOUT, type LoginLockout } from './login-policy.js'
 import { resolvePermissionMap, type AdminPermissionMap } from './permission-slots.js'
+import { resolveClientIpSource, type AdminClientIpSource } from './request-meta.js'
 
 // 정본: 없음 — Phase 0 §3-2 표의 `auth` · `cookies` · `permissions` 행을 실제로 갈렸던 값만 남겨 옵션으로 만들었다
 //   (스펙 §4-1). 해석 · 검증을 순수 함수 하나에 모은다 — 잘못된 설정은 첫 기동에서 드러난다.
@@ -54,6 +55,8 @@ export interface ResolvedAuthConfig {
   failClosed: boolean
   passwordPolicy: PasswordPolicy
   permissions: Readonly<AdminPermissionMap>
+  /** 코어 옵션 clientIp(2f-1 ④ C1) — 세션 행 · 이벤트 · IP 정책이 보는 클라이언트 IP 의 출처 */
+  clientIp: AdminClientIpSource
 }
 
 export const MIN_JWT_SECRET_LENGTH = 32
@@ -87,6 +90,7 @@ export function resolveAuthConfig(
   auth: AdminAuthOptions | undefined,
   passwordPolicy: PasswordPolicy | undefined,
   permissions?: AdminPermissionMap,
+  clientIp?: unknown,
 ): ResolvedAuthConfig {
   if (auth == null) {
     throw new Error(
@@ -143,5 +147,6 @@ export function resolveAuthConfig(
     failClosed: auth.failClosed ?? true,
     passwordPolicy: passwordPolicy ?? definePasswordPolicy(),
     permissions: resolvePermissionMap(permissions),
+    clientIp: resolveClientIpSource(clientIp),
   }
 }

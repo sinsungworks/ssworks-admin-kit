@@ -155,7 +155,7 @@ export class AdminAuditEventSink implements AdminAuthEventSink {
         action: entry.action,
         targetType: entry.targetType,
         targetRefNo: entry.targetRefNo,
-        ...requestFieldsOf(req),
+        ...requestFieldsOf(req, this.config.clientIp),
         statusCode:
           entry.errorCode == null
             ? 200

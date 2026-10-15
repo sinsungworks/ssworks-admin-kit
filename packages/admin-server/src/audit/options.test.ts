@@ -20,4 +20,12 @@ describe('resolveAuditConfig', () => {
   it('빈 비밀 키 이름은 기동에서 멈춘다', () => {
     expect(() => resolveAuditConfig({ secretKeys: [' '] })).toThrow('audit.secretKeys')
   })
+
+  it("clientIp — 기본 'req.ip' · 'x-real-ip' · 모르는 값은 멈춘다(2f-1 ④ C1)", () => {
+    expect(resolveAuditConfig(undefined).clientIp).toBe('req.ip')
+    expect(resolveAuditConfig(undefined, 'x-real-ip').clientIp).toBe('x-real-ip')
+    expect(() => resolveAuditConfig(undefined, 'xff')).toThrow(
+      "clientIp 는 'req.ip' 또는 'x-real-ip' 여야 한다.",
+    )
+  })
 })

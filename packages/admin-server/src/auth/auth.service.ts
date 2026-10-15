@@ -37,6 +37,7 @@ import { AdminSessionStore, type AdminSessionRow, type NewSessionInput } from '.
 //  - 퇴사는 resignAt ≤ now(스펙 ④ R1 — hangang 사이트 시간대 · gise isActive 대신).
 //  - 로그인 실패는 401 ERR_LOGIN_FAILED(hangang 은 404 ERR_NO_USER).
 //  - 잠김은 맞은 비밀번호 바로 다음 — 잠긴 동안은 같은 401(최종 리뷰 F1). hangang · gise 는 423 이었다.
+//  - 클라이언트 IP 는 코어 옵션 clientIp 출처(config.clientIp)로 읽는다(2f-1 스펙 ④ C1).
 
 export interface AdminTokenPair {
   accessToken: string
@@ -133,7 +134,7 @@ export class AdminAuthService {
 
     if (this.accessPolicy != null) {
       const principal = await this.repo.findPrincipal(credential.userNo)
-      const { clientIp } = requestMetaOf(req)
+      const { clientIp } = requestMetaOf(req, this.config.clientIp)
       const allowed = await this.accessPolicy.allows({
         clientIp,
         userNo: credential.userNo,
@@ -184,7 +185,7 @@ export class AdminAuthService {
     }
 
     if (this.accessPolicy != null) {
-      const { clientIp } = requestMetaOf(req)
+      const { clientIp } = requestMetaOf(req, this.config.clientIp)
       const allowed = await this.accessPolicy.allows({
         clientIp,
         userNo: record.userNo,
@@ -425,7 +426,7 @@ export class AdminAuthService {
     req: Request,
     now: Date,
   ): { refreshToken: string; input: Omit<NewSessionInput, 'loginAt'> } {
-    const meta = requestMetaOf(req)
+    const meta = requestMetaOf(req, this.config.clientIp)
     const refreshToken = createRefreshToken()
     return {
       refreshToken,

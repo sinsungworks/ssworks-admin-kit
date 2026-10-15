@@ -4,6 +4,7 @@ import type { AdminPermissionCatalog } from './accounts/options.js'
 import type { AdminAuditOptions } from './audit/options.js'
 import type { AdminAuthOptions } from './auth/options.js'
 import type { AdminPermissionMap } from './auth/permission-slots.js'
+import type { AdminClientIpSource } from './auth/request-meta.js'
 import type { AdminDbConnection } from './database/connection.js'
 import type { AdminLegalOptions } from './legal/options.js'
 
@@ -45,6 +46,12 @@ export interface AdminServerOptions {
    * 와 한 상수에서 만든다.
    */
   legal?: AdminLegalOptions
+  /**
+   * 클라이언트 IP 의 출처(2f-1 스펙 ④ C1). 기본 `'req.ip'` — Express `trust proxy`(쓰는 쪽 main.ts)를 따른다. 엣지 프록시가
+   * `X-Real-IP` 를 덮어쓰면 `'x-real-ip'`(헤더가 없으면 req.ip). 🔴 엣지 없이 노출된 서버에 `'x-real-ip'` 를 쓰면 헤더 한 줄로
+   * IP 접근 제어를 우회한다. 세션 행 · 감사 · IP 정책이 같은 값을 본다. 두 값 밖이면 기동에서 멈춘다.
+   */
+  clientIp?: AdminClientIpSource
 }
 
 /** 정적 옵션 — `RouterModule` 이 모듈 정의 시점의 값을 요구한다(스펙 F2). */

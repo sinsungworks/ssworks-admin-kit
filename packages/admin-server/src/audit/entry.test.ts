@@ -46,7 +46,7 @@ describe('clampCodePoints', () => {
 
 describe('requestFieldsOf', () => {
   it('쿼리를 뗀 경로 · 메서드 · IP · UA', () => {
-    expect(requestFieldsOf(fakeRequest())).toEqual({
+    expect(requestFieldsOf(fakeRequest(), 'req.ip')).toEqual({
       method: 'DELETE',
       path: '/api/admin/sessions/12',
       ip: '10.0.0.1',
@@ -61,6 +61,7 @@ describe('requestFieldsOf', () => {
         headers: { 'user-agent': '😀'.repeat(400) },
         method: 'VERYLONGMETHOD',
       }),
+      'req.ip',
     )
     expect([...fields.path]).toHaveLength(AUDIT_COLUMN_WIDTHS.path)
     expect([...(fields.userAgent ?? '')]).toHaveLength(AUDIT_COLUMN_WIDTHS.userAgent)
@@ -68,10 +69,20 @@ describe('requestFieldsOf', () => {
   })
 
   it('IP · UA 가 없으면 null', () => {
-    expect(requestFieldsOf(fakeRequest({ ip: undefined, headers: {} }))).toMatchObject({
+    expect(requestFieldsOf(fakeRequest({ ip: undefined, headers: {} }), 'req.ip')).toMatchObject({
       ip: null,
       userAgent: null,
     })
+  })
+
+  it("clientIp 출처 — 'x-real-ip' 는 헤더, 둘 다 정규화한다(2f-1 P10)", () => {
+    expect(
+      requestFieldsOf(
+        fakeRequest({ headers: { 'user-agent': 'UA/1', 'x-real-ip': '::ffff:203.0.113.7' } }),
+        'x-real-ip',
+      ).ip,
+    ).toBe('203.0.113.7')
+    expect(requestFieldsOf(fakeRequest({ ip: '::ffff:10.0.0.1' }), 'req.ip').ip).toBe('10.0.0.1')
   })
 })
 
@@ -116,6 +127,7 @@ describe('buildAuditEntry', () => {
         { action: 'session.revoke', targetType: 'session' },
         { status: 200, errorCode: null },
         secretKeySet(),
+        'req.ip',
       ),
     ).toEqual({
       actorUserNo: 3n,
@@ -142,6 +154,7 @@ describe('buildAuditEntry', () => {
       { action: 'x' },
       { status: 409, errorCode: 'ERR_COMMON_CONFLICT' },
       secretKeySet(),
+      'req.ip',
     )
     expect(entry).toMatchObject({ targetType: null, targetRefNo: 99n, meta: null, statusCode: 409 })
     expect(
@@ -151,6 +164,7 @@ describe('buildAuditEntry', () => {
         { action: 'x' },
         { status: 200, errorCode: null },
         secretKeySet(),
+        'req.ip',
       ).meta,
     ).toBeNull()
   })
@@ -162,6 +176,7 @@ describe('buildAuditEntry', () => {
       { action: 'x' },
       { status: 400, errorCode: `ERR_${'X'.repeat(100)}` },
       secretKeySet(),
+      'req.ip',
     )
     expect(entry.errorCode).toHaveLength(AUDIT_COLUMN_WIDTHS.errorCode)
   })

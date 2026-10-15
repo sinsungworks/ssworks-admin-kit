@@ -38,7 +38,7 @@ import { resolveAuditConfig, type ResolvedAuditConfig } from './options.js'
     {
       provide: ADMIN_AUDIT_CONFIG,
       useFactory: (options: AdminServerOptions): ResolvedAuditConfig =>
-        resolveAuditConfig(options.audit),
+        resolveAuditConfig(options.audit, options.clientIp),
       inject: [ADMIN_SERVER_OPTIONS],
     },
     AdminAuditService,
