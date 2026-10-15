@@ -321,3 +321,9 @@ TDD — 실패하는 테스트부터. 구현자는 테스트를 먼저 만들고
 ## 14. 구현 중 정정
 
 §12 의 확인 결과와 구현 · 리뷰에서 바뀐 것을 `R<n>` 으로 더한다.
+
+- **R1 — 플랜 전 실측(2026-10-15, MariaDB 11.4 · Node 24.21 · Express 5.2.1, 임시 프로브 `src/zz-probe-ip.db.test.ts` — 지움).** 규칙 표는 프로브가 §4 모양으로 만들었다.
+  - ① (b) 팀 삭제 ∥ 규칙 쓰기 — 규칙 쪽(잔존 가드 → 팀 행 FOR UPDATE → INSERT)이 먼저 쥐면 팀 삭제 모양(teamTree → 팀 행 FOR UPDATE → 소속 셈 · 규칙 셈 비잠금)이 기다린 뒤 `{ members: 0, rules: 1 }` — ON · OFF 같다. 팀 삭제(teamTree → 팀 행 → DELETE)가 먼저 쥐면 규칙 쪽의 참조 잠금(가드 → 팀 행 FOR UPDATE)이 기다린 뒤 행 없음 — ON 에서도 1020 이 없다(잠금 읽기가 읽기 뷰보다 먼저다). §5-4 표 그대로다.
+  - ② (a) 대상 사용자의 로그인 실패(users 행 FOR UPDATE → UPDATE)를 쥔 동안 규칙 쓰기 모양(가드 → users 행 FOR UPDATE → 셈 비잠금 → INSERT)이 기다렸다 성공 — ON · OFF 같다. 🔴 RED 모양(가드 → 셈 → users 행 FOR UPDATE)은 ON 에서 `1020 Record has changed since last read in table 'users'`, OFF 는 성공 — §9-2 (r3) 의 RED 실험이 실제로 RED 다.
+  - ③ (c) 대표 팀 `LEFT JOIN (SELECT userNo, MIN(teamNo) … GROUP BY userNo)` — 소속 둘이면 작은 번호(`bigint`), 무소속이면 `null`. `json_contains(r.permissions, '"*"')` 와 함께 써도 그대로다. 사용자 수정이 `teamNo` 만으로 가드를 잡게 된 뒤의 기존 경합 테스트(`users.snapshot` · `users.team`)와 (d) refresh 의 회전 경합 테스트는 구현 Task 가 `pnpm test:db` 전량으로 잰다.
+  - ④ (e) 헤더 — `X-Real-IP` 를 두 번 보내면 `req.headers['x-real-ip']` 는 배열이 아니라 `'1.2.3.4, 5.6.7.8'` 한 문자열이다(Node 가 이어 붙인다) — P10 의 쉼표 거부가 이 모양을 막는다. 헤더가 없으면 `undefined`. `listen(0, '127.0.0.1')` 의 `req.ip` 는 `'127.0.0.1'`, 듀얼스택(`'::'`)에 IPv4 로 붙으면 `'::ffff:127.0.0.1'`. 기존 테스트 중 `::ffff:` 값을 기대하는 것은 없다(서비스 테스트의 `fakeRequest` 는 `10.0.0.1` 등 일반 IPv4) — 정규화로 바뀌는 기대값은 `request-meta.test.ts` 뿐이다.
