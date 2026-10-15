@@ -20,6 +20,8 @@ export const TEST_CATALOG = definePermissions(
     TEAMS_WRITE: 'org.teams:write',
     LEGAL_READ: 'setting.legal:read',
     LEGAL_PUBLISH: 'setting.legal:publish',
+    IP_ACCESS_READ: 'setting.ipAccess:read',
+    IP_ACCESS_WRITE: 'setting.ipAccess:write',
   },
   {
     implies: {
@@ -29,6 +31,7 @@ export const TEST_CATALOG = definePermissions(
       'board.posts:delete': ['board.posts:write'],
       'org.teams:write': ['org.teams:read'],
       'setting.legal:publish': ['setting.legal:read'],
+      'setting.ipAccess:write': ['setting.ipAccess:read'],
     },
   },
 )

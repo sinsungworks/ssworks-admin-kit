@@ -74,10 +74,11 @@ describe('🔴 IP 쓰기 셋은 잔존 가드 행을 잡는다 — 읽기는 잡
       expect(waited, name).toBe(true)
       if (!result.ok) throw result.error
     }
-    for (const [name, read] of [
+    const reads: [string, () => Promise<unknown>][] = [
       ['list', () => service().list()],
       ['preview', () => service().preview({ op: 'delete', ruleNo: v4! }, principal(a), A_IP)],
-    ] as const) {
+    ]
+    for (const [name, read] of reads) {
       const { waited, result } = await underHeld(t, holdGuard(GUARD_LOCK_SUPER_ADMIN), read)
       expect(waited, name).toBe(false)
       if (!result.ok) throw result.error

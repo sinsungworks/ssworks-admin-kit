@@ -26,6 +26,7 @@ import { AdminSessionsModule } from './sessions/sessions.module.js'
 import { ADMIN_SERVER_OPTIONS, KYSELY } from './tokens.js'
 import { AdminUsersModule } from './users/users.module.js'
 import { AdminTeamsModule } from './teams/teams.module.js'
+import { AdminIpAccessModule } from './ip-access/ip-access.module.js'
 import { AdminLegalModule } from './legal/legal.module.js'
 
 // 정본: hangang-home apps/api/src/app.module.ts(전역 필터 · 가드를 DI 로) · gise database.module.ts(onModuleDestroy)
@@ -44,6 +45,7 @@ const ADMIN_ROUTE_MODULES: readonly Type[] = [
   AdminUsersModule,
   AdminTeamsModule,
   AdminLegalModule,
+  AdminIpAccessModule,
 ]
 
 const DEFAULT_ROUTE_PREFIX = 'admin'
