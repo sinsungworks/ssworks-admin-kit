@@ -2,7 +2,7 @@
   "name": "@ssworks/admin-server",
   "version": "0.3.0",
   "private": true,
-  "description": "관리자 API 공통 NestJS 모듈 — 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마. 인증 · 사용자 · 역할 · 팀 · 약관 · IP 는 Phase 2 후속 PR.",
+  "description": "관리자 API 공통 NestJS 모듈 — 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 · 인증 · 세션 · 감사 · 역할 · 사용자 · 팀 · 약관. IP 접근 제어는 Phase 2 후속 PR.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

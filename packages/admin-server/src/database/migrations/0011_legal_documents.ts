@@ -5,7 +5,8 @@ import { ASCII_BIN, TABLE_OPTIONS, comment } from './_shared.js'
 // 바꾼 점:
 //  - PK 는 bigint unsigned(gise 는 integer) — 쓰는 쪽 동의 기록이 legalDocNo 를 FK 로 걸 때 그 타입을 맞춘다.
 //  - kind 는 varchar(32) ascii_bin(gise varchar(16)) — 종류 옵션 형식 ^[A-Za-z0-9_]{1,32}$ 와 같은 폭(2e 스펙 B14).
-//  - 발행자는 publishedByUserNo(gise publishBy) — admin-shared 계약 이름 그대로. FK 는 gise 와 같은 SET NULL.
+//  - 이름은 admin-shared 계약을 따른다 — PK legalDocumentNo → legalDocNo, 발행자 publishBy → publishedByUserNo,
+//    FK fkLegalDocumentsPublishBy → fkLegalDocumentsPublishedBy(gise 006). FK 동작은 gise 와 같은 SET NULL.
 //  - 약관 발행 직렬화 행 legalPublish 를 같은 장에 넣는다(2e 스펙 ⑩ L1 · ⑪ A1). 인자 타입 Kysely<unknown>(2a R2).
 // 🔴 append-only 다 — 수정은 새 판 INSERT 다. 동의한 문서가 사후에 바뀌면 동의 기록의 증거 능력이 사라진다(gise · axion).
 //    소스에 UPDATE · DELETE 경로가 없음을 legal/legal-append-only.test.ts 가 지킨다.
