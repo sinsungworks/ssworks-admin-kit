@@ -36,9 +36,11 @@ const BLOCKED = {
     action: CoreAuditActions.AUTH_LOGIN_BLOCKED_INACTIVE,
     errorCode: CommonErrorCodes.ERR_RESIGNED_USER,
   },
+  // 🔴 막힌 로그인은 틀린 비밀번호와 같은 401 ERR_LOGIN_FAILED 다(2f-2a 스펙 A6) — 감사도 응답과 같은 코드를 남기고 사유는
+  //    액션이 말한다. 가드 · refresh 의 access.blocked 는 403 ERR_IP_NOT_ALLOWED 그대로.
   ip: {
     action: CoreAuditActions.AUTH_LOGIN_BLOCKED_IP,
-    errorCode: CommonErrorCodes.ERR_IP_NOT_ALLOWED,
+    errorCode: CommonErrorCodes.ERR_LOGIN_FAILED,
   },
   // 🔴 잠긴 동안의 로그인은 실패와 같은 401 ERR_LOGIN_FAILED 다(2b 스펙 §14 R7) — 감사도 응답과 같은 코드를 남긴다.
   locked: {

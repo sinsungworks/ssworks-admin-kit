@@ -17,9 +17,9 @@ import { isResigned, isSessionExpired } from './account-policy.js'
 import type { AdminAuthRepository } from './auth.repository.js'
 import { AUTH_MESSAGES } from './errors.js'
 import type { AdminAccessPolicy, AdminAuthEvent, AdminAuthEventSink } from './hooks.js'
-import { isLocked, nextLoginState } from './login-policy.js'
+import { isLocked, needsReset } from './login-policy.js'
 import type { ResolvedAuthConfig } from './options.js'
-import { checkPasswordWithCounter, updateLoginState } from './password-check.js'
+import { checkPasswordWithCounter } from './password-check.js'
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.js'
 import type { AdminPrincipal } from './principal.js'
 import { createRefreshToken, hashRefreshToken } from './refresh-token.js'
@@ -42,6 +42,9 @@ import { AdminSessionStore, type AdminSessionRow, type NewSessionInput } from '.
 //  - 🔴 회전 · 유예 발급은 users 를 세션보다 먼저 공유 잠금으로 잡는다(lockCredential 'share' — 2f-2a 스펙 A7 · A8). 퇴사 ·
 //    초기화 · 본인 비밀번호 변경(users X → 세션)과 같은 순서라 교착이 없다(2d R10-3). IP 는 그 트랜잭션 앞 — 잠금을 쥔 채
 //    정책을 묻지 않는다(그래서 refresh 는 IP → 퇴사 순서).
+//  - 🔴 로그인 순서는 IP → 비밀번호 → 확정 트랜잭션(잠김 → 퇴사 → 되돌림 → 세션)이다(2f-2a 스펙 ② I1 · A1 · A2). 막힌 주소는
+//    비밀번호를 보지 않고 같은 401 — 정답 오라클 · 바깥의 잠금 DoS 가 없다(hangang · 2b 는 비밀번호 뒤 IP 403 이었다). 확정
+//    트랜잭션이 users 를 세션보다 먼저 잠그고 그 행으로 판정해, 검증 뒤 커밋된 초기화 · 즉시 퇴사를 본다(로그인 TOCTOU).
 
 export interface AdminTokenPair {
   accessToken: string
@@ -50,6 +53,13 @@ export interface AdminTokenPair {
 
 /** IP 판정 하나의 결과(2f-2a 스펙 A13) — 판정만 담는다. 이벤트 · 오류는 부른 쪽이 낸다 */
 type IpVerdict = { allowed: true } | { allowed: false; clientIp: string | null }
+
+/** 로그인 확정 트랜잭션의 판정(2f-2a 스펙 A2) — 트랜잭션은 값을 돌려주고 이벤트 · 오류는 커밋 뒤에 낸다 */
+type LoginOutcome =
+  | { kind: 'ok'; sessionNo: bigint }
+  | { kind: 'stale'; loginFailCount: number | null }
+  | { kind: 'locked' }
+  | { kind: 'resigned' }
 
 @Injectable()
 export class AdminAuthService {
@@ -67,21 +77,36 @@ export class AdminAuthService {
   ) {}
 
   /**
-   * 🔴 비밀번호 검증이 먼저다 — 존재 · 퇴사 · IP 는 비밀번호를 아는 사람에게만 드러난다(gise · hangang 코드 리뷰 I1).
-   * 실패 카운터는 비밀번호가 틀렸을 때만 오른다(hangang I2). 순서: 비밀번호 → 잠김(같은 401) → 퇴사 403 → IP 403.
+   * 🔴 순서: (정책이 있으면) IP → 비밀번호 → 확정 트랜잭션(잠김 → 퇴사 → 되돌림 → 세션)(2f-2a 스펙 §5-1). 존재 · 잠김 · 퇴사는
+   * 비밀번호를 아는 사람에게만 드러난다(gise · hangang 코드 리뷰 I1). IP 는 비밀번호보다 먼저라 막힌 주소에서는 아무것도
+   * 드러나지 않는다. 실패 카운터는 비밀번호가 틀렸을 때만 오르고(hangang I2) 성공 직전에만 되돌린다.
    */
   async login(input: { userId: string; password: string }, req: Request): Promise<AdminTokenPair> {
     const now = new Date()
     const credential = await this.repo.findCredentialByUserId(input.userId)
 
     if (credential == null) {
-      // 🔴 없는 계정에도 argon2 를 한 번 태운다 — 응답 시간으로 계정이 열거되지 않게(gise). 결과는 버린다.
+      // 🔴 없는 계정에도 argon2 를 한 번 태운다 — 응답 시간으로 계정이 열거되지 않게(gise). 결과는 버린다. IP 는 보지 않는다 —
+      //    응답이 어차피 같은 401 이다.
       await verifyPassword(DUMMY_PASSWORD_HASH, input.password)
       await this.emit(
         { type: 'login.fail', userId: input.userId, userNo: null, loginFailCount: null },
         req,
       )
-      throw loginFailed()
+      throw this.loginFailed()
+    }
+
+    // 🔴 IP 는 비밀번호보다 먼저다(2f-2a 스펙 ② I1 · A4) — 막힌 주소에서는 비밀번호 · 잠김 · 퇴사를 보지 않는다. 맞은 비밀번호에만
+    //    다른 응답(403)을 주면 막힌 주소에서도 정답을 알아내고, 틀린 비밀번호를 세면 바깥에서 계정을 잠근다. 더미 argon2 로 없는
+    //    계정 · 틀린 비밀번호와 같은 비용을 치른다.
+    const verdict = await this.ipVerdict(credential.userNo, req)
+    if (!verdict.allowed) {
+      await verifyPassword(DUMMY_PASSWORD_HASH, input.password)
+      await this.emit(
+        { type: 'login.blocked', reason: 'ip', userId: input.userId, userNo: credential.userNo },
+        req,
+      )
+      throw this.loginFailed()
     }
 
     const check = await checkPasswordWithCounter(
@@ -102,32 +127,44 @@ export class AdminAuthService {
         },
         req,
       )
-      throw loginFailed()
+      throw this.loginFailed()
     }
 
-    // 🔴 잠김은 맞은 비밀번호 바로 다음, 퇴사 · IP 보다 먼저 본다. 잠긴 동안은 맞든 틀리든 같은 401 이다 — 맞은 비밀번호에만
-    //    다른 응답(423 · 퇴사 403 · IP 403)을 주면 잠금 중에도 대입을 계속해 정답을 알아낸다(최종 리뷰 F1, 2026-10-13 사용자 결정).
-    //    잠금 판정은 방금 잠근 행으로 한다 — 비밀번호 검증 전에 읽은 스냅숏이면 동시 요청이 잠근 뒤에도 통과한다.
-    const settled = await updateLoginState(this.db, this.repo, credential.userNo, (current) =>
-      isLocked(current.lockUntil, now)
-        ? current
-        : nextLoginState(current, 'success', now, this.config.lockout),
-    )
-    if (isLocked(settled.lockUntil, now)) {
+    const issued = this.newSession(credential.userNo, req, now)
+    const outcome = await runWriteTransaction(this.db, async (trx): Promise<LoginOutcome> => {
+      // 🔴 첫 문장이 잠금 읽기다(2f-2a 스펙 A2) — users 를 세션보다 먼저 잡고(초기화 · 퇴사와 같은 순서), 스냅샷 격리 ON 에서도
+      //    읽기 뷰를 먼저 열지 않는다. 판정은 이 행으로 한다 — 검증 전에 읽은 credential 로 하면 그사이 커밋된 초기화 · 즉시 퇴사를
+      //    못 보고 옛 비밀번호의 세션을 남긴다(로그인 TOCTOU).
+      const locked = await this.repo.lockCredential(trx, credential.userNo, 'update')
+      // 검증한 뒤 비밀번호가 바뀌었다(초기화 · 본인 변경) — 대입 시도가 아니니 세지 않는다(스펙 A3).
+      if (locked == null || locked.passwordHash !== credential.passwordHash) {
+        return { kind: 'stale', loginFailCount: locked?.loginFailCount ?? null }
+      }
+      // 🔴 잠김은 퇴사보다 먼저 — 잠긴 동안은 맞든 틀리든 같은 401 이다(2b 최종 리뷰 F1, 2026-10-13 사용자 결정).
+      if (isLocked(locked.lockUntil, now)) return { kind: 'locked' }
+      if (isResigned(locked.resignAt, now)) return { kind: 'resigned' }
+      // 되돌림은 성공 직전에만 — 잠김 · 퇴사 · IP 로 막힌 맞은 비밀번호는 카운터를 그대로 둔다(스펙 §6 #3).
+      if (needsReset(locked)) {
+        await this.repo.writeLoginState(trx, credential.userNo, {
+          loginFailCount: 0,
+          lockUntil: null,
+        })
+      }
+      const sessionNo = await this.sessions.create({ ...issued.input, loginAt: now }, trx)
+      return { kind: 'ok', sessionNo }
+    })
+
+    if (outcome.kind === 'ok') {
       await this.emit(
-        {
-          type: 'login.blocked',
-          reason: 'locked',
-          userId: input.userId,
-          userNo: credential.userNo,
-        },
+        { type: 'login.success', userNo: credential.userNo, sessionNo: outcome.sessionNo },
         req,
       )
-      throw loginFailed()
+      return {
+        accessToken: this.tokens.sign({ userNo: credential.userNo, sessionNo: outcome.sessionNo }),
+        refreshToken: issued.refreshToken,
+      }
     }
-
-    // 여기부터는 비밀번호가 맞았고 잠기지 않았다.
-    if (isResigned(credential.resignAt, now)) {
+    if (outcome.kind === 'resigned') {
       await this.emit(
         {
           type: 'login.blocked',
@@ -139,23 +176,28 @@ export class AdminAuthService {
       )
       throw new BusinessError(CommonErrorCodes.ERR_RESIGNED_USER, AUTH_MESSAGES.resigned)
     }
-
-    const verdict = await this.ipVerdict(credential.userNo, req)
-    if (!verdict.allowed) {
+    if (outcome.kind === 'locked') {
       await this.emit(
-        { type: 'login.blocked', reason: 'ip', userId: input.userId, userNo: credential.userNo },
+        {
+          type: 'login.blocked',
+          reason: 'locked',
+          userId: input.userId,
+          userNo: credential.userNo,
+        },
         req,
       )
-      throw ipNotAllowed(verdict.clientIp)
+      throw this.loginFailed()
     }
-
-    const issued = this.newSession(credential.userNo, req, now)
-    const sessionNo = await this.sessions.create({ ...issued.input, loginAt: now })
-    await this.emit({ type: 'login.success', userNo: credential.userNo, sessionNo }, req)
-    return {
-      accessToken: this.tokens.sign({ userNo: credential.userNo, sessionNo }),
-      refreshToken: issued.refreshToken,
-    }
+    await this.emit(
+      {
+        type: 'login.fail',
+        userId: input.userId,
+        userNo: credential.userNo,
+        loginFailCount: outcome.loginFailCount,
+      },
+      req,
+    )
+    throw this.loginFailed()
   }
 
   /**
@@ -475,6 +517,14 @@ export class AdminAuthService {
     }
   }
 
+  /** 로그인 401 — 정책이 주입됐으면 접속 위치까지 말한다(2f-2a 스펙 A5). 한 배포 안에서 모든 로그인 실패가 같은 문구다 */
+  private loginFailed(): BusinessError {
+    return new BusinessError(
+      CommonErrorCodes.ERR_LOGIN_FAILED,
+      this.accessPolicy == null ? AUTH_MESSAGES.loginFailed : AUTH_MESSAGES.loginFailedWithIp,
+    )
+  }
+
   /** 🔴 기록기가 던져도 인증은 계속된다(스펙 B8). 메시지에 이벤트 내용을 싣지 않는다. */
   private async emit(event: AdminAuthEvent, req: Request): Promise<void> {
     if (this.events == null) return
@@ -485,10 +535,6 @@ export class AdminAuthService {
       this.logger.warn(`인증 이벤트 ${event.type} 를 기록하지 못했다: ${reason}`)
     }
   }
-}
-
-function loginFailed(): BusinessError {
-  return new BusinessError(CommonErrorCodes.ERR_LOGIN_FAILED, AUTH_MESSAGES.loginFailed)
 }
 
 function refreshEnded(): BusinessError {

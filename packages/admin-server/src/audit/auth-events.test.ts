@@ -54,9 +54,10 @@ describe('auditEntryOfAuthEvent(2c 스펙 §5-5)', () => {
     ],
     [
       { type: 'login.blocked', reason: 'ip', userId: 'a', userNo: 3n },
+      // 🔴 막힌 로그인은 틀린 비밀번호와 같은 401 이다(2f-2a 스펙 A6) — 코드도 응답과 같게, 사유는 액션이 말한다
       {
         action: CoreAuditActions.AUTH_LOGIN_BLOCKED_IP,
-        errorCode: CommonErrorCodes.ERR_IP_NOT_ALLOWED,
+        errorCode: CommonErrorCodes.ERR_LOGIN_FAILED,
       },
     ],
     [

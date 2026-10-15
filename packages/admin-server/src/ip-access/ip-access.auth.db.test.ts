@@ -3,6 +3,7 @@ import { CommonErrorCodes, CoreAuditActions, errorRespSchema } from '@ssworks/ad
 import request, { type Response } from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { bootAdminApp } from '../test-support/admin-app.js'
+import { AUTH_MESSAGES } from '../auth/errors.js'
 import { addToTeam, seedRole, seedTeam, seedUser, type SeededUser } from '../test-support/auth.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { testDbServer } from '../test-support/db-url.js'
@@ -48,6 +49,24 @@ function expectBlocked(response: Response, clientIp: string | null) {
   expect(body.details).toEqual({ clientIp })
 }
 
+/** 🔴 막힌 로그인은 비밀번호를 보지 않고 틀린 비밀번호와 같은 401 이다(2f-2a 스펙 ② I1) — 주소를 싣지 않는다 */
+function expectLoginBlocked(response: Response) {
+  expect(response.status).toBe(401)
+  const body = errorRespSchema.parse(response.body)
+  expect(body.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
+  expect(body.message).toBe(AUTH_MESSAGES.loginFailedWithIp)
+  expect(body.details).toBeUndefined()
+}
+
+async function failCountOf(userNo: bigint): Promise<number> {
+  const row = await t.db
+    .selectFrom('users')
+    .select('loginFailCount')
+    .where('userNo', '=', userNo)
+    .executeTakeFirstOrThrow()
+  return row.loginFailCount
+}
+
 async function lastAudit(action: string, userNo: bigint) {
   return t.db
     .selectFrom('auditLogs')
@@ -59,18 +78,20 @@ async function lastAudit(action: string, userNo: bigint) {
 }
 
 describe('로그인', () => {
-  it('🔴 막힌 주소 — 비밀번호가 맞은 뒤 403 + clientIp · 감사 auth.login.blocked.ip, 틀린 비밀번호는 여전히 401', async () => {
+  it('🔴 막힌 주소 — 비밀번호를 보지 않고 401 · 감사 auth.login.blocked.ip(401), 틀린 비밀번호도 세지 않는다', async () => {
     const user = await seedUser(t.db, { roleNo: plain, userId: 'auth-blocked' })
     await seedIpRule(t.db, { scopeType: 'user', scopeRefNo: user.userNo, cidr: '10.0.0.0/8' })
-    expectBlocked(await login(app, user), '127.0.0.1')
+    expectLoginBlocked(await login(app, user))
     expect(await lastAudit(CoreAuditActions.AUTH_LOGIN_BLOCKED_IP, user.userNo)).toMatchObject({
       ip: '127.0.0.1',
-      statusCode: 403,
+      statusCode: 401,
+      errorCode: CommonErrorCodes.ERR_LOGIN_FAILED,
     })
     const wrong = await request(app.getHttpServer())
       .post('/admin/auth/login')
       .send({ userId: user.userId, password: 'wrong-password' })
-    expect(wrong.status).toBe(401)
+    expectLoginBlocked(wrong)
+    expect(await failCountOf(user.userNo)).toBe(0)
   })
 
   it('Review Focus 5 — 두 팀에 걸친 계정은 대표 팀(작은 번호)의 규칙만 본다', async () => {
@@ -82,7 +103,7 @@ describe('로그인', () => {
     await seedIpRule(t.db, { scopeType: 'team', scopeRefNo: big, cidr: '10.0.0.0/8' })
     expect((await login(app, user)).status).toBe(200)
     await seedIpRule(t.db, { scopeType: 'team', scopeRefNo: small, cidr: '10.0.0.0/8' })
-    expectBlocked(await login(app, user), '127.0.0.1')
+    expectLoginBlocked(await login(app, user))
   })
 })
 
@@ -128,13 +149,20 @@ describe("clientIp 'x-real-ip'", () => {
     expect(await lastAudit(CoreAuditActions.AUTH_LOGIN_SUCCESS, user.userNo)).toMatchObject({
       ip: '10.1.2.3',
     })
-    expectBlocked(await login(realIpApp, user, '203.0.113.9'), '203.0.113.9')
+    expectLoginBlocked(await login(realIpApp, user, '203.0.113.9'))
+    expect((await lastAudit(CoreAuditActions.AUTH_LOGIN_BLOCKED_IP, user.userNo))?.ip).toBe(
+      '203.0.113.9',
+    )
   })
 
-  it('🔴 중복 헤더(쉼표로 이어짐)는 null — 막힌다 · 기본 req.ip 앱은 헤더를 보지 않는다', async () => {
+  it('Review Focus 4 — 🔴 중복 헤더(쉼표로 이어짐)는 주소 없음 — 401 · 감사 ip null, 기본 req.ip 앱은 헤더를 보지 않는다', async () => {
     const user = await seedUser(t.db, { roleNo: plain, userId: 'auth-xri-dup' })
     await seedIpRule(t.db, { scopeType: 'user', scopeRefNo: user.userNo, cidr: '10.0.0.0/8' })
-    expectBlocked(await login(realIpApp, user, ['10.1.2.3', '203.0.113.9']), null)
-    expectBlocked(await login(app, user, '10.1.2.3'), '127.0.0.1')
+    expectLoginBlocked(await login(realIpApp, user, ['10.1.2.3', '203.0.113.9']))
+    expect((await lastAudit(CoreAuditActions.AUTH_LOGIN_BLOCKED_IP, user.userNo))?.ip).toBeNull()
+    expectLoginBlocked(await login(app, user, '10.1.2.3'))
+    expect((await lastAudit(CoreAuditActions.AUTH_LOGIN_BLOCKED_IP, user.userNo))?.ip).toBe(
+      '127.0.0.1',
+    )
   })
 })

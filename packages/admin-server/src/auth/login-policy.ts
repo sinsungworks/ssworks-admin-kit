@@ -1,7 +1,7 @@
 // 정본: ssworks-gise-home apps/api/src/modules/auth/login-policy.ts (= hangang-home modules/auth/login-policy.ts — 필드
 //       이름만 다른 같은 알고리즘)
 // 바꾼 점: 횟수 · 시간이 옵션이다(기본값 같음, 스펙 §4-1). 필드 이름은 코어 users 컬럼(loginFailCount · lockUntil —
-//   hangang). 성공 때 쓰기를 아끼는 needsReset(재인증이 쓴다 — 로그인은 updateLoginState 로 잠근 행에서 판정)을 더했다.
+//   hangang). 성공 때 쓰기를 아끼는 needsReset(재인증이 쓴다 — 로그인은 확정 트랜잭션에서 잠근 행으로 판정 — 2f-2a)을 더했다.
 
 export interface LoginLockout {
   maxFailures: number
@@ -10,7 +10,7 @@ export interface LoginLockout {
 
 export const DEFAULT_LOCKOUT: LoginLockout = { maxFailures: 5, lockMs: 15 * 60 * 1000 }
 
-/** users 의 잠금 두 컬럼. 리포지토리가 그대로 읽고 쓴다(`AdminAuthRepository.updateLoginState`). */
+/** users 의 잠금 두 컬럼. 리포지토리가 그대로 읽고 쓴다(`AdminAuthRepository.lockCredential` · `writeLoginState`). */
 export interface AdminLoginState {
   loginFailCount: number
   lockUntil: Date | null

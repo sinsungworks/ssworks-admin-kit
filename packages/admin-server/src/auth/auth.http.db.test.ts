@@ -186,14 +186,14 @@ describe('로그인 실패 · 잠금 · 퇴사 · 만료', () => {
         await request(server()).post(LOGIN).send({ userId: user.userId, password: 'wrong-pass' }),
         401,
         CommonErrorCodes.ERR_LOGIN_FAILED,
-        AUTH_MESSAGES.loginFailed,
+        AUTH_MESSAGES.loginFailedWithIp,
       )
     }
     expectError(
       await request(server()).post(LOGIN).send({ userId: user.userId, password: user.password }),
       401,
       CommonErrorCodes.ERR_LOGIN_FAILED,
-      AUTH_MESSAGES.loginFailed,
+      AUTH_MESSAGES.loginFailedWithIp,
     )
     await t.db
       .updateTable('users')
@@ -410,19 +410,15 @@ describe('재인증 · 로그아웃', () => {
 })
 
 describe('IP 자리(2f)', () => {
-  it('🔴 정책이 거부하면 로그인은 비밀번호가 맞은 뒤에만 403 + details.clientIp', async () => {
+  it('🔴 정책이 거부하면 로그인은 비밀번호를 보지 않고 틀린 비밀번호와 같은 401 — details · 쿠키 없음(2f-2a 스펙 ② I1)', async () => {
     const user = await seedUser(t.db, { roleNo: readerRole })
     policy.allow = false
-    expectError(
-      await request(server()).post(LOGIN).send({ userId: user.userId, password: 'wrong-pass' }),
-      401,
-      CommonErrorCodes.ERR_LOGIN_FAILED,
-    )
-    const blocked = await request(server())
-      .post(LOGIN)
-      .send({ userId: user.userId, password: user.password })
-    expectError(blocked, 403, CommonErrorCodes.ERR_IP_NOT_ALLOWED, AUTH_MESSAGES.ipNotAllowed)
-    expect(typeof blocked.body.details.clientIp).toBe('string')
+    for (const password of ['wrong-pass', user.password]) {
+      const blocked = await request(server()).post(LOGIN).send({ userId: user.userId, password })
+      expectError(blocked, 401, CommonErrorCodes.ERR_LOGIN_FAILED, AUTH_MESSAGES.loginFailedWithIp)
+      expect(blocked.body.details).toBeUndefined()
+      expect(setCookies(blocked)).toEqual([])
+    }
   })
 
   it('로그인 뒤 막히면 가드가 403 + access.blocked:ip 이벤트', async () => {

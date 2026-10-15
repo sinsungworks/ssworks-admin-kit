@@ -64,6 +64,15 @@ async function sessionRows(userNo: bigint) {
     .execute()
 }
 
+async function failCountOf(userNo: bigint): Promise<number> {
+  const row = await t.db
+    .selectFrom('users')
+    .select('loginFailCount')
+    .where('userNo', '=', userNo)
+    .executeTakeFirstOrThrow()
+  return row.loginFailCount
+}
+
 function codeOf(result: Settled<unknown>): string {
   if (result.ok) return 'ok'
   return result.error instanceof BusinessError ? result.error.code : String(result.error)
@@ -163,6 +172,21 @@ describe('회전 ∥ 사용자 쓰기 — 2d R10-3', () => {
     expect(rows.filter((row) => row.revokedReason === 'rotated')).toHaveLength(2)
   })
 
+  it('🔴 (R5) 원시 연결이 users 공유 잠금을 쥔 동안의 refresh 는 기다리지 않는다 — 회전은 공유 잠금이다(2f-2a 스펙 A9)', async () => {
+    const kit = createAuthKit(t, { policy: false })
+    const { user, tokens } = await signIn()
+    const result = await whileHeld(
+      t,
+      (connection) =>
+        connection.query('select user_no from users where user_no = ? lock in share mode', [
+          user.userNo,
+        ]),
+      () => kit.service.refresh(tokens.refreshToken, fakeRequest()),
+      { expectWait: false },
+    )
+    expect(codeOf(result)).toBe('ok')
+  })
+
   it('Review Focus 3 — 같은 사용자의 로그인 확정(users X)이 쥔 동안의 refresh 는 기다렸다 회전한다', async () => {
     const kit = createAuthKit(t, { policy: false })
     const { user, tokens } = await signIn()
@@ -170,6 +194,91 @@ describe('회전 ∥ 사용자 쓰기 — 2d R10-3', () => {
       t,
       lockUser(user.userNo),
       () => kit.service.refresh(tokens.refreshToken, fakeRequest()),
+      { expectWait: true },
+    )
+    expect(codeOf(result)).toBe('ok')
+  })
+})
+
+describe('로그인 ∥ 사용자 쓰기 — 로그인 TOCTOU', () => {
+  it.each([false, true])(
+    '🔴 (L1) 초기화가 로그인의 검증과 확정 사이에 커밋 — 401, 세션 없음, 카운터 그대로(스냅샷 격리 %s)',
+    async (snapshot) => {
+      const db = await snapshotKysely(t, snapshot)
+      try {
+        const kit = createAuthKit(t, { policy: false, db })
+        const user = await seedUser(t.db, { roleNo, loginFailCount: 2 })
+        const result = await whileHeld(
+          t,
+          async (connection) => {
+            await lockUser(user.userNo)(connection)
+            await connection.query(
+              "update users set password = 'reset-hash', is_password_change_required = 1 where user_no = ?",
+              [user.userNo],
+            )
+          },
+          () => kit.service.login({ userId: user.userId, password: user.password }, fakeRequest()),
+          { expectWait: true },
+        )
+        expect(codeOf(result)).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
+        expect(await sessionRows(user.userNo)).toEqual([])
+        expect(await failCountOf(user.userNo)).toBe(2)
+      } finally {
+        await db.destroy()
+      }
+    },
+  )
+
+  it.each([false, true])(
+    '🔴 (L2) 즉시 퇴사가 로그인의 검증과 확정 사이에 커밋 — 403, 세션 없음(스냅샷 격리 %s)',
+    async (snapshot) => {
+      const db = await snapshotKysely(t, snapshot)
+      try {
+        const kit = createAuthKit(t, { policy: false, db })
+        const user = await seedUser(t.db, { roleNo })
+        const result = await whileHeld(
+          t,
+          async (connection) => {
+            await lockUser(user.userNo)(connection)
+            await connection.query('update users set resign_at = ? where user_no = ?', [
+              past(),
+              user.userNo,
+            ])
+          },
+          () => kit.service.login({ userId: user.userId, password: user.password }, fakeRequest()),
+          { expectWait: true },
+        )
+        expect(codeOf(result)).toBe(CommonErrorCodes.ERR_RESIGNED_USER)
+        expect(await sessionRows(user.userNo)).toEqual([])
+      } finally {
+        await db.destroy()
+      }
+    },
+  )
+
+  it('Review Focus 1 — 같은 계정의 동시 로그인 다섯(여러 탭)은 확정에서 줄을 서고 모두 성공한다', async () => {
+    const kit = createAuthKit(t, { policy: false })
+    const user = await seedUser(t.db, { roleNo, loginFailCount: 1 })
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        settle(kit.service.login({ userId: user.userId, password: user.password }, fakeRequest())),
+      ),
+    )
+    expect(results.map(codeOf)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok'])
+    expect(await sessionRows(user.userNo)).toHaveLength(5)
+    expect(await failCountOf(user.userNo)).toBe(0)
+  })
+
+  it('Review Focus 2 — 같은 사용자의 회전이 users 공유 잠금을 쥔 동안의 로그인은 기다렸다 성공한다', async () => {
+    const kit = createAuthKit(t, { policy: false })
+    const user = await seedUser(t.db, { roleNo })
+    const result = await whileHeld(
+      t,
+      (connection) =>
+        connection.query('select user_no from users where user_no = ? lock in share mode', [
+          user.userNo,
+        ]),
+      () => kit.service.login({ userId: user.userId, password: user.password }, fakeRequest()),
       { expectWait: true },
     )
     expect(codeOf(result)).toBe('ok')

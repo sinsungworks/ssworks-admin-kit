@@ -10,7 +10,10 @@ import {
   seedUser,
   type AuthKit,
 } from '../test-support/auth.js'
+import { AdminAuthService } from './auth.service.js'
 import { AUTH_MESSAGES } from './errors.js'
+import { KyselyAuthRepository } from './kysely-auth.repository.js'
+import { hashPassword } from './password.js'
 import { hashRefreshToken } from './refresh-token.js'
 
 let t: TestDatabase
@@ -79,7 +82,7 @@ describe('login', () => {
       kit.service.login({ userId: 'ghost', password: 'x' }, fakeRequest()),
     )
     expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
-    expect(error.message).toBe(AUTH_MESSAGES.loginFailed)
+    expect(error.message).toBe(AUTH_MESSAGES.loginFailedWithIp)
     expect(kit.policy.calls).toHaveLength(0)
     expect(kit.events.events).toEqual([
       { type: 'login.fail', userId: 'ghost', userNo: null, loginFailCount: null },
@@ -99,7 +102,7 @@ describe('login', () => {
     ])
   })
 
-  it('🔴 5회째 잠기고, 맞은 비밀번호도 같은 401 — 정책을 부르지 않고 카운터는 그대로(F1)', async () => {
+  it('🔴 5회째 잠기고, 맞은 비밀번호도 같은 401 — 카운터는 그대로(F1)', async () => {
     const kit = createAuthKit(t)
     const user = await seedUser(t.db, { roleNo })
     for (let i = 0; i < 5; i += 1) {
@@ -113,8 +116,9 @@ describe('login', () => {
       kit.service.login({ userId: user.userId, password: user.password }, fakeRequest()),
     )
     expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
-    expect(error.message).toBe(AUTH_MESSAGES.loginFailed)
-    expect(kit.policy.calls).toHaveLength(0)
+    expect(error.message).toBe(AUTH_MESSAGES.loginFailedWithIp)
+    // IP 는 비밀번호보다 먼저 — 여섯 번 모두 물었다(2f-2a 스펙 A1)
+    expect(kit.policy.calls).toHaveLength(6)
     expect(await counters(kit, user.userNo)).toEqual(locked)
     expect(kit.events.types().at(-1)).toBe('login.blocked:locked')
   })
@@ -131,7 +135,7 @@ describe('login', () => {
       kit.service.login({ userId: user.userId, password: user.password }, fakeRequest()),
     )
     expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
-    expect(error.message).toBe(AUTH_MESSAGES.loginFailed)
+    expect(error.message).toBe(AUTH_MESSAGES.loginFailedWithIp)
   })
 
   it('🔴 동시 틀린 비밀번호 8건은 8로 세고 잠근다(F2)', async () => {
@@ -170,7 +174,7 @@ describe('login', () => {
     expect(await counters(kit, b.userNo)).toEqual({ loginFailCount: 0, lockUntil: null })
   })
 
-  it('🔴 퇴사 계정 — 틀린 비밀번호는 401(존재를 흘리지 않는다), 맞으면 403 이고 정책을 부르지 않는다', async () => {
+  it('🔴 퇴사 계정 — 틀린 비밀번호는 401(존재를 흘리지 않는다), 맞으면 403 · 카운터를 되돌리지 않는다(2f-2a 스펙 §6 #3)', async () => {
     const kit = createAuthKit(t)
     const user = await seedUser(t.db, { roleNo, resignAt: later(-60_000) })
     const wrong = await rejection(
@@ -182,7 +186,8 @@ describe('login', () => {
     )
     expect(right.code).toBe(CommonErrorCodes.ERR_RESIGNED_USER)
     expect(right.message).toBe(AUTH_MESSAGES.resigned)
-    expect(kit.policy.calls).toHaveLength(0)
+    expect(await counters(kit, user.userNo)).toEqual({ loginFailCount: 1, lockUntil: null })
+    expect(kit.policy.calls).toHaveLength(2)
     expect(kit.events.types()).toEqual(['login.fail', 'login.blocked:resigned'])
   })
 
@@ -194,7 +199,7 @@ describe('login', () => {
     ).resolves.toHaveProperty('accessToken')
   })
 
-  it('정책이 거부하면 403 ERR_IP_NOT_ALLOWED + details.clientIp, 세션을 만들지 않는다 — 대표 팀을 넘긴다', async () => {
+  it('🔴 정책이 거부하면 비밀번호를 보지 않고 같은 401 — details 없음 · 세션 없음 · 대표 팀을 넘긴다(2f-2a 스펙 ② I1)', async () => {
     const kit = createAuthKit(t)
     kit.policy.allow = false
     const user = await seedUser(t.db, { roleNo })
@@ -206,8 +211,9 @@ describe('login', () => {
         fakeRequest({ ip: '203.0.113.9' }),
       ),
     )
-    expect(error.code).toBe(CommonErrorCodes.ERR_IP_NOT_ALLOWED)
-    expect(error.details).toEqual({ clientIp: '203.0.113.9' })
+    expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
+    expect(error.message).toBe(AUTH_MESSAGES.loginFailedWithIp)
+    expect(error.details).toBeUndefined()
     expect(kit.policy.calls).toEqual([
       { clientIp: '203.0.113.9', userNo: user.userNo, teamNos: [teamNo] },
     ])
@@ -255,6 +261,79 @@ describe('login', () => {
       kit.service.login({ userId: user.userId, password: '한글 비번' }, fakeRequest()),
     )
     expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
+  })
+
+  it('🔴 막힌 주소의 틀린 비밀번호 다섯은 세지 않는다 — 바깥에서 계정을 잠글 수 없다(2f-2a 스펙 §6 #2)', async () => {
+    const kit = createAuthKit(t)
+    kit.policy.allow = false
+    const user = await seedUser(t.db, { roleNo })
+    for (let i = 0; i < 5; i += 1) {
+      const error = await rejection(
+        kit.service.login({ userId: user.userId, password: 'wrong' }, fakeRequest()),
+      )
+      expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
+    }
+    expect(await counters(kit, user.userNo)).toEqual({ loginFailCount: 0, lockUntil: null })
+    kit.policy.allow = true
+    await expect(
+      kit.service.login({ userId: user.userId, password: user.password }, fakeRequest()),
+    ).resolves.toHaveProperty('accessToken')
+  })
+
+  it('🔴 막힌 주소의 맞은 비밀번호는 카운터를 되돌리지 않는다(2f-2a 스펙 §6 #3)', async () => {
+    const kit = createAuthKit(t)
+    kit.policy.allow = false
+    const user = await seedUser(t.db, { roleNo, loginFailCount: 3 })
+    await rejection(
+      kit.service.login({ userId: user.userId, password: user.password }, fakeRequest()),
+    )
+    expect(await counters(kit, user.userNo)).toEqual({ loginFailCount: 3, lockUntil: null })
+  })
+
+  it('🔴 검증한 해시가 잠근 행과 다르면(그사이 초기화 · 본인 변경) 401 — 세션을 만들지 않고 세지 않는다(2f-2a 스펙 A3)', async () => {
+    const kit = createAuthKit(t)
+    const user = await seedUser(t.db, { roleNo, loginFailCount: 2 })
+    // 같은 비밀번호의 다른 해시 — 검증은 지나고 잠근 행의 해시와는 다르다(초기화가 그사이 커밋된 것과 같다)
+    const otherHash = await hashPassword(user.password)
+    class StaleRepository extends KyselyAuthRepository {
+      override async findCredentialByUserId(userId: string) {
+        const row = await super.findCredentialByUserId(userId)
+        return row == null ? null : { ...row, passwordHash: otherHash }
+      }
+    }
+    const service = new AdminAuthService(
+      kit.config,
+      new StaleRepository(t.db),
+      kit.store,
+      kit.tokens,
+      t.db,
+      kit.policy,
+      kit.events,
+    )
+    const error = await rejection(
+      service.login({ userId: user.userId, password: user.password }, fakeRequest()),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_LOGIN_FAILED)
+    expect(error.message).toBe(AUTH_MESSAGES.loginFailedWithIp)
+    expect(await counters(kit, user.userNo)).toEqual({ loginFailCount: 2, lockUntil: null })
+    expect(kit.events.events).toEqual([
+      { type: 'login.fail', userId: user.userId, userNo: user.userNo, loginFailCount: 2 },
+    ])
+    const sessions = await t.db
+      .selectFrom('sessions')
+      .select('sessionNo')
+      .where('userNo', '=', user.userNo)
+      .execute()
+    expect(sessions).toHaveLength(0)
+  })
+
+  it('정책이 없으면(IP 모듈 없음) 로그인 401 문구는 loginFailed', async () => {
+    const kit = createAuthKit(t, { policy: false })
+    const user = await seedUser(t.db, { roleNo })
+    const error = await rejection(
+      kit.service.login({ userId: user.userId, password: 'wrong' }, fakeRequest()),
+    )
+    expect(error.message).toBe(AUTH_MESSAGES.loginFailed)
   })
 })
 
