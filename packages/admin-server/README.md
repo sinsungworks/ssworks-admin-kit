@@ -2,7 +2,7 @@
 
 관리자 API 공통 NestJS 모듈 — NestJS 12 · Kysely 0.29 · MariaDB. **Phase 2 진행 중**이고 `private: true` 라 아직 발행하지 않는다(Phase 2 마지막 PR 뒤 첫 발행).
 
-지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 10장(PR 2a · 2c · 2d-1 · 2e-1)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1), 사용자 · 계정(PR 2d-2), 팀(PR 2e-1)이다. 약관 · IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
+지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 11장(PR 2a · 2c · 2d-1 · 2e-1 · 2e-2)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1), 사용자 · 계정(PR 2d-2), 팀(PR 2e-1), 약관(PR 2e-2)이다. IP 접근 제어는 다음 PR 에서 붙는다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
 
 ## 설치
 
@@ -91,18 +91,19 @@ export default defineConfig({
 export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 ```
 
-| 장 ID                          | 테이블                            |
-| ------------------------------ | --------------------------------- |
-| `0001_roles`                   | `roles`                           |
-| `0002_users`                   | `users`                           |
-| `0003_teams`                   | `teams`                           |
-| `0004_team_closure`            | `team_closure`                    |
-| `0005_team_user_map`           | `team_user_map`                   |
-| `0006_user_employment_periods` | `user_employment_periods`         |
-| `0007_sessions`                | `sessions`                        |
-| `0008_audit_logs`              | `audit_logs`                      |
-| `0009_guard_locks`             | `guard_locks`(센티넬 행 하나)     |
-| `0010_team_tree_lock`          | `guard_locks` 에 행 하나(팀 트리) |
+| 장 ID                          | 테이블                                                  |
+| ------------------------------ | ------------------------------------------------------- |
+| `0001_roles`                   | `roles`                                                 |
+| `0002_users`                   | `users`                                                 |
+| `0003_teams`                   | `teams`                                                 |
+| `0004_team_closure`            | `team_closure`                                          |
+| `0005_team_user_map`           | `team_user_map`                                         |
+| `0006_user_employment_periods` | `user_employment_periods`                               |
+| `0007_sessions`                | `sessions`                                              |
+| `0008_audit_logs`              | `audit_logs`                                            |
+| `0009_guard_locks`             | `guard_locks`(센티넬 행 하나)                           |
+| `0010_team_tree_lock`          | `guard_locks` 에 행 하나(팀 트리)                       |
+| `0011_legal_documents`         | `legal_documents` + `guard_locks` 에 행 하나(약관 발행) |
 
 🔴 패키지가 새 장을 내면 changeset 이 알린다 — 스텁 한 줄을 더한다. `assertAdminMigrationStubs` 가 빠진 장을 잡는다. 시드(첫 관리자 계정 · 역할)는 프로젝트 몫이다.
 
@@ -242,6 +243,8 @@ AdminServerModule.forRootAsync({
       'users.manage': 'org.users:write', // POST · PATCH /users…
       'teams.read': 'org.teams:read', // GET /teams/tree(users.read 로도 열린다 — 사용자 폼의 팀 고르기)
       'teams.manage': 'org.teams:write', // POST · PATCH · DELETE /teams…
+      'legal.read': 'setting.legal:read', // GET /legal-documents…
+      'legal.publish': 'setting.legal:publish', // POST /legal-documents
     },
   }),
 })
@@ -483,6 +486,88 @@ export { up, down } from '@ssworks/admin-server/migrations/0010_team_tree_lock'
 - 재인증 · revision 이 없다(`reauth: true` 여도).
 - **쓰는 쪽 시드의 closure**: 계층은 `team_closure` 에만 있다. 상위 팀은 깊이 1 행이고, 조상마다 한 행(깊이 = 거리)을 넣는다. 자기 행(깊이 0)은 넣어도 안 넣어도 패키지 결과가 같다 — 패키지가 만드는 팀은 자기 행을 넣는다.
 - **동시 쓰기**: 팀 쓰기(만들기 · 이름 · 이동 · 삭제)는 `guard_locks` 행 `teamTree` 에서 하나씩 돈다. 사용자 만들기 · 수정이 지우는 중인 팀을 고르면 기다렸다가 400 `issues[teamNo]`, 지우기가 소속을 넣는 중인 팀을 만나면 기다렸다가 409 다. 드문 잠금 충돌(교착, 또는 스냅샷 격리 ON 의 `ER_CHECKREAD` 1020)은 409 `ERR_COMMON_CONFLICT`("동시 처리 충돌입니다. 다시 시도해 주세요.")로 끝난다 — 클라이언트가 다시 보내면 된다.
+
+## 약관
+
+이용약관 · 개인정보처리방침 같은 법적 문서의 판(版) 관리. 판은 **append-only** 다 — 수정 · 삭제가 없고 새 판을 발행한다. 각 종류의 시행본은 가장 늦게 발행된 판이다.
+
+```ts
+// 한 상수에서 서버 옵션과 admin-ui 탭을 만든다
+export const LEGAL_KINDS = ['TERMS', 'PRIVACY'] as const
+
+imports: [
+  AdminServerModule.forRootAsync({
+    useFactory: () => ({
+      // …
+      legal: { kinds: LEGAL_KINDS },
+      permissions: {
+        // …
+        'legal.read': 'setting.legal:read',
+        'legal.publish': 'setting.legal:publish',
+      },
+    }),
+  }),
+  AdminAuthModule,
+  AdminLegalModule,
+]
+```
+
+마이그레이션 폴더에 스텁 한 줄을 더한다(모든 장 필수 — 이미 장을 돌린 DB 도 `kysely migrate` 한 번으로 따라온다):
+
+```ts
+// src/database/migrations/011_admin_legal_documents.migration.ts
+export { up, down } from '@ssworks/admin-server/migrations/0011_legal_documents'
+```
+
+| 라우트                                     | 슬롯            | 본문 → 응답                                                          | 감사                                                                          |
+| ------------------------------------------ | --------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `GET /admin/legal-documents/current?kind=` | `legal.read`    | → `{ item: AdminLegalDocument \| null }` — 미발행이면 `null`(200)    | —                                                                             |
+| `GET /admin/legal-documents?kind=`         | `legal.read`    | → `{ items: AdminLegalHistoryItem[] }` 최신순 전량, 본문 없음        | —                                                                             |
+| `GET /admin/legal-documents/:legalDocNo`   | `legal.read`    | → `AdminLegalDocument`(문서 그대로) · 없으면 404                     | —                                                                             |
+| `POST /admin/legal-documents`              | `legal.publish` | `{ kind, body, baseLegalDocNo }` → 201 `{ legalDocNo, contentHash }` | `setting.legal.publish`(meta `{ kind, baseLegalDocNo, contentHash, length }`) |
+
+- `legal.kinds` 는 비어 있지 않고 원소가 영숫자 · `_` 1~32자 · 겹침 없음이어야 한다 — 어기면 기동에서 멈춘다. 모르는 종류(쿼리 · 본문)는 400 `issues[{ path: ['kind'] }]`. 종류는 대소문자를 가른다.
+- admin-ui `useLegalDocuments` 배선(admin-ui README "약관")이 그대로 맞는다 — 위 `baseURL: '/api/admin'` 이면 `loadCurrent: (kind) => api.get<AdminLegalCurrent>('/legal-documents/current', { params: { kind } }).then((r) => r.item)` · `loadHistory: (kind) => api.get<AdminLegalHistory>('/legal-documents', { params: { kind } }).then((r) => r.items)` · ``loadOne: (no) => api.get<AdminLegalDocument>(`/legal-documents/${no}`)`` · `publish: (body) => api.post('/legal-documents', body)`. 미발행은 404 가 아니라 `{ item: null }` 이라 어댑터가 404 를 바꿔 읽을 필요가 없다. 탭의 `kinds` 는 위 `LEGAL_KINDS` 에서 만든다.
+- **발행 409 둘**: 편집을 시작한 판(`baseLegalDocNo`, 미발행에서 시작했으면 `null`)이 지금 시행본이 아니면 409 `ERR_COMMON_REVISION_CONFLICT`(다른 관리자가 먼저 발행했다 — admin-ui 가 충돌 안내를 띄운다), 시행본과 본문이 같으면 409 `ERR_COMMON_CONFLICT` `이전 버전과 내용이 같습니다.` 기준 판 검사가 먼저다. 옛 판의 본문으로 되돌리는 발행은 된다.
+- **해시는 서버만 셈한다** — `contentHash = sha256(body)`(utf8, hex 소문자). 본문을 트림 · 정규화하지 않으므로 끝 공백 · 줄바꿈만 달라도 다른 판이다. 본문에 해시를 실어 보내도 무시한다.
+- **본문 크기**: 본문은 1,000,000자까지(admin-shared `LEGAL_BODY_MAX_LENGTH`)지만, 한글 1,000,000자의 JSON 은 약 3MB 라 기본 본문 한도 1mb 에서 413 `ERR_COMMON_PAYLOAD_TOO_LARGE` 가 난다. 긴 약관을 받으려면 `configureAdminApp(app, { jsonLimit: '4mb' })`.
+- **동시 발행**: 발행은 `guard_locks` 행 `legalPublish` 에서 종류와 관계없이 하나씩 돈다 — 같은 판을 기준으로 둘이 동시에 발행하면 하나만 되고 다른 하나는 기준 판 409 다. 발행 중인 관리자의 계정을 쓰는 쪽이 동시에 지우면 드물게 409(교착) · 400 이 난다 — 다시 보내면 된다.
+- **발행자 계정을 지워도** 판은 남는다(`published_by_user_no` 는 SET NULL — `publishedByUserNo` · `publishedByUserName` 이 `null`).
+- **공개 조회는 쓰는 쪽 몫이다**(관리 계약을 재사용하지 않는다 — 필드가 공개로 새지 않게). 예:
+
+```ts
+@Public()
+@Controller('legal')
+export class PublicLegalController {
+  constructor(@Inject(KYSELY) private readonly db: Kysely<Database>) {}
+
+  @Get(':kind')
+  async current(@Param('kind') kind: string) {
+    const row = (LEGAL_KINDS as readonly string[]).includes(kind)
+      ? await this.db
+          .selectFrom('legalDocuments')
+          .select(['legalDocNo', 'kind', 'body', 'publishedAt'])
+          .where('kind', '=', kind)
+          .orderBy('publishedAt', 'desc')
+          .orderBy('legalDocNo', 'desc')
+          .limit(1)
+          .executeTakeFirst()
+      : undefined
+    // 🔴 미발행은 404(fail-closed) — 공개 쪽이 "없음" 을 정상으로 받으면 방침 없이 동의를 받는 길이 생긴다
+    if (row === undefined)
+      throw new BusinessError(CommonErrorCodes.ERR_COMMON_NOT_FOUND, '문서를 찾을 수 없습니다.')
+    return {
+      kind: row.kind,
+      legalDocNo: row.legalDocNo,
+      bodyHtml: renderMarkdown(row.body), // admin-shared — 관리 화면 미리보기와 같은 렌더러
+      publishedAt: row.publishedAt.toISOString(),
+    }
+  }
+}
+```
+
+- **동의 기록**(가입 동의 등)은 쓰는 쪽 표다. 판 번호를 FK 로 걸면 `legal_doc_no` 는 `bigint unsigned` 다. 시행본은 (`published_at` DESC, `legal_doc_no` DESC) 첫 행이다 — 같은 초 발행이 있으니 두 키를 다 쓴다.
+- 재인증(`reauth`)은 약관 발행에 걸리지 않는다 — 낡은 쓰기는 기준 판이 막는다.
 
 ## admin-ui 와 맞물리기
 
