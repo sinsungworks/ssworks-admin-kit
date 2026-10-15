@@ -60,6 +60,11 @@ describe('CommonErrorCodes — 코어 코드 표', () => {
     expect(COMMON_ERROR_STATUS[CommonErrorCodes.ERR_TEAM_HAS_MEMBERS]).toBe(409)
     expect(COMMON_ERROR_STATUS[CommonErrorCodes.ERR_TEAM_MOVE_CYCLE]).toBe(400)
   })
+
+  it('IP 규칙이 가리키는 팀(2f-1) — 409 ERR_TEAM_HAS_IP_RULES', () => {
+    expect(CommonErrorCodes.ERR_TEAM_HAS_IP_RULES).toBe('ERR_TEAM_HAS_IP_RULES')
+    expect(COMMON_ERROR_STATUS[CommonErrorCodes.ERR_TEAM_HAS_IP_RULES]).toBe(409)
+  })
 })
 
 describe('defineErrorCodes — 프로젝트 코드 병합', () => {

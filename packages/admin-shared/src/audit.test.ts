@@ -12,19 +12,21 @@ import {
 } from './audit.js'
 
 describe('코어 카탈로그', () => {
-  it('🔴 액션 30 · 대상 5 · 라벨이 하나씩 — 개수는 이 테스트가 고정한다(산문의 개수는 낡는다)', () => {
-    expect(Object.values(CoreAuditActions)).toHaveLength(30)
+  it('🔴 액션 33 · 대상 6 · 라벨이 하나씩 — 개수는 이 테스트가 고정한다(산문의 개수는 낡는다)', () => {
+    expect(Object.values(CoreAuditActions)).toHaveLength(33)
     expect(Object.values(CoreAuditTargets)).toEqual([
       'user',
       'session',
       'role',
       'team',
       'legalDocument',
+      'ipAccessRule',
     ])
     expect(Object.keys(CORE_AUDIT_ACTION_LABELS).sort()).toEqual(
       [...Object.values(CoreAuditActions)].sort(),
     )
     expect(Object.keys(CORE_AUDIT_TARGET_LABELS).sort()).toEqual([
+      'ipAccessRule',
       'legalDocument',
       'role',
       'session',
@@ -93,6 +95,17 @@ describe('코어 카탈로그', () => {
     expect(coreAuditCatalog.labelOf('setting.legal.publish')).toBe('약관 발행')
     expect(coreAuditCatalog.targetLabelOf('legalDocument')).toBe('약관')
   })
+
+  it('IP 액션(2f-1) — setting.ipAccess.* 셋 · 대상 ipAccessRule 과 라벨', () => {
+    expect(CoreAuditActions.IP_ACCESS_CREATE).toBe('setting.ipAccess.create')
+    expect(CoreAuditActions.IP_ACCESS_UPDATE).toBe('setting.ipAccess.update')
+    expect(CoreAuditActions.IP_ACCESS_DELETE).toBe('setting.ipAccess.delete')
+    expect(CoreAuditTargets.IP_ACCESS_RULE).toBe('ipAccessRule')
+    expect(coreAuditCatalog.labelOf('setting.ipAccess.create')).toBe('IP 규칙 추가')
+    expect(coreAuditCatalog.labelOf('setting.ipAccess.update')).toBe('IP 규칙 수정')
+    expect(coreAuditCatalog.labelOf('setting.ipAccess.delete')).toBe('IP 규칙 삭제')
+    expect(coreAuditCatalog.targetLabelOf('ipAccessRule')).toBe('IP 규칙')
+  })
 })
 
 describe('defineAuditCatalog', () => {
@@ -106,13 +119,14 @@ describe('defineAuditCatalog', () => {
   it('코어 + 프로젝트를 합치고 코어 라벨을 덮어쓴다', () => {
     expect(catalog.AuditActions.BOARD_POST_CREATE).toBe('board.post.create')
     expect(catalog.AuditActions.AUTH_LOGOUT).toBe('auth.logout')
-    expect(catalog.ACTION_VALUES).toHaveLength(31)
+    expect(catalog.ACTION_VALUES).toHaveLength(34)
     expect(catalog.TARGET_VALUES).toEqual([
       'user',
       'session',
       'role',
       'team',
       'legalDocument',
+      'ipAccessRule',
       'post',
     ])
     expect(catalog.labelOf('board.post.create')).toBe('게시글 작성')

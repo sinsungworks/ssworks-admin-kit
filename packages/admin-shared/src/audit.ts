@@ -6,7 +6,7 @@ import { createQuerySchema } from './pagination.js'
 // 정본: hangang-home packages/shared/src/constants/audit.const.ts(액션 · 라벨 · 대상) + 이 패키지 error-codes.ts
 //       `defineErrorCodes`(코어 + 프로젝트 병합 틀)
 // 바꾼 점:
-//  - 코어 액션은 인증 · 세션(2c) · 역할 · 사용자(2d) · 팀(2e-1) · 약관(2e-2). IP 액션은 2f 가 더한다. 프로젝트 액션은 `defineAuditCatalog`.
+//  - 코어 액션은 인증 · 세션(2c) · 역할 · 사용자(2d) · 팀(2e-1) · 약관(2e-2) · IP(2f-1). 프로젝트 액션은 `defineAuditCatalog`.
 //  - `session.revoke.others` 를 더했다(gise "다른 세션 모두").
 //  - 행의 행위자는 `actorUserNo`(2c 스펙 B5). `action` 은 열린 문자열 — 새 판이 쓴 행도 옛 화면이 읽는다(gise).
 //  - 🔴 `.refine()` 을 걸지 않는다(3b §11 R1) — 기간 순서는 서버가 본다(2c 스펙 B14).
@@ -45,6 +45,9 @@ export const CoreAuditActions = {
   TEAM_DELETE: 'org.team.delete',
   TEAM_MOVE: 'org.team.move',
   LEGAL_PUBLISH: 'setting.legal.publish',
+  IP_ACCESS_CREATE: 'setting.ipAccess.create',
+  IP_ACCESS_UPDATE: 'setting.ipAccess.update',
+  IP_ACCESS_DELETE: 'setting.ipAccess.delete',
 } as const
 
 export type CoreAuditAction = (typeof CoreAuditActions)[keyof typeof CoreAuditActions]
@@ -55,6 +58,7 @@ export const CoreAuditTargets = {
   ROLE: 'role',
   TEAM: 'team',
   LEGAL_DOCUMENT: 'legalDocument',
+  IP_ACCESS_RULE: 'ipAccessRule',
 } as const
 
 export type CoreAuditTarget = (typeof CoreAuditTargets)[keyof typeof CoreAuditTargets]
@@ -91,6 +95,9 @@ export const CORE_AUDIT_ACTION_LABELS: Readonly<Record<CoreAuditAction, string>>
   'org.team.delete': '팀 삭제',
   'org.team.move': '팀 이동',
   'setting.legal.publish': '약관 발행',
+  'setting.ipAccess.create': 'IP 규칙 추가',
+  'setting.ipAccess.update': 'IP 규칙 수정',
+  'setting.ipAccess.delete': 'IP 규칙 삭제',
 })
 
 export const CORE_AUDIT_TARGET_LABELS: Readonly<Record<CoreAuditTarget, string>> = Object.freeze({
@@ -99,6 +106,7 @@ export const CORE_AUDIT_TARGET_LABELS: Readonly<Record<CoreAuditTarget, string>>
   role: '역할',
   team: '팀',
   legalDocument: '약관',
+  ipAccessRule: 'IP 규칙',
 })
 
 /**
