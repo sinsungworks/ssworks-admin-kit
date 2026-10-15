@@ -14,6 +14,9 @@ import {
   withSuperAdminSurvival,
 } from './super-admin.js'
 
+/** 이 파일은 IP 모듈 없는 셈을 잰다(2f-1 — IP 를 아는 셈은 super-admin.ip.db.test.ts) */
+const NO_IP = { ipAware: false } as const
+
 // 🔴 이 파일은 셈을 잰다 — seedRole 의 기본 권한이 ['*'] 이므로 늘 permissions 를 명시한다.
 
 let t: TestDatabase
@@ -26,7 +29,8 @@ afterAll(async () => {
   await t?.drop()
 })
 
-const count = (db: TestDatabase['db']) => db.transaction().execute((trx) => countSuperAdmins(trx))
+const count = (db: TestDatabase['db']) =>
+  db.transaction().execute((trx) => countSuperAdmins(trx, NO_IP))
 
 describe('센티넬 행', () => {
   it('장의 리터럴과 잠금 함수의 이름이 같다', async () => {
@@ -82,7 +86,7 @@ describe('lockSuperAdminGuard', () => {
       const started = Date.now()
       waiting = t.db.transaction().execute(async (trx) => {
         await lockSuperAdminGuard(trx)
-        return { waited: Date.now() - started, count: await countSuperAdmins(trx) }
+        return { waited: Date.now() - started, count: await countSuperAdmins(trx, NO_IP) }
       })
       await new Promise((resolve) => setTimeout(resolve, 400))
       await holder.commit()
@@ -115,23 +119,27 @@ describe('withSuperAdminSurvival — 잠금 단계(2d-3 스펙 ① A · C2)', ()
       },
       () =>
         t.db.transaction().execute((trx) =>
-          withSuperAdminSurvival(trx, {
-            lock: () =>
-              trx
-                .selectFrom('users')
-                .select('userNo')
-                .where('userNo', '=', user.userNo)
-                .forUpdate()
-                .executeTakeFirstOrThrow(),
-            write: async (locked) => {
-              const row = await trx
-                .selectFrom('users')
-                .select('loginFailCount')
-                .where('userNo', '=', locked.userNo)
-                .executeTakeFirstOrThrow()
-              return row.loginFailCount
+          withSuperAdminSurvival(
+            trx,
+            {
+              lock: () =>
+                trx
+                  .selectFrom('users')
+                  .select('userNo')
+                  .where('userNo', '=', user.userNo)
+                  .forUpdate()
+                  .executeTakeFirstOrThrow(),
+              write: async (locked) => {
+                const row = await trx
+                  .selectFrom('users')
+                  .select('loginFailCount')
+                  .where('userNo', '=', locked.userNo)
+                  .executeTakeFirstOrThrow()
+                return row.loginFailCount
+              },
             },
-          }),
+            NO_IP,
+          ),
         ),
     )
     if (!result.ok) throw result.error
@@ -158,16 +166,20 @@ describe('withSuperAdminSurvival', () => {
     const error = await u.db
       .transaction()
       .execute((trx) =>
-        withSuperAdminSurvival(trx, {
-          lock: async () => undefined,
-          write: async () => {
-            await trx
-              .updateTable('roles')
-              .set({ permissions: JSON.stringify(['org.users:read']) })
-              .where('roleNo', '=', role)
-              .execute()
+        withSuperAdminSurvival(
+          trx,
+          {
+            lock: async () => undefined,
+            write: async () => {
+              await trx
+                .updateTable('roles')
+                .set({ permissions: JSON.stringify(['org.users:read']) })
+                .where('roleNo', '=', role)
+                .execute()
+            },
           },
-        }),
+          NO_IP,
+        ),
       )
       .catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(BusinessError)
@@ -186,17 +198,21 @@ describe('withSuperAdminSurvival', () => {
     const user = await seedUser(u.db, { roleNo: role })
     await seedUser(u.db, { roleNo: role }) // 남을 한 명 — 앞 테스트가 남긴 상태에 기대지 않는다
     const result = await u.db.transaction().execute((trx) =>
-      withSuperAdminSurvival(trx, {
-        lock: async () => user.userNo,
-        write: async (userNo) => {
-          await trx
-            .updateTable('users')
-            .set({ resignAt: new Date() })
-            .where('userNo', '=', userNo)
-            .execute()
-          return 'done'
+      withSuperAdminSurvival(
+        trx,
+        {
+          lock: async () => user.userNo,
+          write: async (userNo) => {
+            await trx
+              .updateTable('users')
+              .set({ resignAt: new Date() })
+              .where('userNo', '=', userNo)
+              .execute()
+            return 'done'
+          },
         },
-      }),
+        NO_IP,
+      ),
     )
     expect(result).toBe('done')
   })
@@ -208,14 +224,18 @@ describe('withSuperAdminSurvival', () => {
       const error = await u.db
         .transaction()
         .execute((trx) =>
-          withSuperAdminSurvival(trx, {
-            lock: async () => {
-              reached.push('lock')
+          withSuperAdminSurvival(
+            trx,
+            {
+              lock: async () => {
+                reached.push('lock')
+              },
+              write: async () => {
+                reached.push('write')
+              },
             },
-            write: async () => {
-              reached.push('write')
-            },
-          }),
+            NO_IP,
+          ),
         )
         .catch((caught: unknown) => caught)
       expect(reached).toEqual([])
@@ -262,16 +282,20 @@ describe('withSuperAdminSurvival 경합', () => {
       waiting = v.db
         .transaction()
         .execute((trx) =>
-          withSuperAdminSurvival(trx, {
-            lock: async () => undefined,
-            write: async () => {
-              await trx
-                .updateTable('roles')
-                .set({ permissions: JSON.stringify([]) })
-                .where('roleNo', '=', roleB)
-                .execute()
+          withSuperAdminSurvival(
+            trx,
+            {
+              lock: async () => undefined,
+              write: async () => {
+                await trx
+                  .updateTable('roles')
+                  .set({ permissions: JSON.stringify([]) })
+                  .where('roleNo', '=', roleB)
+                  .execute()
+              },
             },
-          }),
+            NO_IP,
+          ),
         )
         .catch((caught: unknown) => caught)
       await new Promise((resolve) => setTimeout(resolve, 400))

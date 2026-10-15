@@ -7,13 +7,17 @@ import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import type { ResolvedAccountsConfig } from '../accounts/options.js'
 import { permissionsOrEmpty } from '../accounts/permissions-column.js'
 import { reauthenticate } from '../accounts/reauth.js'
-import { withSuperAdminSurvival, type LockedWrite } from '../accounts/super-admin.js'
+import {
+  withSuperAdminSurvival,
+  type LockedWrite,
+  type SurvivalCount,
+} from '../accounts/super-admin.js'
 import type { AdminPrincipal } from '../auth/principal.js'
 import { AdminReauthService } from '../auth/reauth.service.js'
 import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { validationError } from '../http/validation.js'
-import { ADMIN_ACCOUNTS_CONFIG, KYSELY } from '../tokens.js'
+import { ADMIN_ACCOUNTS_CONFIG, IP_ACCESS_ENABLED, KYSELY } from '../tokens.js'
 import { planRoleMove } from './move.js'
 
 // 정본: hangang-home apps/api/src/modules/roles/roles.service.ts(목록 · 만들기 · 수정 · 이동 구간 재번호 · 쓰는 중 409 ·
@@ -102,7 +106,13 @@ export class AdminRolesService {
     @Inject(ADMIN_ACCOUNTS_CONFIG) private readonly config: ResolvedAccountsConfig,
     // 🔴 @Optional — AdminAuthModule 이 빠진 앱이 DI 해석 오류가 아니라 모듈 기동 검사의 문구로 멈추게(2c R2 와 같은 이유)
     @Optional() private readonly reauthService?: AdminReauthService,
+    // 🔴 IP 접근 제어 모듈이 있으면 잔존 셈이 IP 층을 본다(2f-1 스펙 P3) — 전역 모듈의 표시 토큰, 없으면 undefined
+    @Optional() @Inject(IP_ACCESS_ENABLED) private readonly ipAccess?: boolean,
   ) {}
+
+  private get survival(): SurvivalCount {
+    return { ipAware: this.ipAccess === true }
+  }
 
   async list(): Promise<{ items: AdminRoleView[] }> {
     const rows = await runQuery(() =>
@@ -217,7 +227,7 @@ export class AdminRolesService {
         const { before, clearedDefaults } =
           next === undefined
             ? await steps.write(await steps.lock())
-            : await withSuperAdminSurvival(trx, steps)
+            : await withSuperAdminSurvival(trx, steps, this.survival)
         // 🔴 같은 트랜잭션에서 읽는다 — 응답 · 감사 after 가 이 쓰기의 결과다(§14 R5-2)
         const item = this.view(await findRole(trx, roleNo))
         return {
@@ -277,36 +287,43 @@ export class AdminRolesService {
     // 🔴 쓰는 중 검사가 먼저라 잔존은 지금은 닿지 않는 방어선이다(hangang · 2d 스펙 B11). 쓰는 중 검사가 무언가 놓쳐도
     //    FK restrict 가 받친다 — mapError 가 같은 409 ERR_COMMON_IN_USE 로 바꾼다(2a F15).
     const before = await runWriteTransaction(this.db, (trx) =>
-      withSuperAdminSurvival(trx, {
-        // 🔴 잠금 읽기 · 판정만(2d-3 스펙 C2 · C3)
-        lock: async () => {
-          const row = await lockRole(trx, roleNo)
-          const current = this.permissionsOf(row)
-          judgeAccountCommand(actor, { kind: 'role.delete', current })
-          if (body.revision !== row.revision) {
-            throw new BusinessError(
-              CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT,
-              ACCOUNT_MESSAGES.roleRevisionMismatch,
-            )
-          }
-          return { row, current }
+      withSuperAdminSurvival(
+        trx,
+        {
+          // 🔴 잠금 읽기 · 판정만(2d-3 스펙 C2 · C3)
+          lock: async () => {
+            const row = await lockRole(trx, roleNo)
+            const current = this.permissionsOf(row)
+            judgeAccountCommand(actor, { kind: 'role.delete', current })
+            if (body.revision !== row.revision) {
+              throw new BusinessError(
+                CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT,
+                ACCOUNT_MESSAGES.roleRevisionMismatch,
+              )
+            }
+            return { row, current }
+          },
+          // 🔴 쓰는 중 검사는 비잠금이라 쓰기 단계다(셈 뒤). 역할 행을 X 로 쥐었으므로 그 역할을 새로 배정하는 쓰기
+          //    (lockGrantRole · FK S 검사)는 커밋하지 못한다 — 셈이 연 뷰에서 못 본 배정이 없다(2d-3 스펙 §5-2).
+          write: async ({ row, current }) => {
+            const used = await trx
+              .selectFrom('users')
+              .select('userNo')
+              .where('roleNo', '=', roleNo)
+              .limit(1)
+              .executeTakeFirst()
+            if (used !== undefined) {
+              throw new BusinessError(
+                CommonErrorCodes.ERR_COMMON_IN_USE,
+                ACCOUNT_MESSAGES.roleInUse,
+              )
+            }
+            await trx.deleteFrom('roles').where('roleNo', '=', roleNo).execute()
+            return { roleName: row.roleName, isDefault: row.isDefault, permissions: current }
+          },
         },
-        // 🔴 쓰는 중 검사는 비잠금이라 쓰기 단계다(셈 뒤). 역할 행을 X 로 쥐었으므로 그 역할을 새로 배정하는 쓰기
-        //    (lockGrantRole · FK S 검사)는 커밋하지 못한다 — 셈이 연 뷰에서 못 본 배정이 없다(2d-3 스펙 §5-2).
-        write: async ({ row, current }) => {
-          const used = await trx
-            .selectFrom('users')
-            .select('userNo')
-            .where('roleNo', '=', roleNo)
-            .limit(1)
-            .executeTakeFirst()
-          if (used !== undefined) {
-            throw new BusinessError(CommonErrorCodes.ERR_COMMON_IN_USE, ACCOUNT_MESSAGES.roleInUse)
-          }
-          await trx.deleteFrom('roles').where('roleNo', '=', roleNo).execute()
-          return { roleName: row.roleName, isDefault: row.isDefault, permissions: current }
-        },
-      }),
+        this.survival,
+      ),
     )
     return { before }
   }

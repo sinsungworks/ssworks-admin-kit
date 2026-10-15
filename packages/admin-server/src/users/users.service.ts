@@ -24,7 +24,11 @@ import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import type { ResolvedUsersConfig } from '../accounts/options.js'
 import { permissionsOrEmpty } from '../accounts/permissions-column.js'
 import { reauthenticate } from '../accounts/reauth.js'
-import { withSuperAdminSurvival, type LockedWrite } from '../accounts/super-admin.js'
+import {
+  withSuperAdminSurvival,
+  type LockedWrite,
+  type SurvivalCount,
+} from '../accounts/super-admin.js'
 import { generateTemporaryPassword } from '../accounts/temporary-password.js'
 import { hashPassword } from '../auth/password.js'
 import type { AdminPrincipal } from '../auth/principal.js'
@@ -32,7 +36,7 @@ import { AdminReauthService } from '../auth/reauth.service.js'
 import { AdminSessionStore } from '../auth/session.store.js'
 import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
-import { ADMIN_ACCOUNTS_CONFIG, KYSELY } from '../tokens.js'
+import { ADMIN_ACCOUNTS_CONFIG, IP_ACCESS_ENABLED, KYSELY } from '../tokens.js'
 import {
   correctJoinDate,
   insertPeriod,
@@ -109,7 +113,13 @@ export class AdminUsersService {
     private readonly sessions: AdminSessionStore,
     // 🔴 @Optional — AdminAuthModule 이 빠진 앱이 DI 해석 오류가 아니라 모듈 기동 검사의 문구로 멈추게(2c R2 와 같은 이유)
     @Optional() private readonly reauthService?: AdminReauthService,
+    // 🔴 IP 접근 제어 모듈이 있으면 잔존 셈이 IP 층을 본다(2f-1 스펙 P3) — 전역 모듈의 표시 토큰, 없으면 undefined
+    @Optional() @Inject(IP_ACCESS_ENABLED) private readonly ipAccess?: boolean,
   ) {}
+
+  private get survival(): SurvivalCount {
+    return { ipAware: this.ipAccess === true }
+  }
 
   async list(query: AdminUserListQuery): Promise<Paginated<AdminUserView>> {
     const { offset, limit, sort } = toListQuery(query)
@@ -281,11 +291,12 @@ export class AdminUsersService {
           return before
         },
       }
-      // 🔴 역할을 바꾸는 수정만 잔존을 줄일 수 있다 — 센티넬이 트랜잭션의 첫 문장이 되게 감싼다(§5-3)
+      // 🔴 역할 · 팀을 바꾸는 수정은 잔존을 줄일 수 있다(§5-3 · 2f-1 스펙 P5 — 팀 규칙이 있는 팀으로 옮기면 global 층을 잃는다).
+      //    IP 모듈 유무와 무관하게 감싼다 — 갈래를 줄인다(없으면 판정이 늘 통과).
       const before =
-        body.roleNo === undefined
+        body.roleNo === undefined && body.teamNo === undefined
           ? await steps.write(await steps.lock())
-          : await withSuperAdminSurvival(trx, steps)
+          : await withSuperAdminSurvival(trx, steps, this.survival)
       // 🔴 같은 트랜잭션에서 읽는다 — 응답 · 감사 after 가 이 쓰기의 결과다(§14 R5-2)
       return { item: await readUser(trx, userNo, timeZone), before }
     })
@@ -308,68 +319,72 @@ export class AdminUsersService {
     const reason = reasonOf(body.reason)
     const now = new Date()
     return runWriteTransaction(this.db, (trx) =>
-      withSuperAdminSurvival(trx, {
-        // 🔴 잠금 읽기 · 판정 · 상태 검사만(2d-3 스펙 C2 · C3)
-        lock: async () => {
-          const target = await lockUser(trx, userNo)
-          // 🔴 판정이 상태보다 먼저(B7)
-          judgeAccountCommand(actor, {
-            kind: 'user.resign',
-            targetUserNo: userNo,
-            current: this.permissionsOf(target),
-          })
-          if (target.resignAt !== null) throw userConflict(ACCOUNT_MESSAGES.alreadyResigned)
-          return target
+      withSuperAdminSurvival(
+        trx,
+        {
+          // 🔴 잠금 읽기 · 판정 · 상태 검사만(2d-3 스펙 C2 · C3)
+          lock: async () => {
+            const target = await lockUser(trx, userNo)
+            // 🔴 판정이 상태보다 먼저(B7)
+            judgeAccountCommand(actor, {
+              kind: 'user.resign',
+              targetUserNo: userNo,
+              current: this.permissionsOf(target),
+            })
+            if (target.resignAt !== null) throw userConflict(ACCOUNT_MESSAGES.alreadyResigned)
+            return target
+          },
+          // 셈이 연 읽기 뷰 — 대상 잠금을 기다린 사이의 커밋(재입사 · 로그인 실패)이 before 에 보인다(2d-3 스펙 §14 R1-1)
+          write: async (target) => {
+            const before = await readUser(trx, userNo, timeZone)
+            const active = await lockActivePeriods(trx, userNo)
+            if (active.length > 1) throw userConflict(ACCOUNT_MESSAGES.periodCorrupted)
+            const healed = active[0] === undefined
+            const period =
+              active[0] ??
+              (await insertPeriod(trx, {
+                userNo,
+                joinDate: dateIn(target.joinAt, timeZone),
+                reason: null,
+                createdBy: null,
+              }))
+            if (body.resignDate < period.joinDate) {
+              throw fieldError('resignDate', ACCOUNT_MESSAGES.resignBeforeJoin)
+            }
+            await trx
+              .updateTable('userEmploymentPeriods')
+              .set({ resignAt: toDateColumn(body.resignDate), reason })
+              .where('periodNo', '=', period.periodNo)
+              .execute()
+            await trx
+              .updateTable('users')
+              .set((eb) => ({
+                resignAt: effective,
+                revision: eb('revision', '+', 1),
+                updateAt: sql<Date>`current_timestamp`,
+              }))
+              .where('userNo', '=', userNo)
+              .execute()
+            // 🔴 효력 시각이 이미 지났으면 같은 트랜잭션에서 끊는다 — 커밋되면 그 사용자의 다음 요청은 401(§14 R6-1).
+            // 🔴 세션 폐기는 쓰기 단계다(2d-3 스펙 C5) — 잠금 단계로 올리면 대상의 refresh 회전과의 교착에서 퇴사가 희생자가
+            //    된다. ON 에서 대상 로그아웃이 셈과 폐기 사이에 커밋되면 1020 → 409 다시 시도(2d-3 스펙 §14 R1-4).
+            //    liveOnly — 만료된 미폐기 행은 건드리지도 세지도 않는다(2d-3 스펙 ⑥ L1 — 감사 revokedCount 가 2c 세션 라우트와 한 뜻).
+            const revokedCount =
+              effective.getTime() <= now.getTime()
+                ? await this.sessions.revokeAllOfUser(userNo, 'terminated', now, {
+                    trx,
+                    liveOnly: true,
+                  })
+                : 0
+            return {
+              item: await readUser(trx, userNo, timeZone),
+              before,
+              meta: { reason, revokedCount, ...(healed ? { healedPeriod: true } : {}), timeZone },
+            }
+          },
         },
-        // 셈이 연 읽기 뷰 — 대상 잠금을 기다린 사이의 커밋(재입사 · 로그인 실패)이 before 에 보인다(2d-3 스펙 §14 R1-1)
-        write: async (target) => {
-          const before = await readUser(trx, userNo, timeZone)
-          const active = await lockActivePeriods(trx, userNo)
-          if (active.length > 1) throw userConflict(ACCOUNT_MESSAGES.periodCorrupted)
-          const healed = active[0] === undefined
-          const period =
-            active[0] ??
-            (await insertPeriod(trx, {
-              userNo,
-              joinDate: dateIn(target.joinAt, timeZone),
-              reason: null,
-              createdBy: null,
-            }))
-          if (body.resignDate < period.joinDate) {
-            throw fieldError('resignDate', ACCOUNT_MESSAGES.resignBeforeJoin)
-          }
-          await trx
-            .updateTable('userEmploymentPeriods')
-            .set({ resignAt: toDateColumn(body.resignDate), reason })
-            .where('periodNo', '=', period.periodNo)
-            .execute()
-          await trx
-            .updateTable('users')
-            .set((eb) => ({
-              resignAt: effective,
-              revision: eb('revision', '+', 1),
-              updateAt: sql<Date>`current_timestamp`,
-            }))
-            .where('userNo', '=', userNo)
-            .execute()
-          // 🔴 효력 시각이 이미 지났으면 같은 트랜잭션에서 끊는다 — 커밋되면 그 사용자의 다음 요청은 401(§14 R6-1).
-          // 🔴 세션 폐기는 쓰기 단계다(2d-3 스펙 C5) — 잠금 단계로 올리면 대상의 refresh 회전과의 교착에서 퇴사가 희생자가
-          //    된다. ON 에서 대상 로그아웃이 셈과 폐기 사이에 커밋되면 1020 → 409 다시 시도(2d-3 스펙 §14 R1-4).
-          //    liveOnly — 만료된 미폐기 행은 건드리지도 세지도 않는다(2d-3 스펙 ⑥ L1 — 감사 revokedCount 가 2c 세션 라우트와 한 뜻).
-          const revokedCount =
-            effective.getTime() <= now.getTime()
-              ? await this.sessions.revokeAllOfUser(userNo, 'terminated', now, {
-                  trx,
-                  liveOnly: true,
-                })
-              : 0
-          return {
-            item: await readUser(trx, userNo, timeZone),
-            before,
-            meta: { reason, revokedCount, ...(healed ? { healedPeriod: true } : {}), timeZone },
-          }
-        },
-      }),
+        this.survival,
+      ),
     )
   }
 

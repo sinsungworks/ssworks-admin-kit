@@ -48,3 +48,9 @@ export const ADMIN_ACCOUNTS_CONFIG = Symbol('ADMIN_ACCOUNTS_CONFIG')
 
 /** 내부 — 해석된 약관 설정(`ResolvedLegalConfig`). `AdminLegalModule` 이 코어 옵션의 `legal` 로 만든다(2e-2) */
 export const ADMIN_LEGAL_CONFIG = Symbol('ADMIN_LEGAL_CONFIG')
+
+/**
+ * 내부 — IP 접근 제어 모듈이 있다는 표시(값 true, 2f-1 스펙 P3). `AdminIpAccessModule`(전역)이 낸다. 역할 · 사용자 서비스가
+ * `@Optional()` 로 받아 잔존 셈이 IP 층을 보게 한다. index 에 내지 않는다.
+ */
+export const IP_ACCESS_ENABLED = Symbol('IP_ACCESS_ENABLED')
