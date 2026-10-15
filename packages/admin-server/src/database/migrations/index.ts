@@ -12,6 +12,7 @@ import * as sessions from './0007_sessions.js'
 import * as auditLogs from './0008_audit_logs.js'
 import * as guardLocks from './0009_guard_locks.js'
 import * as teamTreeLock from './0010_team_tree_lock.js'
+import * as legalDocuments from './0011_legal_documents.js'
 
 // 코어 장 목록과 스텁 검사(Phase 2 결정 ③ S1).
 //
@@ -33,6 +34,7 @@ export const ADMIN_MIGRATIONS = [
   '0008_audit_logs',
   '0009_guard_locks',
   '0010_team_tree_lock',
+  '0011_legal_documents',
 ] as const
 
 export type AdminMigrationId = (typeof ADMIN_MIGRATIONS)[number]
@@ -48,6 +50,7 @@ const CHAPTERS: Readonly<Record<AdminMigrationId, Migration>> = {
   '0008_audit_logs': auditLogs,
   '0009_guard_locks': guardLocks,
   '0010_team_tree_lock': teamTreeLock,
+  '0011_legal_documents': legalDocuments,
 }
 
 /** 패키지 테스트 하네스용 — 장 모듈을 Kysely `Migrator` provider 모양으로. 🔴 공개 API 가 아니다(쓰는 쪽은 스텁). */

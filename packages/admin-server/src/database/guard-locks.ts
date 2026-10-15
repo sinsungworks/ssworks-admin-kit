@@ -12,6 +12,9 @@ import type { AdminDatabase } from './types.js'
 /** 장 0010 의 시드 행 이름 — 장은 리터럴로 넣는다(같은 값인지는 guard-locks.db.test.ts 가 잰다) */
 export const GUARD_LOCK_TEAM_TREE = 'teamTree'
 
+/** 장 0011 의 시드 행 이름 — 약관 발행(2e 스펙 ⑩ L1). 같은 값인지는 guard-locks.db.test.ts 가 잰다 */
+export const GUARD_LOCK_LEGAL_PUBLISH = 'legalPublish'
+
 export const GUARD_MESSAGES = Object.freeze({
   missing: '동시성 보호 설정이 없어 처리할 수 없습니다.',
 })

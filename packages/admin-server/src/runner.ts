@@ -31,6 +31,7 @@ export type {
   AdminSessionsTable,
   AdminAuditLogsTable,
   AdminGuardLocksTable,
+  AdminLegalDocumentsTable,
   AdminSessionRevokeReason,
 } from './database/types.js'
 export { hashPassword, verifyPassword } from './auth/password.js'

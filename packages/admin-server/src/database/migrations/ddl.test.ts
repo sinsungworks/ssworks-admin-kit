@@ -12,6 +12,7 @@ import * as sessions from './0007_sessions.js'
 import * as auditLogs from './0008_audit_logs.js'
 import * as guardLocks from './0009_guard_locks.js'
 import * as teamTreeLock from './0010_team_tree_lock.js'
+import * as legalDocuments from './0011_legal_documents.js'
 
 // 🔴 마이그레이션 DDL 을 소스 문자열이 아니라 **컴파일된 SQL** 로 잰다(hangang migrations-ddl.test.ts).
 //    `sql` 템플릿 안의 식별자는 CamelCasePlugin 이 바꾸지 않는다 — hangang 037 이 그 자리에서 실제 DB 적용 때 죽었다.
@@ -30,6 +31,7 @@ const CHAPTERS: [string, Chapter][] = [
   ['0008_audit_logs', auditLogs],
   ['0009_guard_locks', guardLocks],
   ['0010_team_tree_lock', teamTreeLock],
+  ['0011_legal_documents', legalDocuments],
 ]
 
 async function capture(run: (db: Kysely<unknown>) => Promise<void>): Promise<string[]> {
@@ -126,6 +128,44 @@ describe('0010_team_tree_lock', () => {
   it('down 은 그 행만 지운다', async () => {
     const statements = await capture((db) => teamTreeLock.down(db))
     expect(statements).toEqual(['delete from `guard_locks` where `lock_name` = ?'])
+  })
+})
+
+describe('0011_legal_documents', () => {
+  it('표 · 인덱스 · 가드 행 — 열 정의 원문(2e 스펙 공통 8 · §4-7)', async () => {
+    const statements = await capture((db) => legalDocuments.up(db))
+    expect(statements).toHaveLength(3)
+    const [table = '', index, seed = ''] = statements
+    expect(table).toMatch(/^create table `legal_documents`/)
+    for (const fragment of [
+      '`legal_doc_no` bigint unsigned primary key auto_increment',
+      '`kind` varchar(32) collate ascii_bin not null',
+      '`body` mediumtext not null',
+      '`content_hash` char(64) collate ascii_bin not null',
+      '`published_at` timestamp default CURRENT_TIMESTAMP not null',
+      '`published_by_user_no` bigint unsigned comment',
+      'constraint `fk_legal_documents_published_by` foreign key (`published_by_user_no`) references `users` (`user_no`) on delete set null on update cascade',
+    ]) {
+      expect(table).toContain(fragment)
+    }
+    expect(index).toBe(
+      'create index `idx_legal_documents_kind_published` on `legal_documents` (`kind`, `published_at`)',
+    )
+    expect(seed).toMatch(/^insert into `guard_locks`/)
+  })
+
+  it('🔴 kind 에 CHECK · ENUM 이 없다 — 종류 폐집합의 정본은 옵션 legal.kinds(gise)', async () => {
+    const [table = ''] = await capture((db) => legalDocuments.up(db))
+    const outside = outsideQuotes(table).toLowerCase()
+    expect(outside).not.toContain('check')
+    expect(outside).not.toContain('enum')
+  })
+
+  it('down 은 가드 행을 지우고 표를 버린다', async () => {
+    expect(await capture((db) => legalDocuments.down(db))).toEqual([
+      'delete from `guard_locks` where `lock_name` = ?',
+      'drop table `legal_documents`',
+    ])
   })
 })
 

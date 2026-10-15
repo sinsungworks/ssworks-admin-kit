@@ -7,6 +7,7 @@ import { ADMIN_MIGRATIONS } from './index.js'
 const CORE_TABLES = [
   'audit_logs',
   'guard_locks',
+  'legal_documents',
   'roles',
   'sessions',
   'team_closure',
@@ -107,6 +108,19 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
     expect(column('audit_logs', 'method').isNullable).toBe('NO')
     expect(column('audit_logs', 'status_code').columnType).toBe('smallint(5) unsigned')
     expect(column('audit_logs', 'user_agent').columnType).toBe('varchar(255)')
+    // 약관 장(2e 스펙 공통 8)
+    expect(column('legal_documents', 'kind').collationName).toBe('ascii_bin')
+    expect(column('legal_documents', 'kind').columnType).toBe('varchar(32)')
+    expect(column('legal_documents', 'content_hash').collationName).toBe('ascii_bin')
+    expect(column('legal_documents', 'content_hash').columnType).toBe('char(64)')
+    expect(column('legal_documents', 'body').columnType).toBe('mediumtext')
+    expect(column('legal_documents', 'body').collationName).toBe('utf8mb4_bin')
+    expect(column('legal_documents', 'legal_doc_no').columnType).toBe('bigint(20) unsigned')
+    expect(column('legal_documents', 'published_by_user_no').columnType).toBe('bigint(20) unsigned')
+    expect(column('legal_documents', 'published_by_user_no').isNullable).toBe('YES')
+    expect(column('legal_documents', 'published_at').isNullable).toBe('NO')
+    // 🔴 append-only — 발행 시각에 ON UPDATE 가 없다(explicit_defaults_for_timestamp=OFF 에서도)
+    expect(column('legal_documents', 'published_at').extra.toLowerCase()).not.toContain('on update')
   })
 
   it('🔴 제약 이름은 snake_case(CamelCasePlugin 이 이름도 바꾼다 — 스펙 R3)', async () => {
@@ -131,8 +145,24 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
         'user_employment_periods.fk_user_employment_periods_user',
         'sessions.uq_sessions_refresh_token_hash',
         'sessions.fk_sessions_user',
+        'legal_documents.fk_legal_documents_published_by',
       ].sort(),
     )
+  })
+
+  it('🔴 약관 발행자 FK 는 SET NULL — 계정을 지워도 발행 이력이 남는다(2e 스펙 공통 8)', async () => {
+    const result = await sql<{ constraintName: string; deleteRule: string; updateRule: string }>`
+      select constraint_name, delete_rule, update_rule
+        from information_schema.referential_constraints
+       where constraint_schema = ${t.name} and table_name = 'legal_documents'
+    `.execute(t.db)
+    expect(result.rows).toEqual([
+      {
+        constraintName: 'fk_legal_documents_published_by',
+        deleteRule: 'SET NULL',
+        updateRule: 'CASCADE',
+      },
+    ])
   })
 
   it('인덱스', async () => {
@@ -152,14 +182,16 @@ describe('코어 마이그레이션(실 MariaDB 11.4)', () => {
       'idx_audit_logs_actor',
       'idx_audit_logs_target',
       'idx_audit_logs_action',
+      'idx_legal_documents_kind_published',
     ]) {
       expect(names).toContain(expected)
     }
   })
 
-  it('0009 · 0010 — 센티넬 행이 이름마다 하나다(lock_name PK)', async () => {
+  it('0009 · 0010 · 0011 — 센티넬 행이 이름마다 하나다(lock_name PK)', async () => {
     const rows = await t.db.selectFrom('guardLocks').selectAll().orderBy('lockName').execute()
     expect(rows).toEqual([
+      { lockName: 'legalPublish', description: expect.stringContaining('FOR UPDATE') },
       { lockName: 'superAdminSurvival', description: expect.stringContaining('FOR UPDATE') },
       { lockName: 'teamTree', description: expect.stringContaining('FOR UPDATE') },
     ])
