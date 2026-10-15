@@ -207,6 +207,29 @@ describe('수정', () => {
     expect(error.message).toBe(IP_ACCESS_MESSAGES.selfLockout)
     expect((await ipRulesOf(t.db))[0]).toMatchObject({ cidr: '0.0.0.0/0', revision: 0 })
   })
+
+  it('🔴 자기 잠금 팀 경로 — 요청자 팀의 팀 규칙을 요청자 밖으로 좁히면 409(subjectOf 가 팀을 빼면 global 시드로 통과한다)', async () => {
+    const member = await seedUser(t.db, { roleNo: plain, userId: 'svc-team-member' })
+    const team = await seedTeam(t.db, 'svc-self-team')
+    await addToTeam(t.db, team, member.userNo)
+    const ruleNo = await seedIpRule(t.db, {
+      scopeType: 'team',
+      scopeRefNo: team,
+      cidr: '203.0.113.0/24',
+    })
+    // findPrincipal 이 싣는 모양 — 인증이 고른 대표 팀
+    const principal = { ...testPrincipal(member.userNo, ['setting.ipAccess:write']), teamNo: team }
+    const error = await failure(
+      service.update(ruleNo, { cidr: '10.0.0.0/8', revision: 0 }, principal, ACTOR_IP),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_CONFLICT)
+    expect(error.message).toBe(IP_ACCESS_MESSAGES.selfLockout)
+    expect(error.details).toEqual({ clientIp: ACTOR_IP })
+    expect((await ipRulesOf(t.db)).find((rule) => rule.ruleNo === ruleNo)).toMatchObject({
+      cidr: '203.0.113.0/24',
+      revision: 0,
+    })
+  })
 })
 
 describe('삭제', () => {

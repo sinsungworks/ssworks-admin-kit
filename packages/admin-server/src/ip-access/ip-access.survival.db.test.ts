@@ -10,7 +10,7 @@ import { AdminUsersService } from '../users/users.service.js'
 import { AdminIpAccessService } from './ip-access.service.js'
 
 // IP 쓰기의 잔존(2f-1 스펙 ② R1 · §9-2 s1 · s3 · s4 · s5 — s2 는 accounts/super-admin.ip.db.test.ts). 🔴 셈은 DB 전역 상태라
-// 테스트마다 retireStars 로 전권자를 모두 퇴사시키고 시작한다. 요청자는 일반 관리자(전권 아님)다.
+// beforeEach 가 규칙을 시드 두 행으로 되돌리고 star 역할의 전권자를 모두 퇴사시켜 테스트마다 "전권자 없음" 에서 시작한다. 요청자는 일반 관리자(전권 아님)다.
 
 let t: TestDatabase
 let star: bigint
