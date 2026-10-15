@@ -2,7 +2,7 @@
 
 관리자 API 공통 NestJS 모듈 — NestJS 12 · Kysely 0.29 · MariaDB. **Phase 2 진행 중**이고 `private: true` 라 아직 발행하지 않는다(Phase 2 마지막 PR 뒤 첫 발행).
 
-지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 12장(PR 2a · 2c · 2d-1 · 2e-1 · 2e-2 · 2f-1)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1), 사용자 · 계정(PR 2d-2), 팀(PR 2e-1), 약관(PR 2e-2), IP 접근 제어(PR 2f-1)이다. 인증 경로 정리 · 첫 발행 준비는 다음 PR(2f-2)이다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
+지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 12장(PR 2a · 2c · 2d-1 · 2e-1 · 2e-2 · 2f-1)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1), 사용자 · 계정(PR 2d-2), 팀(PR 2e-1), 약관(PR 2e-2), IP 접근 제어(PR 2f-1)이다. 인증 경로 정리(PR 2f-2a)와 첫 발행 준비(PR 2f-2b — DB TLS · 소켓 · peer 하한)까지 들어 있다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
 
 ## 설치
 
@@ -15,6 +15,7 @@ pnpm add -D kysely-ctl@^0.21 @types/express   # 마이그레이션 러너(kysely
 
 - Node 22 이상, ESM 전용. tsconfig 는 `module` · `moduleResolution` `NodeNext`, `experimentalDecorators` · `emitDecoratorMetadata` 를 켠다.
 - Express 만 지원한다(`@nestjs/platform-express`).
+- `@ssworks/admin-shared` 는 `>=0.4.0 <1.0.0`(peer) — admin-kit 세 패키지는 같은 번호끼리 설치한다.
 
 ## 진입점
 
@@ -110,19 +111,48 @@ export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 
 ## 환경 변수
 
-| 이름                    | 필수 | 기본  | 뜻                                                                                                         |
-| ----------------------- | ---- | ----- | ---------------------------------------------------------------------------------------------------------- |
-| `DB_HOST`               | 예   |       |                                                                                                            |
-| `DB_PORT`               |      | 3306  | 양의 정수가 아니면 기동 실패                                                                               |
-| `DB_USER`               | 예   |       |                                                                                                            |
-| `DB_PASSWORD`           | 예   |       |                                                                                                            |
-| `DB_NAME`               | 예   |       | gise 처럼 `DB_DATABASE` 를 쓰면 `AdminDbConnection` 을 직접 만든다                                         |
-| `DB_POOL_LIMIT`         |      | 10    | `× API 프로세스 수` 가 DB `max_connections` 여유 안이어야 한다                                             |
-| `DB_ACQUIRE_TIMEOUT_MS` |      | 10000 |                                                                                                            |
-| `TZ`                    | 예   |       | `UTC` — 아니면 `assertUtcTimezone` 이 기동을 멈춘다                                                        |
-| `ADMIN_JWT_SECRET`      | 예   |       | 액세스 토큰 HS256 비밀키(32자 이상). 🔴 패키지가 직접 읽지 않는다 — `auth.jwtSecret` 으로 넘기는 예시 이름 |
+| 이름                    | 필수              | 기본  | 뜻                                                                                                                    |
+| ----------------------- | ----------------- | ----- | --------------------------------------------------------------------------------------------------------------------- |
+| `DB_HOST`               | 예(소켓이 아니면) |       |                                                                                                                       |
+| `DB_PORT`               |                   | 3306  | 양의 정수가 아니면 기동 실패                                                                                          |
+| `DB_SOCKET_PATH`        |                   |       | 유닉스 소켓 — 있으면 `DB_HOST` · `DB_PORT` · `DB_SSL=true` · `DB_SSL_CA` 와 함께 쓰면 기동 실패(아래 "DB TLS · 소켓") |
+| `DB_USER`               | 예                |       |                                                                                                                       |
+| `DB_PASSWORD`           | 예                |       |                                                                                                                       |
+| `DB_NAME`               | 예                |       | gise 처럼 `DB_DATABASE` 를 쓰면 `AdminDbConnection` 을 직접 만든다                                                    |
+| `DB_POOL_LIMIT`         |                   | 10    | `× API 프로세스 수` 가 DB `max_connections` 여유 안이어야 한다                                                        |
+| `DB_ACQUIRE_TIMEOUT_MS` |                   | 10000 |                                                                                                                       |
+| `DB_SSL`                |                   | 끔    | `true` 면 TLS 로 검증해 붙는다. `true` · `false` 밖이면 기동 실패                                                     |
+| `DB_SSL_CA`             |                   |       | PEM 파일 경로 — 그 CA 로 검증(TLS 를 켠다). 못 읽거나 PEM 이 아니거나 `DB_SSL=false` 와 함께면 기동 실패              |
+| `TZ`                    | 예                |       | `UTC` — 아니면 `assertUtcTimezone` 이 기동을 멈춘다                                                                   |
+| `ADMIN_JWT_SECRET`      | 예                |       | 액세스 토큰 HS256 비밀키(32자 이상). 🔴 패키지가 직접 읽지 않는다 — `auth.jwtSecret` 으로 넘기는 예시 이름            |
 
 풀 안전 옵션(`timezone: 'Z'` · 숫자 옵션 넷 · `logParam: false`)은 바꿀 수 없다.
+
+### DB TLS · 소켓
+
+- **TLS 켜기**: `DB_SSL=true` — 시스템 CA 로 서버 인증서와 호스트 이름을 검증한다. MariaDB 11.4 이상은 인증서를 설정하지 않아도 TLS 를 켜고 자체 서명 인증서를 만드는데, mariadb 드라이버(3.4+)가 비밀번호에서 나온 지문으로 그 인증서를 검증한다 — 비밀번호 있는 계정 · TCP 접속이면 CA 없이 `DB_SSL=true` 로 된다.
+- **CA 고정**: `DB_SSL_CA=/run/secrets/db-ca.pem` — 그 CA 로 체인 · 호스트 이름을 검증한다(TLS 를 켜고, 드라이버의 지문 검증은 꺼진다). 관리형 DB 가 주는 CA 묶음을 여기 둔다.
+- **DB 쪽에서도 강제한다**: 서버 `require_secure_transport=ON` 또는 계정 `ALTER USER … REQUIRE SSL` — 앱 설정이 빠져도 평문 접속이 거부된다.
+- **env 로 못 하는 것은 코드로** — 검증을 끄는 env 는 없다.
+
+  ```ts
+  import { readFileSync } from 'node:fs'
+
+  // 인증서 이름이 접속 주소와 다를 때(Cloud SQL 처럼) — CA 체인만 검증하고 호스트 이름은 건너뛴다.
+  // 클라이언트 인증서(mTLS)는 같은 자리에 key · cert 를 더한다.
+  const db = {
+    ...adminDbConnectionFromEnv(),
+    ssl: {
+      ca: readFileSync('/run/secrets/db-ca.pem', 'utf8'),
+      checkServerIdentity: () => undefined,
+    },
+  }
+  ```
+
+  🔴 `ssl: { rejectUnauthorized: false }` 는 검증을 끈다 — 암호화는 되지만 중간자를 막지 못한다. 쓰지 말고 CA 를 고정한다.
+
+- **소켓**: `DB_SOCKET_PATH=/run/mysqld/mysqld.sock`(Windows 는 명명 파이프 경로). `DB_HOST` · `DB_PORT` · `DB_SSL=true` · `DB_SSL_CA` 와 함께 두면 기동 실패다 — 접속 대상이 모호하고, 소켓은 로컬 연결이라 TLS 를 얹지 않는다. 객체로는 `{ socketPath, user, password, database }`(`host` 와 하나만).
+- 앱(`AdminServerModule`)과 러너(`kysely.config.ts`)가 같은 `adminPoolConfig` 를 지나므로 env 하나로 둘 다 바뀐다. 기본은 지금처럼 평문 TCP 다. 오류 메시지는 env 이름(과 파일 오류의 errno 코드)만 담는다.
 
 ## 응답 계약
 

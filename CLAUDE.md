@@ -85,6 +85,7 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 ### `@ssworks/admin-server` (Phase 2)
 
 - ESM 전용, `module: NodeNext`, 데코레이터 메타데이터 켬.
+- peer `@ssworks/admin-shared` 는 `workspace:>=<하한> <1.0.0` 이다 — admin-shared 의 새 export 를 쓰기 시작하는 PR 은 하한을 그 export 가 실릴 버전으로 올린다(`.changeset/README.md`). DB 접속은 `adminPoolConfig` 하나(앱 · 러너 공용) — `host` 와 `socketPath` 중 하나만, env 는 검증하는 TLS 둘(`DB_SSL=true` · `DB_SSL_CA`)만 연다.
 - 코어 테이블 타입은 `AdminDatabase` 로 export 하고 소비자가 `interface Database extends AdminDatabase` 로 확장한다.
 - 사용자 테이블 컬럼 차이는 `AUTH_REPOSITORY` 교체로 흡수한다. 컬럼 매핑 옵션을 만들지 않는다.
 - 진입점 셋: `.`(전부) · `./runner`(Nest 무의존 — `runner-graph.test.ts` 가 지킨다) · `./migrations/<id>`(코어 장, 쓰는 쪽 스텁이 가리킨다). 장 파일 이름 = 장 ID.
