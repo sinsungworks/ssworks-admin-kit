@@ -215,6 +215,8 @@ export const client = createApiClient({
 export const { api } = client
 ```
 
+admin-server 를 쓰는 앱은 값이 다르다. `baseURL` 은 서버 global prefix(예: `'/api'`), `refreshPath: '/admin/auth/refresh'`, `noRetryPaths: ['/admin/auth/login']` 이고, 아래 스토어의 `fetchMe` · `login` · `logout` 도 `'/admin/auth/me'` · `'/admin/auth/login'` · `'/admin/auth/logout'` 이다. 「Phase 2 서버」 예제의 `'/admin/…'` 경로와 한 벌이다 — 안 맞추면 갱신 경로가 `/api/auth/refresh` 로 틀린다.
+
 ```ts
 // stores/app.ts
 import { ApiError, createAppStore, type AdminUserInfo } from '@ssworks/admin-ui'
@@ -407,15 +409,16 @@ const items = buildMenu<Permission>(routes, { groups, depth: 'all' }) // setupLa
 
 ```ts
 const applied = ref({ userId: '', teamNo: undefined as bigint | undefined })
-const { page, itemsPerPage, sortBy, items, total, loading, isFiltered, reload } = useServerTable({
-  fetch: (params) => api.get<Paginated<UserRow>>('/users', { params }),
-  sort: { keys: ['userId', 'joinAt'], default: { key: 'joinAt', order: 'desc' } },
-  filters: () => ({ userId: applied.value.userId || undefined, teamNo: applied.value.teamNo }),
-  urlSync: bindQueryCodecs(applied, {
-    userId: withDefault(queryCodec.string(), ''),
-    teamNo: queryCodec.bigint(),
-  }),
-})
+const { page, itemsPerPage, sortBy, items, total, loading, error, isFiltered, reload } =
+  useServerTable({
+    fetch: (params) => api.get<Paginated<UserRow>>('/users', { params }),
+    sort: { keys: ['userId', 'joinAt'], default: { key: 'joinAt', order: 'desc' } },
+    filters: () => ({ userId: applied.value.userId || undefined, teamNo: applied.value.teamNo }),
+    urlSync: bindQueryCodecs(applied, {
+      userId: withDefault(queryCodec.string(), ''),
+      teamNo: queryCodec.bigint(),
+    }),
+  })
 
 const { run, submitting, fieldErrors, confirmDialog, reauthDialog } = useWriteFlow()
 function resign(no: bigint) {
@@ -447,7 +450,11 @@ function saveUser() {
   :items-length="total"
   :loading="loading"
 >
-  <template #no-data><EmptyState :filtered="isFiltered" title="아직 없습니다" filtered-title="조건에 맞는 항목이 없습니다" /></template>
+  <template #no-data>
+    <!-- 🔴 조회 실패면 "아직 없음" 이 아니라 오류와 다시 시도 — 실패 중에 만들기를 권하지 않는다 -->
+    <div v-if="error" role="alert">목록을 불러오지 못했습니다. <VBtn variant="text" @click="reload">다시 시도</VBtn></div>
+    <EmptyState v-else :filtered="isFiltered" title="아직 없습니다" filtered-title="조건에 맞는 항목이 없습니다" />
+  </template>
 </DataTableBody>
 <VTextField v-model="form.userId" label="아이디" :error-messages="fieldErrors.userId" />
 <VBtn :disabled="submitting" @click="resign(no)">퇴사 처리</VBtn>
@@ -456,6 +463,7 @@ function saveUser() {
 ```
 
 - 반환값은 ref 묶음이다 — 구조 분해해서 템플릿에 건다(템플릿은 최상위 바인딩만 언래핑한다).
+- 조회가 실패하면 `error` 가 서고 `items` 는 빈 배열이다 — `#no-data` 는 `error` 를 먼저 본다(아니면 실패가 '아직 없음' 으로 보인다).
 - 표는 "적용된" 필터만 본다. 입력값과 적용값을 나눠 Enter · 버튼으로 적용한다.
 - `urlSync` 를 쓰는 화면은 동적 세그먼트 상세 라우트(`/users/:id`)가 아니어야 한다 — 같은 컴포넌트가 재사용돼 URL 감시가 꺼진다.
 - 목록이 중첩 자식 라우트(`/users` 아래 `/users/:id` 드로어) 밑에서도 마운트된 채 남는 구조라면 상태와 URL 이 어긋날 수 있다 — 그런 화면에서는 `urlSync` 를 피하거나 쓰지 않는다.
@@ -745,13 +753,11 @@ const teams = useTeamTree({
 
 ```ts
 const loadMembers = (q: TeamUserQuery) =>
-  api.get<{ items: Member[]; total: number }>('/admin/users', {
+  api.get<{ items: Member[]; total: number | bigint }>('/admin/users', {
     params: {
-      teamNo: q.teamNo,
-      recursive: q.recursive,
-      userId: q.keyword,
       page: q.page,
       itemsPerPage: q.itemsPerPage,
+      filter: { teamNo: q.teamNo, recursive: q.recursive, keyword: q.keyword },
     },
   })
 // 제네릭 SFC 의 ref 는 노출한 모양으로 적는다
