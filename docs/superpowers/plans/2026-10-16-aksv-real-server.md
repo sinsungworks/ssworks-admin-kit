@@ -817,7 +817,7 @@ cd /c/Users/kim52/AppData/Local/Temp/akss && TZ=UTC node dist/main.js > server.l
 cd /c/Users/kim52/AppData/Local/Temp/akss && node check-akss.mjs; grep -iE "error|warn" server.log | head -5
 ```
 
-Expected: `ok` 넷과 `akss OK`. `server.log` 에 기동 오류가 없다(IP 진단 경고 "global 층 IP 규칙이 없다" 가 보이면 Step 8 을 다시 본다).
+Expected: `ok` 다섯과 `akss OK`. `server.log` 에 기동 오류가 없다(IP 진단 경고 "global 층 IP 규칙이 없다" 가 보이면 Step 8 을 다시 본다).
 
 - [ ] **Step 10: 스냅숏**
 
@@ -4468,7 +4468,7 @@ Expected: `62 62 A11 B13 C26 D3 E3 F6 1-L4 2-C7 2-T1 2-T2 2-T3 X5 1-G4`, 발견 
 
 1. **준비** — `node AKSS/check-akss.mjs` · `node AKSV/check-aksv.mjs` 가 OK 인지 본다(둘 다 떠 있어야 한다). claude-in-chrome 은 세션에서 한 번 `tabs_context_mcp` → `tabs_create_mcp` 로 탭을 만들고 그 탭을 계속 쓴다. 브라우저 `alert` 를 띄우는 조작은 없다(킷 확인 창).
 2. **항목마다** — `items-real.mjs` 의 `how` 를 claude-in-chrome(`navigate` · `find` · `computer` · `form_input` · `javascript_tool` · `get_page_text`)으로 따라 하고 `expect` 와 견준다. 근거는 셋 중 맞는 것:
-   - 요청 기록: `javascript_tool` 로 `JSON.stringify(window.__aksvLab.log.slice(0, 8).map((e) => [e.seq, e.method, e.path, e.status, e.code, e.refresh, e.retry]))`
+   - 요청 기록: `javascript_tool` 로 `JSON.stringify(window.__aksvLab.log.slice(0, 8).map((e) => [e.seq, e.method, e.path.replace(/[?&=]/g, (c) => ({ '?': ' ¿ ', '&': ' ＆ ', '=': '＝' })[c]), e.status, e.code, e.refresh, e.retry]))` — 🔴 claude-in-chrome 은 쿼리 문자열이 든 URL 꼴의 출력을 막는다(Task 4b 에서 확인). `?` · `&` · `=` 를 바꿔 읽고, 근거에는 원래 기호로 되돌려 적는다. 막히면 화면의 실험 패널 요청 기록을 `get_page_text` 로 읽는다
    - 화면 글: `get_page_text` 또는 `find` 결과의 문구
    - 감사(쓰기 항목): `javascript_tool` 로 `fetch('/__lab/audit?limit=3').then((r) => r.json()).then((r) => JSON.stringify(r.body.data.items))` — 행의 칸 이름(행위자 · action · statusCode · errorCode)은 처음 한 번 전체를 보고 맞춘다
 3. **기록** — `node SCRATCH/record.mjs <ID> pass|fail|na "<무엇이 보였나>" "<근거 한 줄>" …`. 해당 없음은 이유를 메모에 적는다. 한 항목의 일부만 해당 없음이면(1-L8 · 1-L11) 판정은 나머지로 하고 메모에 적는다.

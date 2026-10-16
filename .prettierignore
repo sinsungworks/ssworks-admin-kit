@@ -4,3 +4,5 @@ pnpm-lock.yaml
 CHANGELOG.md
 docs/phase0-reports/
 .superpowers/
+# 생성물 — 스크래치패드의 gen-real.mjs 가 만든다
+docs/verification/
