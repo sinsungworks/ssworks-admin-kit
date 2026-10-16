@@ -17,6 +17,7 @@ import { ApiError, toApiError } from './error.js'
 //    거부되고 `onAuthFailure` 는 한 번만 돈다.
 //  - 봉투(결정 1)·bigint(결정 3)를 기본으로 켠다. 요청 직렬화는 hangang 과 같고 응답은 봉투를 벗긴다.
 //  - SSE 헤더·`/auth/refresh` 하드코딩(`includes`)·IP 차단 → 스토어 분기를 뺐다(→ `onError`).
+//  - 쿼리 boolean 을 '1' · '' 대신 'true' · 'false' 로 — admin-shared queryBooleanSchema 와 맞춘다(실서버 확인 2026-10-16).
 
 export interface ApiClientOptions {
   baseURL: string
@@ -59,7 +60,8 @@ export function serializeParams(params: Record<string, unknown>): string {
   const search = new URLSearchParams()
   const append = (key: string, value: unknown): void => {
     if (value == null) return
-    if (typeof value === 'boolean') search.append(key, value ? '1' : '')
+    // 🔴 'true' · 'false' — admin-shared queryBooleanSchema 가 '1' · '' 를 거부한다(2d-2, z.coerce.boolean 결함 회피)
+    if (typeof value === 'boolean') search.append(key, value ? 'true' : 'false')
     else if (value instanceof Date) search.append(key, value.toISOString())
     else if (Array.isArray(value)) {
       for (const item of value) if (item != null) search.append(key, String(item))

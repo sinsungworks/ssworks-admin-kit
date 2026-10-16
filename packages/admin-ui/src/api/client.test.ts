@@ -1,6 +1,7 @@
 import { AxiosError } from 'axios'
 import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios'
 import { describe, expect, it, vi } from 'vitest'
+import { queryBooleanSchema } from '@ssworks/admin-shared'
 import { ApiError } from './error.js'
 import { createApiClient } from './client.js'
 
@@ -455,7 +456,17 @@ describe('paramsSerializer', () => {
     }
     const qs = serialize.serialize(seen[0]?.params as Record<string, unknown>)
     expect(decodeURIComponent(qs.replace(/\+/g, ' '))).toBe(
-      'active=1&off=&at=2026-01-02T03:04:05.000Z&ids=1&ids=2&filter[name]=kim&filter[age]=3&q=a b',
+      'active=true&off=false&at=2026-01-02T03:04:05.000Z&ids=1&ids=2&filter[name]=kim&filter[age]=3&q=a b',
     )
+  })
+
+  it('boolean 은 admin-shared queryBooleanSchema 가 받는 모양이다(실서버 확인 2-T14)', () => {
+    const client = createApiClient({ baseURL: '/api' })
+    const serialize = client.axios.defaults.paramsSerializer as {
+      serialize: (p: Record<string, unknown>) => string
+    }
+    const query = new URLSearchParams(serialize.serialize({ filter: { on: true, off: false } }))
+    expect(queryBooleanSchema.parse(query.get('filter[on]'))).toBe(true)
+    expect(queryBooleanSchema.parse(query.get('filter[off]'))).toBe(false)
   })
 })
