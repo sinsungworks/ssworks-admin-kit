@@ -215,3 +215,14 @@ frontend 에 vitest + happy-dom. `src/router/routes.test.ts` 가 `vue-router/aut
 3. **사용자 추가 · 편집 폼은 컴포넌트 하나** — `components/users/UserEditForm.vue` 를 `users.new.vue` · `users.[userNo].vue` 가 감싼다(aksv 는 한 컴포넌트를 두 라우트에 걸었다).
 4. **Docker** — pnpm 10 의 `pnpm deploy` 는 `--legacy`(또는 `inject-workspace-packages`)가 필요하다. 루트 `prepare`(shared 빌드)가 package.json 만 복사한 설치 단계에서 돌면 실패하므로 Dockerfile 의 설치는 `--ignore-scripts` 다.
 5. **frontend `typecheck`** — 루트 `pnpm typecheck`(`pnpm -r typecheck`)는 frontend 의 `type-check` 를 부르지 않는다. frontend 에 `typecheck` 를 더한다.
+
+구현 · 검증 중(2026-10-16, 플랜 Task 1~11 — 근거는 `docs/verification/2026-10-16-template-preset-admin.md`):
+
+6. **카탈로그 테스트에 `'*'`** — `permissions.ALL_PERMISSION_VALUES` 는 킷이 넣는 전체 권한 `'*'` 를 함께 담는다. 테스트 기대는 `['*', ...EXPECTED_KEYS]` 이고, 제목에 키 개수를 적지 않는다(스킬이 키를 더할 때마다 고치던 곳).
+7. **backend `tsconfig.build.json` 의 `incremental: false`** — base 의 incremental 이 tsbuildinfo 를 dist 밖에 남겨 dist 를 지운 뒤 빌드가 아무것도 내지 않았다.
+8. **`.dockerignore` 는 어느 깊이에서나 막는 패턴** — `**/node_modules` · `**/dist` · `**/*.tsbuildinfo` · `**/.env*`. 루트 패턴만이면 `packages/*/node_modules` 가 이미지 설치를 덮고 `packages/backend/.env`(비밀값)가 이미지에 들 수 있다.
+9. **frontend 모양은 eslint-config-vuetify** — prettier(속성 한 줄)와 vuetify stylistic(속성마다 줄 · 함수 괄호 앞 공백)이 부딪혀 `.prettierignore` 에 `packages/frontend/`. 검사는 `pnpm format`(backend · shared · 문서) + `pnpm lint:fix`(frontend). 머리 주석 뒤에는 빈 줄 하나 — 붙어 있으면 `lint:fix` 의 import 정렬이 주석을 끌고 간다.
+10. **결과 없는 쓰기 어댑터는 `.then(() => undefined)`** — 킷 훅(`useSessions` 의 revoke 등)이 `Promise<void>` 를 받는다(TS2322).
+11. **개발 서버 사전 번들** — `optimizeDeps.exclude: ['vuetify']`(자동 import 가 페이지마다 새 컴포넌트를 찾아 첫 방문마다 다시 묶고 새로 고쳤다 — create-vuetify 기본과 같다), `include` 에 `@ssworks/admin-shared` · `<scope>/shared > luxon` · `<scope>/shared > zod` · `vue-router/experimental`(workspace shared 와 파일 기반 라우트 런타임이 늦게 드러나 첫 로드에 한 번 더 새로 고쳤다 — zod 는 스킬이 shared 에 스키마를 더한 뒤에야 드러난다).
+12. **admin-scaffold 검사 순서는 `test` → `typecheck`** — 새 `[param]` 페이지의 `typed-router.d.ts` 를 vitest 가 확정적으로 다시 만든다(frontend `build` 는 type-check 와 vite build 를 병렬로 돌려 경합). 스킬에는 장 파일을 통째로 바꿔 쓸 것, `reversible: false` 문구를 message 에 되풀이하지 않을 것도 적었다.
+13. **`pnpm-workspace.yaml` 의 `ignoredBuiltDependencies` 에 `@parcel/watcher`** — 미리 빌드된 바이너리라 설치 경고만 없앤다.

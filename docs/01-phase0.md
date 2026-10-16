@@ -200,6 +200,8 @@
 
 admin-server 첫 발행(2026-10-16) 완료 — 세 패키지 모두 0.4.1 공개(admin-shared · admin-ui 는 CI 스테이징 + 승인, admin-server 는 `private` 해제 뒤 사람이 로컬 2FA — 결정 ⑥ V1).
 
-다음: 템플릿 `kim5257-project-template` `preset/admin` + `.claude/skills/admin-scaffold`(`docs/00-admin-common-review.md` §3, HANDOFF "다음 플랜").
+템플릿 `kim5257-project-template` `preset/admin` + `.claude/skills/admin-scaffold`(2026-10-16) 완료 — 세 패키지 0.4.1(npm) 위 얇은 앱 골격(인증 · 본인 · 조직 · 설정 화면, 킷 모듈 일곱, 코어 스텁 12, 첫 관리자 시드, Docker)과 화면 한 줄을 만드는 스킬. 생성 앱 · 스킬 시험(두 바퀴) 검증 통과, 킷 결함 없음(스펙 `docs/superpowers/specs/2026-10-16-template-preset-admin-design.md` · 플랜 `docs/superpowers/plans/2026-10-16-template-preset-admin.md` · 검증 `docs/verification/2026-10-16-template-preset-admin.md`). 템플릿 브랜치 push 는 사람이 한다.
+
+다음: Phase 4 — 첫 신규 프로젝트로 실전 검증 후 A 패키지 1.0 태깅(`docs/00-admin-common-review.md` §4, HANDOFF "다음 플랜").
 
 미확인(추출본에 없어 확정 보류): axion `utils/route-permission.ts`·`post-auth-redirect.ts`, gise `api/error.ts`·`AccountSessionsDialog.vue`, crm `utils/queryCodec.ts`·`components/user/*`·`core/pipe/zod-validation-pipe.ts`·`core/filter/exception.filter.ts`, hangang `api/ip-access.api.ts`·`storage.api.ts`. 이들은 A 배정한 `useQuerySyncedFilter`·`useFieldErrors`의 최종 확정에만 영향. → **2026-10-03 원본 확인으로 해소** — crm `queryCodec.ts`·`useQuerySyncedFilter.ts`, gise `useRouteQuerySync.ts`·`useFieldErrors.ts` 를 읽고 위 결정에 반영했다.

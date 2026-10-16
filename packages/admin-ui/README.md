@@ -410,6 +410,8 @@ const items = buildMenu<Permission>(routes, { groups, depth: 'all' }) // setupLa
 
 `assertParentAnyPermissionsCoverChildren` 은 `meta.anyPermissions` 를 **선언한** 레코드만 검사한다(그 값을 상속하는 후손의 `permissions` 를 덮어야 한다). 선언 없는 `setupLayouts` 래퍼·폴더 노드는 건너뛰므로 파일 기반 라우팅에서도 쓸 수 있다.
 
+🔴 `depth: 'all'` 은 **`meta.menu` 를 가진 모든 깊이의 레코드**를 드로어 항목으로 만든다 — 설정 셸(`SettingsShell`)의 자식이 좌측 메뉴용으로 `meta.menu`(아이콘 · 순서)를 가지면 드로어에도 올라간다. 하위 페이지를 폴더(`users/index.vue`) 대신 점 표기(`users.new.vue` · `users.[id].vue` — 중첩 없는 최상위 라우트)로 두면 날 `routes` 를 기본 depth 1 로 넘겨도 된다(템플릿 `kim5257-project-template` `preset/admin` 이 이 갈래다).
+
 ## 목록 · 쓰기
 
 아래는 hangang 형 서버 예다 — admin-server 는 검색이 `filter[keyword]`(아이디 · 이름 부분일치)이고 퇴사 본문에 `resignDate` 가 필수다(admin-server README 「사용자 · 계정」).
