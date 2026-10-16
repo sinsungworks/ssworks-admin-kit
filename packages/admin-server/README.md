@@ -1,6 +1,6 @@
 # @ssworks/admin-server
 
-관리자 API 공통 NestJS 모듈 — NestJS 12 · Kysely 0.29 · MariaDB. **Phase 2 진행 중**이고 `private: true` 라 아직 발행하지 않는다(Phase 2 마지막 PR 뒤 첫 발행).
+관리자 API 공통 NestJS 모듈 — NestJS 12 · Kysely 0.29 · MariaDB. Phase 2(2a ~ 2f-2b)와 확인용 앱 실서버 확인(2026-10-16)을 마치고 **0.4.1 에서 처음 발행**했다. `@ssworks/admin-shared` · `@ssworks/admin-ui` 와 같은 번호로 함께 오르니(`fixed`) 같은 번호끼리 설치한다.
 
 지금 들어 있는 것은 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결 · 코어 스키마 12장(PR 2a · 2c · 2d-1 · 2e-1 · 2e-2 · 2f-1)과 관리자 인증(PR 2b — 로그인 · refresh 회전 · 가드 · 재인증), 세션 관리 · 감사(PR 2c), 역할 관리 · 계정 판정(PR 2d-1), 사용자 · 계정(PR 2d-2), 팀(PR 2e-1), 약관(PR 2e-2), IP 접근 제어(PR 2f-1)이다. 인증 경로 정리(PR 2f-2a)와 첫 발행 준비(PR 2f-2b — DB TLS · 소켓 · peer 하한)까지 들어 있다 — 지도는 저장소 `docs/superpowers/specs/2026-10-08-admin-server-foundation-design.md` §1.
 

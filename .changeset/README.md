@@ -22,7 +22,7 @@
 - Settings → Publishing access: "Require two-factor authentication and disallow tokens".
 - **새 패키지**는 Trusted Publisher 를 등록할 화면이 없다. 첫 버전만 사람이 로컬에서 `pnpm --filter <패키지> publish` 로 올리고 위 설정을 한다. 여러 패키지를 한 번에 올리는 `changeset publish` 는 두 번째부터 2FA 브라우저 인증을 못 받아 `ERR_PNPM_OTP_NON_INTERACTIVE` 로 실패하니, 패키지마다 따로 올린다.
 
-세 패키지는 `fixed` 로 묶여 있어 **항상 같은 번호로 함께** 오른다 — 소비 프로젝트가 "admin-kit 0.3" 한 숫자로 조합을 말할 수 있게 하기 위해서다. 변경이 없는 패키지도 번호가 올라 같이 발행된다(admin-server 는 Phase 2 까지 `private` 이라 번호만 오르고 발행되지 않는다).
+세 패키지는 `fixed` 로 묶여 있어 **항상 같은 번호로 함께** 오른다 — 소비 프로젝트가 "admin-kit 0.3" 한 숫자로 조합을 말할 수 있게 하기 위해서다. 변경이 없는 패키지도 번호가 올라 같이 발행된다(admin-server 는 0.4.0 까지 `private` 이라 번호만 올랐고, 0.4.1 이 첫 발행이다 — 첫 버전은 아래 "새 패키지" 대로 사람이 로컬에서 올렸다).
 
 ## 0.x 동안의 peer 범위
 
