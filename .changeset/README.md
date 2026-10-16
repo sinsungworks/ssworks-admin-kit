@@ -16,6 +16,14 @@
 
    잘못 올라간 버전은 `pnpm stage reject <stage-id>`. 스테이징된 버전도 그 번호를 점유하므로, 다시 올리려면 거절한 뒤 새 버전으로 간다.
 
+5. 공개된 세 버전이 CI(Trusted Publishing)가 올린 것인지 본다 — 로그인 없이 된다:
+
+   ```bash
+   npm view @ssworks/admin-server@<새 버전> dist.attestations.provenance.predicateType --prefer-online
+   ```
+
+   `https://slsa.dev/provenance/v1` 이면 CI 가 OIDC 로 올렸다. 비어 있으면 그 버전은 사람이 로컬에서 올린 것이다(0.4.1 의 admin-server 가 그렇다 — 첫 발행). 공개 직후에는 30초 ~ 2분 늦게 보인다.
+
 ### npm 쪽 설정 (패키지마다 한 번)
 
 - Settings → Trusted Publisher: GitHub Actions · `sinsungworks` / `ssworks-admin-kit` / `release.yml`. **"Allow npm publish" 는 끈다**(stage only) — CI 가 뚫려도 승인 없이는 공개되지 않는다.
