@@ -107,7 +107,7 @@ export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 | `0011_legal_documents`         | `legal_documents` + `guard_locks` 에 행 하나(약관 발행)     |
 | `0012_ip_access_rules`         | `ip_access_rules` + global 허용 두 행(`0.0.0.0/0` · `::/0`) |
 
-🔴 패키지가 새 장을 내면 changeset 이 알린다 — 스텁 한 줄을 더한다. `assertAdminMigrationStubs` 가 빠진 장을 잡는다. 시드(첫 관리자 계정 · 역할)는 프로젝트 몫이다.
+🔴 패키지가 새 장을 내면 changeset 이 알린다 — 스텁 한 줄을 더한다. `assertAdminMigrationStubs` 가 빠진 장을 잡는다. 시드(첫 관리자 계정 · 역할)는 프로젝트 몫이다. 🔴 프로젝트 장을 이미 적용한 DB 라면 새 스텁의 **파일 이름이 마지막으로 적용된 장보다 뒤에** 정렬돼야 한다 — Kysely Migrator 는 적용된 장 앞에 끼는 새 장을 "corrupted migrations" 로 거부한다(프로젝트 장이 타임스탬프 이름이면 스텁도 `kysely migrate:make` 로 만든다). 스텁 검사는 파일 이름이 아니라 가리키는 장과 그 순서를 본다.
 
 ## 환경 변수
 

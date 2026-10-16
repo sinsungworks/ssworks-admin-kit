@@ -1,7 +1,7 @@
 # 템플릿 preset/admin 검증 기록
 
 - 날짜: 2026-10-16
-- 대상: `kim5257-project-template` `preset/admin` `eef5fab`(로컬 커밋 — push 전)
+- 대상: `kim5257-project-template` `preset/admin` `bb37000`(로컬 커밋 21 — push 전)
 - 환경: Windows 11 · Node 24.21 · pnpm 10.33(전역 12 가 자동 전환) · Docker MariaDB 11.4(`admin-kit-test-db` 33306) · `@ssworks/admin-shared` · `admin-ui` · `admin-server` 0.4.1(npm, 정확한 핀)
 - 스펙 `docs/superpowers/specs/2026-10-16-template-preset-admin-design.md` · 플랜 `docs/superpowers/plans/2026-10-16-template-preset-admin.md`
 
@@ -29,6 +29,11 @@
 | `fbc06c0` | fix: shared 스키마의 zod 를 미리 묶는다 — 콜드 스타트 첫 로드 새로 고침(검증 ② 에서 찾음)                                     |
 | `41e767c` | fix: admin-scaffold — 검사 순서 · 마이그레이션 통째로 · 되돌릴 수 없음 문구(검증 ② 에서 찾음)                                 |
 | `eef5fab` | fix: 카탈로그 테스트 제목에서 키 개수를 뺀다(검증 ② 에서 찾음)                                                                |
+| `dd58183` | fix: 예시 env 의 JWT 비밀키를 비우고 `.env.backend` 를 git 에서 뺀다(최종 리뷰)                                               |
+| `5b2a999` | fix: 검색 칸 ✕ 뒤 적용이 TypeError 이던 것 — `filterText`(최종 리뷰)                                                          |
+| `6f5600a` | fix: admin-scaffold — 검색 칸은 `filterText` · 재인증이 켜진 프로젝트는 서버도 확인(최종 리뷰)                                |
+| `cad339e` | docs: 새 코어 장 스텁은 타임스탬프 이름 · 엣지 뒤 nginx realip · IP 켜기 import(최종 리뷰)                                    |
+| `bb37000` | fix: `.gitattributes` 로 체크아웃 개행을 LF 로 — Windows autocrlf 에서 `run.sh` 가 CRLF 로 이미지에 들던 것(최종 리뷰)        |
 
 ## 2. 검증 ① — 생성 앱 `%TEMP%\akt`
 
@@ -91,12 +96,30 @@
 
 2 바퀴(위 고침 반영)에서 서브에이전트는 막힘 없이 끝냈다. 남긴 말 하나 — catalog 테스트 제목의 키 개수("열한 개")를 매번 고쳐야 한다 → 제목에서 개수를 뺐다(`eef5fab`). isPinned(tinyint) 걱정은 감사 meta 의 after(DB 에서 읽은 행)가 `true` 라 해소.
 
-마지막으로 최종 `eef5fab` 을 새로 clone(`%TEMP%\akf`) → init → lint · typecheck · test(6 · 5) · build 0, `@project/` 잔존 0, admin-shared 한 벌.
+그 뒤 `eef5fab` 을 새로 clone(`%TEMP%\akf`) → init → lint · typecheck · test(6 · 5) · build 0, `@project/` 잔존 0, admin-shared 한 벌.
 
-## 4. 발견 · 넘긴 것
+## 4. 최종 리뷰(opus) 와 고침
 
-- **킷 결함**: 없음. 킷 문서 하나 — `admin-ui` README 「파일 기반 라우팅이면 `depth: 'all'`」 에 설정 셸 자식의 `meta.menu` 가 드로어에 올라가는 점과 점 표기 갈래를 더했다(이 커밋).
+whole-branch 리뷰(템플릿 `44c640f..eef5fab` · 킷 문서 한 커밋)가 "고친 뒤 머지" 로 판정했다. 고친 것(각각 실패를 먼저 보고 고쳤다):
+
+| 등급             | 무엇                                                                                                                                                                                     | 고침 · 확인                                                                                                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Critical         | 예시 env 의 `ADMIN_JWT_SECRET` 예시 값(54자)이 킷의 32자 검사를 통과 — DB 값만 채운 배포가 공개된 키로 뜬다(토큰 위조)                                                                   | 두 예시 모두 빈 값 + 윗줄에 만드는 명령(`dd58183`). 실제 `adminServerOptions()` 에 예시를 넣어 재 보니 전: 둘 다 기동 → 후: 둘 다 "필수 환경변수가 없다: ADMIN_JWT_SECRET"     |
+| Important        | `.env.backend`(운영 비밀값, deploy.sh 가 읽음)가 `.gitignore` 밖                                                                                                                         | `.env.backend` 무시(`dd58183`) — `git check-ignore` 전 1 → 후 0, 예시 둘은 추적 유지                                                                                           |
+| Important        | 검색 칸 `clearable` 의 ✕ 는 v-model 에 `null` — users · sessions 의 `.trim()` 이 ✕ 뒤 적용에서 TypeError(스킬 본보기라 생성 화면에도 번진다)                                             | `filterText` + 테스트(Vuetify ✕ → null 도 잰다, 모듈 없음 RED → 2/2), 두 화면과 스킬(`5b2a999` · `6f5600a`). frontend 테스트 5 → 7                                              |
+| Important        | 킷 올리기의 "다음 번호로 스텁" — 프로젝트 장(타임스탬프)이 적용된 DB 에서 `013_…` 이 그 앞에 정렬돼 Kysely 가 "corrupted migrations" 로 멈춘다                                           | 새 코어 장 스텁은 `migrate:make admin_<장>`(템플릿 CLAUDE.md · migrations.md `cad339e`, 킷 admin-server README 한 문장). Kysely `#ensureMigrationsInOrder` · 킷 스텁 검사 소스로 확인 |
+| Important        | nginx 앞에 엣지(게이트웨이 망)가 있으면 `$remote_addr` 이 엣지 주소 — 세션 · 감사 IP 가 모두 같고 IP 접근 제어 규칙이 안 맞는다                                                         | realip 셋을 주석으로 두고 켜는 조건을 적었다(nginx · README · admin-options · CLAUDE.md IP 절 `cad339e`, `nginx -t` 두 판 통과). 🔴 게이트웨이 동작을 확인해 사람이 켠다          |
+| Important(올림)  | `ADMIN_REAUTH` 를 켜면 스킬 화면은 재인증을 묻지만 서버는 `currentPassword` 를 보지 않는다                                                                                               | 스킬에 서버 확인(`AdminReauthService.verify` 를 트랜잭션 밖에서)을 적었다(`6f5600a`)                                                                                           |
+| Important(올림)  | `.gitattributes` 가 없어 Git for Windows 기본(`core.autocrlf=true`) 체크아웃에서 `run.sh` 가 CRLF — backend 컨테이너가 뜨지 않고 init 의 절 삭제가 어긋난다(리뷰는 브랜치 전부터라 뺐다) | `* text=auto eol=lf`(`bb37000`) — autocrlf=true clone 에서 CR 전 run.sh 11 · CLAUDE.md 187 → 후 0                                                                             |
+
+최종 `bb37000` 을 다시 새로 clone → init → lint · typecheck · test(6 · 7) · build 0, `@project/` 잔존 0.
+
+넘긴 Minor(후속): 스킬 목록 정렬의 동률 기준(`noticeNo` desc), 다른 자원 읽기에 기댄 화면(사용자 편집의 역할 · 팀 선택, 팀 인원 — 좁은 역할에서 빈 칸 · 403), frontend `components/README` 의 "자동 import" 문구, 템플릿 CLAUDE.md 보완(`pnpm format` 범위 · shared 재빌드 · `[param]` 페이지 뒤 `typed-router.d.ts`), `users.vue` 의 한국 시간 셈이 backend `TIME_ZONE` 과 따로, 스킬 기동 확인 뒤 서버 끄기, README 빠른 시작의 `CREATE DATABASE`.
+
+## 5. 발견 · 넘긴 것
+
+- **킷 결함**: 없음. 킷 문서 둘 — `admin-ui` README 「파일 기반 라우팅이면 `depth: 'all'`」 에 설정 셸 자식의 `meta.menu` 가 드로어에 올라가는 점과 점 표기 갈래, `admin-server` README 코어 장 절에 새 스텁 이름이 마지막 적용 장보다 뒤여야 한다는 문장.
 - **템플릿 결함(고침)**: 개발 서버 사전 번들 두 번(`743941f` · `fbc06c0`), `.dockerignore` 루트 패턴만(`packages/*/node_modules` 가 이미지 설치를 덮고 `packages/backend/.env` 가 이미지에 들 수 있었다 — `**/` 패턴), backend `incremental: false`(tsbuildinfo 가 dist 밖에 남아 dist 를 지운 뒤 빌드가 아무것도 안 냈다), frontend 를 prettier 에서 뺌(eslint-config-vuetify 와 충돌).
 - **도구 우회(검증만)**: 브라우저 확장의 `form_input` 대신 네이티브 value setter + input 이벤트로 아이디 · 비밀번호 칸을 채웠다(한글 · 일반 칸은 실제 타이핑). 백그라운드 vite 는 `pnpm dev` 대신 `node node_modules/vite/bin/vite.js --port 3000 --strictPort`(pnpm 래퍼를 멈추면 자식 vite 가 남아 다음 vite 가 3001 로 갔다).
 - **TLS**: backend 컨테이너는 `DB_SSL=true` 로 `host.docker.internal` 의 테스트 DB 에 붙었다 — 우회 없이 통과.
-- **넘긴 것**: IP 접근 제어 화면 · 감사 로그 화면은 템플릿에 없다(킷 모듈은 있다 — 후속 admin-ui PR 후보). 템플릿 `preset/auth` 와의 관계는 사람이 정한다.
+- **넘긴 것**: IP 접근 제어 화면 · 감사 로그 화면은 템플릿에 없다(킷 모듈은 있다 — 후속 admin-ui PR 후보). 템플릿 `preset/auth` 와의 관계는 사람이 정한다. nginx 컨테이너를 backend 앞에 띄워 세션 행의 IP 를 보는 확인은 하지 않았다(다음 검증 후보 — 게이트웨이 realip 와 함께).
