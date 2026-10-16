@@ -25,7 +25,7 @@
 | ② 의존성    | **D1 — 킷으로 대체, swagger 뺌.** Nest 12 · kysely 0.29 · dialect 0.2 · kysely-ctl 0.21 · zod 4(peer). 템플릿 자체 HTTP 층(필터 · 인터셉터 · jsonParser · DatabaseModule · shared 응답/bigint 코드)은 킷 것으로. nestjs-zod(peer Nest ^10 \|\| ^11)와 그 patch · @nestjs/swagger 를 뺀다. 빌드는 `tsc`, 개발은 `tsc-watch` — @nestjs/cli 를 뺀다(cli 12 의 schematics 가 TypeScript ≥6 peer, 킷은 5.9 로 검증)   |
 | ③ 문서      | **P1 — 이 저장소 `docs/superpowers` · `docs/verification`.** 템플릿에는 결과물(골격 · 스킬 · CLAUDE.md · README)만. preset/admin 은 새 프로젝트로 통째로 복사되므로 설계 문서가 모든 프로젝트에 남는 것을 피한다                                                                                                                                                                                                 |
 | ④ 경로      | **(가) — `baseURL '/api/admin'`.** 킷 경로가 짧고(`'/auth/me'` · `'/users'`) admin-server README 「admin-ui 와 맞물리기」 · admin-ui 「최소 배선」과 글자 그대로 맞는다. 프로젝트의 관리자 라우트도 `admin/` 아래(`@Controller('admin/<이름>')`) — `/api/admin` 이 관리자 표면 전체가 된다. aksv 는 (나)로 검증했다(스펙 §14-1) — 차이는 경로 문자열뿐이고 이번 검증이 (가)를 실제로 돈다                        |
-| ⑤ 라우팅    | **R1 — 파일 기반 유지.** vue-router 5 auto-routes · vite-plugin-vue-layouts-next · typed routes. 페이지의 `definePage({ meta })` 하나에 경로 · 메뉴 · 권한이 모인다. admin-ui 는 `buildMenu(…, { depth: 'all' })` 로 지원하지만 실제 앱에서는 처음이다(§11)                                                                                                                                                      |
+| ⑤ 라우팅    | **R1 — 파일 기반 유지.** vue-router 5 auto-routes · vite-plugin-vue-layouts-next · typed routes. 페이지의 `definePage({ meta })` 하나에 경로 · 메뉴 · 권한이 모인다. 하위 페이지는 점 표기(`users.new.vue` → 최상위 `/users/new`)로 두고 폴더는 중첩 셸(`settings/`)에만 쓴다 — 드로어는 `buildMenu(routes, { groups })`(depth 1, §13-2)                                                                         |
 | ⑥ 페이지    | **S1 — 인증 · 본인 + 조직 + 설정.** 로그인 · 403 · 비밀번호 강제 변경 · 내 계정, 사용자(목록 · 추가 · 편집) · 팀 · 전체 세션, 설정 셸 아래 역할 · 약관. IP 접근 제어 · 감사 로그 화면은 넣지 않는다 — admin-ui 에 컴포넌트가 없고, IP 화면은 프로젝트마다 같아야 하니 후속 admin-ui PR(A)이 맞다. 감사 모듈은 기록용으로 켜고, IP 모듈은 끈다                                                                    |
 | ⑦ 스킬 단위 | **K1 — 세로 한 줄, DB 는 선택.** shared 카탈로그(권한 키 · 함의 · 감사 액션 · 스키마) → (선택) 테이블 · 마이그레이션 → backend 모듈(`@Controller('admin/<x>')` · `@Require` · `@Audit` · 검증 파이프) → frontend 어댑터 · 페이지(`definePage` meta) → 검사                                                                                                                                                       |
 | ⑧ 검증      | **V1 — 공통 + 브라우저 + 스킬 실행 + Docker 빌드.** 생성 앱 init → install → lint · typecheck · build · test → 새 DB → migrate → 시드 → 기동 → API 스모크 → claude-in-chrome 화면 확인 → 서브에이전트가 스킬로 페이지 하나 → 다시 확인 → 이미지 둘 빌드(push 없음) · backend 컨테이너 기동 → DB 삭제                                                                                                             |
@@ -113,23 +113,23 @@ packages/backend/
 | `src/router/index.ts`                                    | `createRouter({ routes: setupLayouts(routes) })` + `createAdminGuard({ ensureInitialized, isAuthorized, isPermissionDenied, isPasswordChangeRequired, check, paths: { passwordChange: '/password' } })` · `createTitleGuard(SITE_NAME)` · `installChunkRecovery` |
 | `src/main.ts`                                            | `registerPlugins` · `'@ssworks/admin-ui/style.css'` · `client.onAuthFailure`(START_LOCATION · `/login` 은 건너뜀) · mount                                                                                                                                        |
 | `src/App.vue`                                            | `VApp` > `RouterView` + `AdminToast` · `AdminConfirm` · `IpBlockedDialog`                                                                                                                                                                                        |
-| `src/layouts/default.vue` · `auth.vue`                   | `AdminShell`(`buildMenu(routes, { groups: [{ key: 'org', title: '조직' }], depth: 'all' })`, `showTeamRole`, 앱바 메뉴 "내 계정") · `AuthShell`(`#brand` 에 `SITE_NAME`)                                                                                         |
+| `src/layouts/default.vue` · `auth.vue`                   | `AdminShell`(`buildMenu(routes, { groups: MENU_GROUPS })` — `vue-router/auto-routes` 의 날 라우트 · depth 1, `showTeamRole`, 앱바 메뉴 "내 계정") · `AuthShell`(`#brand` 에 `SITE_NAME`)                                                                         |
 | `env.d.ts`                                               | `RouteMeta extends AdminRouteMeta<Permission>` 증강 + layouts 클라이언트 타입                                                                                                                                                                                    |
 
 ### 6-2. 페이지 — 모두 `definePage({ meta })`
 
-| 파일 → 경로                                                  | meta                                                                  | aksv 원본에서 바꾸는 것                                          |
-| ------------------------------------------------------------ | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `index.vue` → `/`                                            | selfOnly · 메뉴 "홈"                                                  | 새로 — 짧은 환영 카드(aksv HomePage 는 프리미티브 전시라 버린다) |
-| `login.vue` → `/login`                                       | `layout: 'auth'` · isPublic · needNonAuth                             | 돌아갈 곳 디버그 문구 · 기본 아이디 `'admin'` 삭제               |
-| `password.vue` → `/password`                                 | auth · selfOnly                                                       | 그대로(강제 변경 `PasswordChangeForm`)                           |
-| `403.vue` → `/403`                                           | auth · selfOnly                                                       | 그대로                                                           |
-| `account.vue` → `/account`                                   | selfOnly · 메뉴 없음(앱바)                                            | 그대로(내 세션 · 비밀번호 변경)                                  |
-| `users/index.vue` · `users/new.vue` · `users/[userNo].vue`   | USERS_READ(메뉴 조직 0) / USERS_WRITE / USERS_READ                    | `lab.reauth` → `ADMIN_REAUTH`, 호출은 `api/users.ts`             |
-| `teams.vue` → `/teams`                                       | TEAMS_READ · 조직 1                                                   | 시드 상수 `TEAM` 의존 제거                                       |
-| `sessions.vue` → `/sessions`                                 | SESSIONS_READ · 조직 2                                                | 그대로                                                           |
-| `settings.vue` + `settings/roles.vue` · `settings/legal.vue` | 부모 `anyPermissions: [ROLES_READ, LEGAL_READ]` · 메뉴 / 자식 각 READ | `lab.reauth` → `ADMIN_REAUTH`, 약관 탭은 `LEGAL_KINDS` 라벨      |
-| `[...path].vue`                                              | selfOnly                                                              | 새로 — "페이지를 찾을 수 없습니다"(aksv 의 `/` 리다이렉트 대신)  |
+| 파일 → 경로                                                                                                                     | meta                                                                  | aksv 원본에서 바꾸는 것                                          |
+| ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `index.vue` → `/`                                                                                                               | selfOnly · 메뉴 "홈"                                                  | 새로 — 짧은 환영 카드(aksv HomePage 는 프리미티브 전시라 버린다) |
+| `login.vue` → `/login`                                                                                                          | `layout: 'auth'` · isPublic · needNonAuth                             | 돌아갈 곳 디버그 문구 · 기본 아이디 `'admin'` 삭제               |
+| `password.vue` → `/password`                                                                                                    | auth · selfOnly                                                       | 그대로(강제 변경 `PasswordChangeForm`)                           |
+| `403.vue` → `/403`                                                                                                              | auth · selfOnly                                                       | 그대로                                                           |
+| `account.vue` → `/account`                                                                                                      | selfOnly · 메뉴 없음(앱바)                                            | 그대로(내 세션 · 비밀번호 변경)                                  |
+| `users.vue` · `users.new.vue` · `users.[userNo].vue`(점 표기 — 중첩 없는 최상위, 폼은 `components/users/UserEditForm.vue` 하나) | USERS_READ(메뉴 조직 0) / USERS_WRITE / USERS_READ                    | `lab.reauth` → `ADMIN_REAUTH`, 호출은 `api/users.ts`             |
+| `teams.vue` → `/teams`                                                                                                          | TEAMS_READ · 조직 1                                                   | 시드 상수 `TEAM` 의존 제거                                       |
+| `sessions.vue` → `/sessions`                                                                                                    | SESSIONS_READ · 조직 2                                                | 그대로                                                           |
+| `settings.vue` + `settings/roles.vue` · `settings/legal.vue`                                                                    | 부모 `anyPermissions: [ROLES_READ, LEGAL_READ]` · 메뉴 / 자식 각 READ | `lab.reauth` → `ADMIN_REAUTH`, 약관 탭은 `LEGAL_KINDS` 라벨      |
+| `[...path].vue`                                                                                                                 | selfOnly                                                              | 새로 — "페이지를 찾을 수 없습니다"(aksv 의 `/` 리다이렉트 대신)  |
 
 - **빼는 것**: LabPanel · `state/lab` · `fixtures` · LayoutsPage · HomePage 전시 · 깨진 청크 라우트 · `/__lab` 플러그인 · 요청 기록 어댑터.
 - 포팅한 코드는 템플릿 prettier(세미콜론) · `eslint-config-vuetify` 로 맞춘다. 정본 주석은 "정본: aksv(실서버 확인 2026-10-16) <파일>" 과 바꾼 점을 적는다.
@@ -140,13 +140,13 @@ frontend 에 vitest + happy-dom. `src/router/routes.test.ts` 가 `vue-router/aut
 
 1. `assertParentAnyPermissionsCoverChildren(routes)` 가 통과한다.
 2. 페이지 컴포넌트를 가진 모든 레코드가 `isPublic` · `selfOnly` · `permissions` · `anyPermissions` 중 하나를 선언한다 — 선언을 빠뜨린 새 페이지를 잡는 스킬의 안전망.
-3. `buildMenu(routes, { groups, depth: 'all' })` 이 기대한 메뉴 id 를 낸다.
+3. `buildMenu(routes, { groups: MENU_GROUPS })` 이 기대한 메뉴 id 를 낸다(설정 자식은 드로어에 없다).
 
 루트 `package.json` 에 `test` = `pnpm -r test`. CI(`.github/workflows/ci.yml`)에 Test 단계를 더한다.
 
 ## 7. admin-scaffold 스킬
 
-`.claude/skills/admin-scaffold/SKILL.md` 한 장. 00 검토 §2 대로 **스킬은 코드의 출처가 아니라 절차**다 — 화면 쪽 본보기는 템플릿에 실제로 있는 파일을 가리킨다(목록 `pages/sessions.vue` · `pages/users/index.vue`, 어댑터 `api/sessions.ts`, 쓰기 · 재인증 `pages/users/[userNo].vue`, 설정 하위 `pages/settings/legal.vue`). 템플릿에 본보기가 없는 백엔드 프로젝트 모듈만 짧은 골격(모듈 · 컨트롤러 · 서비스 각 20~30줄)을 스킬 안에 둔다.
+`.claude/skills/admin-scaffold/SKILL.md` 한 장. 00 검토 §2 대로 **스킬은 코드의 출처가 아니라 절차**다 — 화면 쪽 본보기는 템플릿에 실제로 있는 파일을 가리킨다(목록 `pages/sessions.vue` · `pages/users.vue`, 어댑터 `api/sessions.ts`, 쓰기 · 재인증 `components/users/UserEditForm.vue`, 설정 하위 `pages/settings/legal.vue`). 템플릿에 본보기가 없는 백엔드 프로젝트 모듈만 짧은 골격(모듈 · 컨트롤러 · 서비스 각 20~30줄)을 스킬 안에 둔다.
 
 - **입력**(요청에서 읽고, 없으면 묻는다): ① 자원 이름(`notices`) · 화면 제목(`공지`) ② 권한 키 · 함의(`board.notices:read` · `:write` → read) ③ 자리 — 메뉴 그룹 · 아이콘 · 순서 / 설정 하위 / 메뉴 없음(상세 · 편집) ④ 쓰기 여부(목록만 / 만들기 · 수정 · 삭제) ⑤ 테이블 필요 여부.
 - **절차**:
@@ -188,13 +188,13 @@ frontend 에 vitest + happy-dom. `src/router/routes.test.ts` 가 `vue-router/aut
 
 ## 11. 플랜에서 먼저 확인할 위험
 
-1. **`definePage` meta 의 import 상수** — `P.USERS_READ` 처럼 import 한 값을 `definePage` 에서 쓸 수 있는지(vue-router 5 의 매크로 추출). 안 되면 문자열 리터럴 + 타입(`satisfies Permission`)으로.
-2. **파일 기반 + 킷** — `setupLayouts` 래퍼 아래의 `SettingsShell`(첫 자식 리다이렉트 · 좌측 메뉴) · `buildMenu depth: 'all'` · 가드의 meta 병합. 어긋나면 킷 결함(§10).
+1. **`definePage` meta 의 import 상수** — `P.USERS_READ` 처럼 import 한 값을 `definePage` 에서 쓸 수 있는지(vue-router 5 의 매크로 추출). → **확인됨**(§13-1).
+2. **파일 기반 + 킷** — `setupLayouts` 래퍼 아래의 `SettingsShell`(첫 자식 리다이렉트 · 좌측 메뉴) · 가드의 meta 병합. 어긋나면 킷 결함(§10). `buildMenu depth: 'all'` 은 쓰지 않는다(§13-2).
 3. **shared dist 순서** — backend · frontend 가 `@project/shared` 를 `dist` 로 읽는다. 새 체크아웃 · CI 에서 `pnpm typecheck` 가 빌드보다 먼저면 "Cannot find module" 이다(이 저장소 HANDOFF 첫 세션 결함과 같다) — 루트 `prepare` 로 shared 를 빌드할지 확인한다.
-4. **pnpm 10.33** — `ignoredBuiltDependencies` 문법, 전역 pnpm 12 가 `packageManager` 로 10.33 을 내려받아 도는지(`manage-package-manager-versions`), 공개 경과 시간 정책이 오늘 공개된 0.4.1 을 막는지.
-5. **kysely-ctl 0.21 의 TS 로더** — `kysely.config.ts` 가 `./src/core/database/admin-db.js`(실제 `.ts`)를 import 할 때 풀리는지.
+4. **pnpm 10.33** — `ignoredBuiltDependencies` 문법, 전역 pnpm 12 가 `packageManager` 로 10.33 을 내려받아 도는지(`manage-package-manager-versions`), 공개 경과 시간 정책이 오늘 공개된 0.4.1 을 막는지. → 전역 pnpm 12.8.1 이 템플릿 안에서 10.33.0 으로 바뀌어 돈다(확인).
+5. **kysely-ctl 0.21 의 TS 로더** — `kysely.config.ts` 가 `./src/core/database/admin-db.js`(실제 `.ts`)를 import 할 때 풀리는지. → **확인됨**(jiti 2.7 이 `.js` → `.ts` 를 푼다).
 6. **`loadDotEnv` 와 `--env-file`** — Docker 는 `run.sh` 의 `--env-file /run/secrets/backend_env` 로 env 를 싣는다. `loadDotEnv(../.env)` 가 파일이 없을 때 조용한지, 이미 있는 변수를 덮지 않는지.
-7. **`Dockerfile.*` 의 `COPY .npmrc`** — `preset/db` 에 `.npmrc` 가 없다. 이미지 빌드가 여기서 실패할 것으로 본다 — 템플릿 결함으로 고친다.
+7. **`Dockerfile.*` 의 `COPY .npmrc`** — `preset/db` 에 `.npmrc` 가 없다. 이미지 빌드가 여기서 실패할 것으로 본다 — 템플릿 결함으로 고친다. pnpm 10 의 `pnpm deploy` 는 `inject-workspace-packages` 없이 `--legacy` 가 필요하고, 루트 `prepare` 가 소스 복사 전 설치에서 돌지 않게 `--ignore-scripts` 를 단다(§13-4).
 8. **Vuetify 스타일 순서** — 템플릿 `styles/settings.scss`(sass `configFile`)와 `@ssworks/admin-ui/style.css` · `vuetify/styles` 의 순서 · 중복.
 9. **`tsc-watch` · `node --watch`** — Windows 에서 재시작 · 종료 신호(`enableShutdownHooks`)가 풀을 닫는지.
 10. **eslint-config-vuetify** — 포팅한 코드(킷 스타일 · 4칸 들여쓴 script)가 규칙에 걸리는 범위.
@@ -208,4 +208,10 @@ frontend 에 vitest + happy-dom. `src/router/routes.test.ts` 가 `vue-router/aut
 
 ## 13. 구현 중 정정
 
-(구현하며 채운다)
+플랜 작성 중(2026-10-16) — 버리는 시험(`%TEMP%dpp` vite 8 + vue-router 5.4 · akss 의 jiti)과 코드 읽기로 정한 것:
+
+1. **`definePage` 의 import 상수는 된다.** 빌드 결과에 `?definePage` 가상 모듈이 `P.USERS_READ` 와 그 import 를 그대로 싣는다.
+2. **드로어는 depth 1 · 하위 페이지는 점 표기.** `buildMenu` 는 `meta.menu` 가 있는 레코드만 항목으로 만든다. `depth: 'all'` 이면 `settings/roles.vue` 처럼 설정 셸 자식이 좌측 메뉴용 `meta.menu`(아이콘 · 순서)를 가질 때 드로어에도 올라간다. 폴더(`teams/index.vue`)는 컴포넌트 없는 부모 + `path: ''` 자식을 만들어 depth 1 로는 안 보인다. 그래서 하위 페이지는 점 표기(`users.new.vue` · `users.[userNo].vue` → 최상위 `/users/new` · `/users/:userNo`)로 두고, 폴더는 중첩 셸(`settings/`)에만 쓴다. 드로어는 날 `routes` 를 depth 1 로 본다. admin-ui README 「파일 기반 라우팅이면 `depth: 'all'`」에 이 중복을 알리는 문장을 더한다(문서만 — 2391d33 처럼 changeset 없음).
+3. **사용자 추가 · 편집 폼은 컴포넌트 하나** — `components/users/UserEditForm.vue` 를 `users.new.vue` · `users.[userNo].vue` 가 감싼다(aksv 는 한 컴포넌트를 두 라우트에 걸었다).
+4. **Docker** — pnpm 10 의 `pnpm deploy` 는 `--legacy`(또는 `inject-workspace-packages`)가 필요하다. 루트 `prepare`(shared 빌드)가 package.json 만 복사한 설치 단계에서 돌면 실패하므로 Dockerfile 의 설치는 `--ignore-scripts` 다.
+5. **frontend `typecheck`** — 루트 `pnpm typecheck`(`pnpm -r typecheck`)는 frontend 의 `type-check` 를 부르지 않는다. frontend 에 `typecheck` 를 더한다.
