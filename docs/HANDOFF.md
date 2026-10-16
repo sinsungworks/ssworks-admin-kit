@@ -1,4 +1,4 @@
-# HANDOFF — 2026-10-15
+# HANDOFF — 2026-10-16
 
 Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 파일 → `CLAUDE.md` → 현재 플랜 순으로 읽는다.
 
@@ -28,9 +28,9 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
 - ~~저장소 Settings → Actions → "Allow GitHub Actions to create and approve pull requests"~~ — 켜 둠(2026-10-02). 꺼져 있으면 release 가 PR 생성에서 실패한다.
 - **Version Packages PR #2 는 3b 가 `main` 에 들어온 뒤 머지한다** — 0.3.0 에 3a + 3b 가 함께 실린다(3b 스펙 §8). 3c 도 같은 minor 묶음이라 PR #2 머지 전에 3c 가 `main` 에 들어오면 함께 실리고, 뒤에 들어오면 0.4.0 이 된다(3c 스펙 §8). 로컬 `main` 의 커밋은 PR #2 머지 전에 push 한다. 3d 는 새 필수 peer(`@he-tree/vue`)가 있어 changeset 에 소비자 설치 안내를 적었다. 3e 는 새 필수 peer(`codemirror` · `@codemirror/state`)가 있어 changeset 에 소비자 설치 안내를 적었다.
 - ~~**Version Packages PR #2(0.3.0)는 2a 를 main 에 넣기 전에 머지한다**(Phase 2 결정 ⓪ M1).~~ — 머지됨(2026-10-09).
-- 0.3.0 은 2026-10-15 사람이 로컬 2FA 로 따로 발행했다(CI 스테이징 실패분). PR #3(0.4.0) 머지 전에 npm Trusted Publisher(admin-shared · admin-ui)를 확인한다.
-- **Version Packages PR #3 은 2f-2b 가 main 에 들어간 뒤 머지한다**(2f-2b 결정 ① V1) — 0.4.0 하나에 2c ~ 2f-2b 가 실리고 admin-shared patch(TS2536 · 파서)가 0.4.0 에 접힌다. admin-server 첫 발행도 0.4.0 이다(peer admin-shared >=0.4.0 <1.0.0).
-- **admin-server 첫 발행은 Phase 2 끝**(결정 ⑥ V1) — 2f 와 확인용 앱 실서버 확인 뒤 private 을 지우고 사람이 로컬 2FA 로. 그 뒤 Trusted Publisher 등록.
+- 0.3.0 은 2026-10-15 사람이 로컬 2FA 로 따로 발행했다(CI 스테이징 실패분). Trusted Publisher(admin-shared · admin-ui)는 0.4.0 Release 재실행 전에 고쳤다(2026-10-16).
+- ~~**Version Packages PR #3 은 2f-2b 가 main 에 들어간 뒤 머지한다**(2f-2b 결정 ① V1) — 0.4.0 하나에 2c ~ 2f-2b 가 실리고 admin-shared patch(TS2536 · 파서)가 0.4.0 에 접힌다.~~ — 머지됨(2026-10-16). 0.4.0 은 Release 재실행으로 스테이징 · 사람이 승인해 공개(admin-shared · admin-ui).
+- **admin-server 첫 발행은 Phase 2 끝**(결정 ⑥ V1) — 2f 와 확인용 앱 실서버 확인(2026-10-16 완료) 뒤 — 0.4.1 Version Packages PR 머지 뒤 private 을 지우고 사람이 로컬 2FA 로(첫 발행은 0.4.1, peer admin-shared >=0.4.0 <1.0.0). 그 뒤 Trusted Publisher 등록.
 
 ## 결정 사항 (바꾸려면 `docs/01-phase0.md` §4 를 먼저 고친다)
 
