@@ -1,7 +1,7 @@
 # 템플릿 preset/admin 검증 기록
 
 - 날짜: 2026-10-16
-- 대상: `kim5257-project-template` `preset/admin` `bb37000`(로컬 커밋 21 — push 전)
+- 대상: `kim5257-project-template` `preset/admin` `9355035`(로컬 커밋 22 — push 전)
 - 환경: Windows 11 · Node 24.21 · pnpm 10.33(전역 12 가 자동 전환) · Docker MariaDB 11.4(`admin-kit-test-db` 33306) · `@ssworks/admin-shared` · `admin-ui` · `admin-server` 0.4.1(npm, 정확한 핀)
 - 스펙 `docs/superpowers/specs/2026-10-16-template-preset-admin-design.md` · 플랜 `docs/superpowers/plans/2026-10-16-template-preset-admin.md`
 
@@ -34,6 +34,7 @@
 | `6f5600a` | fix: admin-scaffold — 검색 칸은 `filterText` · 재인증이 켜진 프로젝트는 서버도 확인(최종 리뷰)                                |
 | `cad339e` | docs: 새 코어 장 스텁은 타임스탬프 이름 · 엣지 뒤 nginx realip · IP 켜기 import(최종 리뷰)                                    |
 | `bb37000` | fix: `.gitattributes` 로 체크아웃 개행을 LF 로 — Windows autocrlf 에서 `run.sh` 가 CRLF 로 이미지에 들던 것(최종 리뷰)        |
+| `9355035` | fix: 템플릿 nginx 가 게이트웨이의 `X-Forwarded-For` 마지막 값을 클라이언트 IP 로 — realip(사설 대역 출처, 사용자 결정)        |
 
 ## 2. 검증 ① — 생성 앱 `%TEMP%\akt`
 
@@ -108,11 +109,22 @@ whole-branch 리뷰(템플릿 `44c640f..eef5fab` · 킷 문서 한 커밋)가 "�
 | Important        | `.env.backend`(운영 비밀값, deploy.sh 가 읽음)가 `.gitignore` 밖                                                                                                                         | `.env.backend` 무시(`dd58183`) — `git check-ignore` 전 1 → 후 0, 예시 둘은 추적 유지                                                                                           |
 | Important        | 검색 칸 `clearable` 의 ✕ 는 v-model 에 `null` — users · sessions 의 `.trim()` 이 ✕ 뒤 적용에서 TypeError(스킬 본보기라 생성 화면에도 번진다)                                             | `filterText` + 테스트(Vuetify ✕ → null 도 잰다, 모듈 없음 RED → 2/2), 두 화면과 스킬(`5b2a999` · `6f5600a`). frontend 테스트 5 → 7                                              |
 | Important        | 킷 올리기의 "다음 번호로 스텁" — 프로젝트 장(타임스탬프)이 적용된 DB 에서 `013_…` 이 그 앞에 정렬돼 Kysely 가 "corrupted migrations" 로 멈춘다                                           | 새 코어 장 스텁은 `migrate:make admin_<장>`(템플릿 CLAUDE.md · migrations.md `cad339e`, 킷 admin-server README 한 문장). Kysely `#ensureMigrationsInOrder` · 킷 스텁 검사 소스로 확인 |
-| Important        | nginx 앞에 엣지(게이트웨이 망)가 있으면 `$remote_addr` 이 엣지 주소 — 세션 · 감사 IP 가 모두 같고 IP 접근 제어 규칙이 안 맞는다                                                         | realip 셋을 주석으로 두고 켜는 조건을 적었다(nginx · README · admin-options · CLAUDE.md IP 절 `cad339e`, `nginx -t` 두 판 통과). 🔴 게이트웨이 동작을 확인해 사람이 켠다          |
+| Important        | nginx 앞에 엣지(게이트웨이 망)가 있으면 `$remote_addr` 이 엣지 주소 — 세션 · 감사 IP 가 모두 같고 IP 접근 제어 규칙이 안 맞는다                                                         | 사용자 결정으로 게이트웨이의 `X-Forwarded-For` 마지막 값을 믿는 realip 를 켰다(사설 대역 셋 · recursive 끔 — `cad339e` · `9355035`). 아래 컨테이너 시험                          |
 | Important(올림)  | `ADMIN_REAUTH` 를 켜면 스킬 화면은 재인증을 묻지만 서버는 `currentPassword` 를 보지 않는다                                                                                               | 스킬에 서버 확인(`AdminReauthService.verify` 를 트랜잭션 밖에서)을 적었다(`6f5600a`)                                                                                           |
 | Important(올림)  | `.gitattributes` 가 없어 Git for Windows 기본(`core.autocrlf=true`) 체크아웃에서 `run.sh` 가 CRLF — backend 컨테이너가 뜨지 않고 init 의 절 삭제가 어긋난다(리뷰는 브랜치 전부터라 뺐다) | `* text=auto eol=lf`(`bb37000`) — autocrlf=true clone 에서 CR 전 run.sh 11 · CLAUDE.md 187 → 후 0                                                                             |
 
-최종 `bb37000` 을 다시 새로 clone → init → lint · typecheck · test(6 · 7) · build 0, `@project/` 잔존 0.
+`bb37000` 을 다시 새로 clone → init → lint · typecheck · test(6 · 7) · build 0, `@project/` 잔존 0.
+
+클라이언트 IP(`9355035`) — 템플릿 nginx 를 컨테이너로 띄우고, 받은 `X-Real-IP` 를 돌려주는 가짜 backend 를 뒤에 두어 쟀다. 클라이언트는 게이트웨이 자리(사설망)와 사설이 아닌 망(`198.51.100.0/24`)에서 보냈다:
+
+| #   | 보낸 것                                                | 고치기 전                  | 고친 뒤                                 |
+| --- | ------------------------------------------------------ | -------------------------- | --------------------------------------- |
+| A   | 사설망에서 `X-Forwarded-For: 203.0.113.9`(덮어쓴 꼴)   | 게이트웨이 자리 주소(사설) | `203.0.113.9`                           |
+| B   | 사설망에서 `6.6.6.6, 203.0.113.9`(앞쪽 오염 + 덧붙임)  | 게이트웨이 자리 주소       | `203.0.113.9`(앞쪽 무시)                |
+| C   | 사설망에서 헤더 없음                                   | 게이트웨이 자리 주소       | 게이트웨이 자리 주소                    |
+| D   | 사설 밖 출처에서 `6.6.6.6`                             | 그 출처 주소               | 그 출처 주소(믿지 않는다)               |
+
+`nginx -t` 통과. 운영(게이트웨이 → nginx → backend)에서 세션 화면의 IP 를 보는 확인은 배포 뒤에 남는다.
 
 넘긴 Minor(후속): 스킬 목록 정렬의 동률 기준(`noticeNo` desc), 다른 자원 읽기에 기댄 화면(사용자 편집의 역할 · 팀 선택, 팀 인원 — 좁은 역할에서 빈 칸 · 403), frontend `components/README` 의 "자동 import" 문구, 템플릿 CLAUDE.md 보완(`pnpm format` 범위 · shared 재빌드 · `[param]` 페이지 뒤 `typed-router.d.ts`), `users.vue` 의 한국 시간 셈이 backend `TIME_ZONE` 과 따로, 스킬 기동 확인 뒤 서버 끄기, README 빠른 시작의 `CREATE DATABASE`.
 
@@ -122,4 +134,4 @@ whole-branch 리뷰(템플릿 `44c640f..eef5fab` · 킷 문서 한 커밋)가 "�
 - **템플릿 결함(고침)**: 개발 서버 사전 번들 두 번(`743941f` · `fbc06c0`), `.dockerignore` 루트 패턴만(`packages/*/node_modules` 가 이미지 설치를 덮고 `packages/backend/.env` 가 이미지에 들 수 있었다 — `**/` 패턴), backend `incremental: false`(tsbuildinfo 가 dist 밖에 남아 dist 를 지운 뒤 빌드가 아무것도 안 냈다), frontend 를 prettier 에서 뺌(eslint-config-vuetify 와 충돌).
 - **도구 우회(검증만)**: 브라우저 확장의 `form_input` 대신 네이티브 value setter + input 이벤트로 아이디 · 비밀번호 칸을 채웠다(한글 · 일반 칸은 실제 타이핑). 백그라운드 vite 는 `pnpm dev` 대신 `node node_modules/vite/bin/vite.js --port 3000 --strictPort`(pnpm 래퍼를 멈추면 자식 vite 가 남아 다음 vite 가 3001 로 갔다).
 - **TLS**: backend 컨테이너는 `DB_SSL=true` 로 `host.docker.internal` 의 테스트 DB 에 붙었다 — 우회 없이 통과.
-- **넘긴 것**: IP 접근 제어 화면 · 감사 로그 화면은 템플릿에 없다(킷 모듈은 있다 — 후속 admin-ui PR 후보). 템플릿 `preset/auth` 와의 관계는 사람이 정한다. nginx 컨테이너를 backend 앞에 띄워 세션 행의 IP 를 보는 확인은 하지 않았다(다음 검증 후보 — 게이트웨이 realip 와 함께).
+- **넘긴 것**: IP 접근 제어 화면 · 감사 로그 화면은 템플릿에 없다(킷 모듈은 있다 — 후속 admin-ui PR 후보). 템플릿 `preset/auth` 와의 관계는 사람이 정한다. 게이트웨이의 헤더 오염 보완(`X-Forwarded-For` 덮어쓰기)은 게이트웨이 저장소 몫이다 — 템플릿은 마지막 값만 써서 보완 전에도 맞다.
