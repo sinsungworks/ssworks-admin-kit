@@ -690,6 +690,8 @@ createApiClient({
 })
 ```
 
+이것은 admin-ui README 「최소 배선」 아래 규칙의 (가) 갈래다. baseURL 을 global prefix(`'/api'`)로 두면 (나) — 모든 경로에 `'/admin'` 을 붙이고, admin-ui README 「Phase 2 서버를 쓰는 새 서비스」 예제가 그대로 맞는다.
+
 봉투(`envelope: 'success-data'`)와 bigint 코덱은 admin-ui 기본값과 같다. 오류 `code` · `details.issues` 는 `ApiError` · `toFieldErrors` 가 그대로 읽는다. 스토어는 `fetchMe: () => api.get('/auth/me')` · `login: (c) => api.post('/auth/login', c)` · `logout: () => api.post('/auth/logout')`, 강제 변경은 `createAdminGuard({ isPasswordChangeRequired: () => store.userInfo?.isPasswordChangeRequired === true })`, IP 차단은 `onError` 에서 `ERR_IP_NOT_ALLOWED` 와 `details.clientIp`(admin-ui README).
 
 ## 테스트(이 저장소)

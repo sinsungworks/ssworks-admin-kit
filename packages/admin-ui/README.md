@@ -215,7 +215,12 @@ export const client = createApiClient({
 export const { api } = client
 ```
 
-admin-server 를 쓰는 앱은 값이 다르다. `baseURL` 은 서버 global prefix(예: `'/api'`), `refreshPath: '/admin/auth/refresh'`, `noRetryPaths: ['/admin/auth/login']` 이고, 아래 스토어의 `fetchMe` · `login` · `logout` 도 `'/admin/auth/me'` · `'/admin/auth/login'` · `'/admin/auth/logout'` 이다. 「Phase 2 서버」 예제의 `'/admin/…'` 경로와 한 벌이다 — 안 맞추면 갱신 경로가 `/api/auth/refresh` 로 틀린다.
+admin-server 를 쓰는 앱은 라우트가 모두 `routePrefix`(기본 `'admin'`) 아래라는 것을 baseURL 과 경로 중 **한 곳에서만** 셈한다. 한 앱 안에서 둘 중 하나로 맞춘다.
+
+- (가) `baseURL: '/api/admin'`(global prefix + routePrefix) — 위 `refreshPath` · `noRetryPaths`, 아래 스토어의 `'/auth/…'`, 「세션 · 비밀번호」 예제의 `'/sessions/…'` · `'/users/…'` · `'/auth/password'` 가 그대로 맞는다. 「조직」 · 「약관」의 「Phase 2 서버를 쓰는 새 서비스」 예제는 `'/admin'` 을 떼고 쓴다. admin-server README 「admin-ui 와 맞물리기」가 이 갈래다.
+- (나) `baseURL: '/api'`(global prefix 만) — 모든 경로에 `'/admin'` 을 붙인다: `refreshPath: '/admin/auth/refresh'`, `noRetryPaths: ['/admin/auth/login']`, 스토어 `'/admin/auth/me'` · `'/admin/auth/login'` · `'/admin/auth/logout'`, `'/admin/auth/password'` · `'/admin/sessions/…'` · `'/admin/users/…'`. 「Phase 2 서버를 쓰는 새 서비스」 예제가 이 갈래다.
+
+🔴 섞으면 갱신만 404 다(`/api/auth/refresh` 나 `/api/admin/admin/auth/refresh`) — 액세스 토큰이 만료될 때마다(기본 15분) 로그인 화면으로 튕기고, 개발 중에는 바로 안 보인다.
 
 ```ts
 // stores/app.ts
@@ -406,6 +411,8 @@ const items = buildMenu<Permission>(routes, { groups, depth: 'all' }) // setupLa
 `assertParentAnyPermissionsCoverChildren` 은 `meta.anyPermissions` 를 **선언한** 레코드만 검사한다(그 값을 상속하는 후손의 `permissions` 를 덮어야 한다). 선언 없는 `setupLayouts` 래퍼·폴더 노드는 건너뛰므로 파일 기반 라우팅에서도 쓸 수 있다.
 
 ## 목록 · 쓰기
+
+아래는 hangang 형 서버 예다 — admin-server 는 검색이 `filter[keyword]`(아이디 · 이름 부분일치)이고 퇴사 본문에 `resignDate` 가 필수다(admin-server README 「사용자 · 계정」).
 
 ```ts
 const applied = ref({ userId: '', teamNo: undefined as bigint | undefined })
@@ -740,7 +747,7 @@ const teams = useTeamTree({
     <TeamTree v-bind="teams.tree.value" draggable />
   </ColumnPane>
   <ColumnPane width="300px">
-    <TeamUserList ref="userList" v-model="selectedUserNo" :team-no="teams.selected.value" :load="loadMembers">
+    <TeamUserList ref="userList" v-model="selectedUserNo" :team-no="teams.selected.value" :load="loadMembers" :messages="{ searchLabel: '아이디 · 이름 검색' }">
       <template #item="{ item }">{{ item.userName }} · {{ item.roleName }}</template>
       <template #bottom><VBtn block :disabled="teams.selected.value == null" @click="startAdd">사용자 추가</VBtn></template>
     </TeamUserList>

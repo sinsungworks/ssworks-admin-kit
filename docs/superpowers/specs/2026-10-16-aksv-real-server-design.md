@@ -282,11 +282,11 @@ Vite 플러그인(`configureServer`)이 단다. 상태(실험 주소 · 토큰 �
 
 ## 14. 구현 중 정정
 
-1. 앱 경로 규약: §6-1 의 `baseURL '/api/admin'` 대신 README 「Phase 2 서버」 예제를 따라 `baseURL '/api'` · 경로 `'/admin/…'` · `refreshPath '/admin/auth/refresh'` · `noRetryPaths ['/admin/auth/login']` 로 했다. 이 과정에서 README 최소 배선과 Phase 2 예제의 어긋남이 드러나 2391d33 에서 고쳤다(발견 문서 1).
+1. 앱 경로 규약: §6-1 의 `baseURL '/api/admin'` 대신 README 「Phase 2 서버」 예제를 따라 `baseURL '/api'` · 경로 `'/admin/…'` · `refreshPath '/admin/auth/refresh'` · `noRetryPaths ['/admin/auth/login']` 로 했다. 이 과정에서 README 최소 배선과 Phase 2 예제의 어긋남이 드러나 2391d33 에서 고쳤다(발견 문서 1). 최종 리뷰에서 admin-server README 는 (가) baseURL `'/api/admin'` 을, admin-ui README 「Phase 2 서버」 예제는 (나) 를 적고 있음이 드러나, admin-ui README 「최소 배선」 아래 문단을 두 갈래 규칙으로 바꾸고 두 README 가 서로 가리키게 했다.
 2. 생성기: `make-app.mjs` · `make-server.mjs` 는 `%TEMP%\aksv` · `akss` 작업 폴더의 스냅숏(`snapshot.mjs`)이고, 3장 생성기는 새 `gen-real.mjs`(1 · 2장 CSS 재사용)다. 판정 기록은 `record.mjs` · `results.json` · `findings.json`. 지난 생성기에 빠져 있던 `src/plugins/confirm.ts` 를 README 배선대로 채웠다.
 3. 재기동 단계: 재인증(`AKSS_REAUTH=true`) · 진짜 만료(`AKSS_ACCESS_TTL_MS=20000`, 유예 5초)를 env 로 켠다.
 4. 쿼리의 bigint 는 평문 숫자다. 플랜의 "쿼리에도 `BigInt(n)`" 가정이 틀렸다 — 킷 `serializeParams` 가 `String(bigint)` 로 보내고 서버 `queryBigIntSchema` 가 받는다. 시드 확인 스크립트를 그에 맞춰 고쳤다.
-5. 킷 결함 하나를 이 브랜치에서 고쳤다(6a034e2 — 쿼리 boolean 을 'true' · 'false' 로, 계약 테스트, changeset patch → 0.4.1). 플랜에 없던 Task 4b 로 끼워 넣었다. README 세 곳은 Task 13a(2391d33).
+5. 킷 결함 하나를 이 브랜치에서 고쳤다(6a034e2 — 쿼리 boolean 을 'true' · 'false' 로, 계약 테스트, changeset patch → 0.4.1). 플랜에 없던 Task 4b 로 끼워 넣었다. README 세 곳은 Task 13a(2391d33). 고친 뒤 aksv 의 admin-ui 를 로컬 pack(0.4.0 + 6a034e2)으로 바꿔 끼웠고 판정 62 건은 모두 그 뒤다 — 시험한 조합은 admin-shared npm 0.4.0 · admin-ui 0.4.1 예정분 · admin-server 로컬 pack 이다.
 6. 1-L11: 실서버는 아이디 중복을 409 가 아니라 400 검증 오류(userId 칸 details)로 낸다 — 통과(플랜의 409 전제가 틀렸다).
 7. Task 8 은 판정자 컨텍스트 한도 때문에 8a(역할 · 세션 · 비밀번호 16) · 8b(팀 10)로 나눴다.
 8. 도구: claude-in-chrome 이 쿼리 문자열 든 URL 꼴의 출력을 막아 요청 기록은 `?` · `&` · `=` 를 바꿔 읽었다. 자동 입력(`form_input` · type)이 Vue v-model 에 닿지 않아 네이티브 value setter + input 이벤트로 넣었다. file:// 은 열 수 없었다.
@@ -294,4 +294,4 @@ Vite 플러그인(`configureServer`)이 단다. 상태(실험 주소 · 토큰 �
 10. 2-T15 의 기대 숫자(2 · 11)는 작성 오류 — 서버 부분일치대로 1 · 10. X6 은 킷이 같은 본문 발행을 미리 막아(버튼 꺼짐 + 편집기 안 안내) 서버 409 는 직접 요청으로 확인했다. 둘 다 판정 메모로 정정했다.
 11. X2(재사용 탐지)가 그 사용자의 세션을 모두 끊는 것은 설계다 — 2-C1 전에 시드 세션 넷을 실제 로그인 API 로 다시 만들었다.
 12. 자동 드래그는 he-tree 에 불안정하게 먹혀(2-T1 한 번 성공) 2-T2 · 2-T3 은 사람이 판정했다. 자동 드래그 때 he-tree 내부 예외('setting hidden') 8건이 콘솔에 났고, 사람 드래그에서는 재현되지 않아 X12 에 세지 않았다.
-13. 결과: 62 항목 통과 62 · 실패 0 · 해당 없음 0. 다음 Version Packages PR 은 세 패키지(fixed) 모두 0.4.1 이고 admin-server 첫 발행도 0.4.1 이다. 넘긴 결함 둘은 첫 발행을 막지 않는다(HANDOFF "알려진 미확인 · 보류").
+13. 결과: 62 항목 통과 62 · 실패 0 · 해당 없음 0. 다음 Version Packages PR 은 세 패키지(fixed) 모두 0.4.1 이고 admin-server 첫 발행도 0.4.1 이다. 넘긴 결함 둘은 첫 발행을 막지 않는다(HANDOFF "알려진 미확인·보류").
