@@ -21,6 +21,9 @@
 
 | 파일 | 오류 | 고친 것 | 발행물 영향 |
 | ---- | ---- | ------- | ----------- |
+| (없음) | typecheck · build · check:dts · test(1749) · lint 모두 첫 시도에 초록 | 소스 · tsconfig 변경 없음 | 없음 |
+
+범위 안 갱신(prettier 3.9.10 · typescript-eslint 8.71.2 · vitest 4.1.12)은 잠금 파일만 바뀌었고 pnpm check 초록. pnpm install 의 peer 경고 없음(eslint 9.39.5 deprecated 안내만).
 
 ### 2-2. eslint 10 · typescript-eslint 8.71
 
