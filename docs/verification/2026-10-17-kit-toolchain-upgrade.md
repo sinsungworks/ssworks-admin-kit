@@ -100,6 +100,28 @@ admin-ui 단위 테스트(`pnpm --filter @ssworks/admin-ui test`): 886 / 63 파�
 
 ## 5. changeset 드라이런 (V4)
 
+**한계:** 로컬 `changeset version` 드라이런(worktree)은 돌리지 못했다 — 권한 계층이 막았다(`pnpm version-packages` 는 `.claude/settings.json` deny, `pnpm exec changeset version` 은 auto mode 분류기가 거부). 사용자가 `changeset status` 로 대신하기로 정했다. peer 재작성(`workspace:` → 범위)과 CHANGELOG 제목은 Version Packages PR 에서 확인한다.
+
+`pnpm changeset status --verbose`:
+
+```
+Packages to be bumped at minor
+- @ssworks/admin-ui 0.5.0         (.changeset/pinia-4-toolchain.md)
+- @ssworks/admin-shared 0.5.0     (.changeset/pinia-4-toolchain.md)
+- @ssworks/admin-server 0.5.0     (.changeset/pinia-4-toolchain.md)
+Running release would release NO packages as a major
+```
+
+세 패키지 모두 0.5.0 이고 major 는 없다.
+
+tarball(`pnpm build` 뒤 `pnpm --filter … pack`, 킷 본 체크아웃, `AK5/tgz`): package.json 버전이 릴리스 전까지 0.4.1 이라 파일 이름은 `-0.4.1.tgz` 다(내용은 0.5.0 이 실을 것).
+
+| 파일                           | 포장된 peerDependencies                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| `ssworks-admin-shared-0.4.1.tgz` | `zod ^4.0.0`                                                                    |
+| `ssworks-admin-ui-0.4.1.tgz`     | `@ssworks/admin-shared ^0` · `pinia ^4.0.0` · vue · vuetify 등 (`@vue/devtools-api` 없음) |
+| `ssworks-admin-server-0.4.1.tgz` | `@ssworks/admin-shared >=0.4.0 <1.0.0` · nestjs 12 · kysely 0.29 등              |
+
 ## 6. 소비 앱 스모크 (V5 · V6)
 
 ## 7. 템플릿 preset/admin (V7)
