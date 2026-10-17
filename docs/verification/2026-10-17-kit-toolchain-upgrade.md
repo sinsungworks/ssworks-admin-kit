@@ -300,6 +300,8 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
 4. `git add pnpm-lock.yaml && git commit --amend --no-edit`(ⓑ 에 잠금 파일을 합친다. 3 의 `typed-router.d.ts` 도 같이).
 5. 그다음에야 push(사람). 그 전에는 push 하지 않는다.
 
+결과(2026-10-17): npm 0.5.0 셋으로 `pnpm install`(pnpm 10.33.0 — `@ssworks/*` 0.5.0 레지스트리 해석 · `pinia 4.1.0` · `@vue/devtools-api 8.2.1` · `vue 3.5.44` · `vue-router 5.4.0`, peer 경고는 `unplugin-fonts` 의 vite 8 하나) → `--frozen-lockfile` · lint · typecheck · test(shared 6 · frontend 7) · build · format:check 초록 → `typed-router.d.ts` 는 안 바뀌어 `pnpm-lock.yaml` 만 ⓑ 에 amend(4 의 `--no-edit` 대신 제목 · 본문을 고침 — 🔴 amend 안내 지움) — 최종 ⓑ = `579c2b6`, push 는 사람.
+
 ## 8. ringside 에 고칠 것
 
 - **읽은 ringside**: `sinsungworks/ssworks-ringside` 최신 커밋 `c39df68` (2026-10-14T06:20:54Z). `gh api` GET 만. 훑은 문서 `CLAUDE.md` · `docs/summary.md` · `docs/ringside-dev-plan.html` · `docs/ringside-development-plan.html`.

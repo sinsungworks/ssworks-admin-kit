@@ -24,14 +24,14 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
 
 킷 버전 상향(0.5.0) 릴리스 — 순서대로(스펙 `docs/superpowers/specs/2026-10-17-kit-toolchain-upgrade-design.md` §10):
 
-**1~5 완료(2026-10-17)** — 0.5.0 셋 공개(`latest` 0.5.0) · provenance 셋 다 `https://slsa.dev/provenance/v1`(admin-server 첫 OIDC 성공) · 발행 peer admin-ui `pinia ^4.0.0` · `@ssworks/admin-shared ^0`, admin-server `>=0.4.0 <1.0.0` · 태그 `@ssworks/*@0.5.0`(1b9a44a) · CI 의 `check` · `db (11.4)` · `db (12.3)` · `db` 네 검사 성공(PR #5 머지 1b9a44a). 남은 것은 6 ~ 8.
+**1~5 완료(2026-10-17)** — 0.5.0 셋 공개(`latest` 0.5.0) · provenance 셋 다 `https://slsa.dev/provenance/v1`(admin-server 첫 OIDC 성공) · 발행 peer admin-ui `pinia ^4.0.0` · `@ssworks/admin-shared ^0`, admin-server `>=0.4.0 <1.0.0` · 태그 `@ssworks/*@0.5.0`(1b9a44a) · CI 의 `check` · `db (11.4)` · `db (12.3)` · `db` 네 검사 성공(PR #5 머지 1b9a44a). 6 도 끝났다(2026-10-17 — 템플릿 push 는 사람). 남은 것은 7 · 8.
 
 1. ~~`main` push — 브랜치는 `main` 에 로컬 fast-forward 로 병합했다(2026-10-17). ruleset 필수 검사(`check` · `db`)는 **고치지 않는다** — CI 의 `db` 는 `db (11.4)` · `db (12.3)` 매트릭스(`db-matrix`)를 모으는 잡이다. push 뒤 첫 CI 에서 `db (11.4)` · `db (12.3)` · `db` 세 검사가 뜨는지 본다.~~
 2. ~~push → release 워크플로가 Version Packages PR(0.5.0)을 연다.~~ — PR #5
 3. (완료 — PR #5 diff: 버전 0.5.0 ×3 · `## 0.5.0` 셋 · peer 줄 변화 없음) 🔴 **0.5.0 Version Packages PR 머지 전에 admin-server Trusted Publisher 등록**(아래 "admin-server npm 설정"). 이 PR 에서 로컬 드라이런을 건너뛴 몫을 확인한다 — 버전 0.5.0 ×3 · 1.0.0 없음 · CHANGELOG 셋의 `## 0.5.0` 제목. peer 줄(`workspace:^0` · `workspace:>=0.4.0 <1.0.0`)은 범위 안이라 PR diff 에 **나오지 않는 게 맞다** — `workspace:^0.5.0` 같은 재작성이 보이면 결함이다(`workspace:` → 범위 변환은 pack · 발행 때). 발행되는 peer 범위(`^0` · `>=0.4.0 <1.0.0` · `pinia ^4.0.0`)는 스테이징 뒤 `npm view @ssworks/<패키지>@0.5.0 peerDependencies` 로 본다(검증 기록 §5).
 4. ~~Version Packages PR 머지 → 셋 스테이징 → `pnpm stage list`(셋) → `pnpm stage approve <id>` ×3 → `git pull && pnpm changeset tag && git push --tags`.~~ — 셋 "staged by GitHub Actions (trusted automation)" → 승인 → 태그 push.
 5. ~~`.changeset/README.md` 5단계: 세 패키지 provenance 확인 — admin-server 는 첫 OIDC 확인이다(기준선: 0.4.1 은 없음). `npm view @ssworks/<패키지>@0.5.0 dist.attestations.provenance.predicateType --prefer-online` → 셋 다 `https://slsa.dev/provenance/v1`.~~ — 셋 다 `https://slsa.dev/provenance/v1`.
-6. 템플릿 `preset/admin`: 커밋 ⓐ `73de2be`(도구 상향) · ⓑ `ddf1d7d`(킷 0.5.0)는 로컬이고 push 하지 않았다(ⓑ 에 잠금 파일 없음). **0.5.0 이 공개된 뒤에** `pnpm install` → lint · typecheck · test · build → 잠금 파일(바뀌었으면 `packages/frontend/src/typed-router.d.ts` 도)을 ⓑ 에 amend → push (검증 기록 §7-4).
+6. ~~템플릿 `preset/admin`: 커밋 ⓐ `73de2be`(도구 상향) · ⓑ `ddf1d7d`(킷 0.5.0)는 로컬이고 push 하지 않았다(ⓑ 에 잠금 파일 없음). **0.5.0 이 공개된 뒤에** `pnpm install` → lint · typecheck · test · build → 잠금 파일(바뀌었으면 `packages/frontend/src/typed-router.d.ts` 도)을 ⓑ 에 amend → push (검증 기록 §7-4).~~ — 완료(2026-10-17), push 만 남음: `pnpm install`(pnpm 10.33.0)이 npm 0.5.0 셋을 풀었다(잠금 파일 integrity, `file:` 아님) — frontend `pinia 4.1.0` · `@vue/devtools-api 8.2.1` · `vue 3.5.44` · `vue-router 5.4.0`, peer 경고는 전부터 있던 `unplugin-fonts` 의 vite 8 하나. `--frozen-lockfile` · lint · typecheck · test(shared 6 · frontend 7) · build · format:check 초록. `typed-router.d.ts` 는 바뀌지 않아 `pnpm-lock.yaml` 만 ⓑ 에 amend 했다 — ⓑ = `579c2b6`(제목 `chore: 킷 0.5.0 · Pinia 4 · @vue/devtools-api 8 · vue-router 5.4`, 🔴 amend 안내 지움), `ahead 2`. **push 는 사람이 한다** — `git -C C:/Users/kim52/workspace/kim5257-project-template push origin preset/admin`.
 7. ringside 문서를 목록대로 고친다(검증 기록 §8 — 18행 + 권한 슬롯 대조). 0.5.0 핀은 stage approve 로 공개된 뒤에 올린다. ringside 는 pnpm 12.11 이라 기본 `minimumReleaseAge` 가 1일이다 — 승인 직후 `pnpm add @ssworks/*@0.5.0` 은 거부되거나 `minimumReleaseAgeExclude` 가 자동으로 들어간다. `stage approve` 하루 뒤에 설치하고, 자동으로 붙은 예외는 커밋하지 않는다.
 8. (10/27 뒤 별도 작업) Node 26 — `.nvmrc` 26 · CI · 로컬 검증.
 
@@ -64,7 +64,7 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
 | 0.3.0 승인 · AdminDbConnection TLS                                 | 끝남                                                                          | 0.4.1 공개 · 2f-2b TLS                                                                                                                                                                                                          |
 
 - 릴리스: `fixed` 라 세 패키지가 함께 0.5.0 으로 오른다(`changeset status` 확인, major 없음). 🔴 그 전에 사람이 admin-server Trusted Publisher 를 등록하고, 이 릴리스에서 admin-server 첫 OIDC 스테이징을 확인한다(`.changeset/README.md` 5단계).
-- ringside 에 알릴 것은 검증 기록 §8 의 18행 목록과 「권한 슬롯 대조」에 있다(낡은 가정 넷: 킷 2b~2d 미완 · admin-server 미발행 · 코어 장 7개 · `teams.enabled:false` 등). 템플릿 `preset/admin` 은 도구 상향(ⓐ `73de2be`) · 킷 0.5.0(ⓑ `ddf1d7d`) 로컬 커밋이다 — 0.5.0 공개 뒤 잠금 파일을 합쳐 push(검증 기록 §7-4). 자세한 결과는 `docs/verification/2026-10-17-kit-toolchain-upgrade.md`.
+- ringside 에 알릴 것은 검증 기록 §8 의 18행 목록과 「권한 슬롯 대조」에 있다(낡은 가정 넷: 킷 2b~2d 미완 · admin-server 미발행 · 코어 장 7개 · `teams.enabled:false` 등). 템플릿 `preset/admin` 은 도구 상향(ⓐ `73de2be`) · 킷 0.5.0(ⓑ `579c2b6` — 0.5.0 공개 뒤 잠금 파일을 합침) 로컬 커밋이다 — push 는 사람(검증 기록 §7-4). 자세한 결과는 `docs/verification/2026-10-17-kit-toolchain-upgrade.md`.
 
 ## 결정 사항 (바꾸려면 `docs/01-phase0.md` §4 를 먼저 고친다)
 
@@ -181,7 +181,7 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
   - Node 26 — `.nvmrc` · CI · 로컬 검증. 26 LTS(10/27) 뒤.
   - `globals` 17 · `happy-dom` 21 · `@changesets/cli` 3 메이저 — 따로.
   - 템플릿의 pnpm 12.
-  - 템플릿 ⓑ 의 잠금 파일(+ 바뀐 `typed-router.d.ts`) amend — 0.5.0 공개 뒤. vue-router 하한은 시험한 5.4.0 으로 올렸다(ⓑ `ddf1d7d`).
+  - ~~템플릿 ⓑ 의 잠금 파일(+ 바뀐 `typed-router.d.ts`) amend — 0.5.0 공개 뒤.~~ — amend 함(ⓑ `579c2b6`, `typed-router.d.ts` 는 안 바뀜 · push 는 사람). vue-router 하한은 시험한 5.4.0 으로 올렸다.
   - 이 브랜치에서 찾은 남은 것: 로컬 `changeset version` 드라이런을 못 돌렸다(Version Packages PR 에서 확인) 등 — 검증 기록 §9.
 
 ## 작업 폴더 밖에 남은 것
