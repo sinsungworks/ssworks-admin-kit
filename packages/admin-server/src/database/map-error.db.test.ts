@@ -16,7 +16,7 @@ afterAll(async () => {
   await t?.drop()
 })
 
-// 🔴 MariaDB 11.6.2+ 는 innodb_snapshot_isolation=ON 이 기본이다(CI 는 11.4 — 세션 변수로 켠다). 읽기 뷰가 열린 트랜잭션이
+// 🔴 MariaDB 11.6.2+ 는 innodb_snapshot_isolation=ON 이 기본이다(CI 는 11.4 · 12.3 — 11.4 에서는 세션 변수로 켠다). 읽기 뷰가 열린 트랜잭션이
 //    그 뒤 다른 트랜잭션이 바꾼 행을 잠금 읽기하면 ER_CHECKREAD(1020)가 난다 — 데드락과 같은 409 다시 시도로 나가야 한다.
 describe('mapError 실물 — ER_CHECKREAD(1020)', () => {
   it('읽기 뷰가 열린 뒤 남이 바꾼 행을 FOR UPDATE → 409 ERR_COMMON_CONFLICT', async () => {

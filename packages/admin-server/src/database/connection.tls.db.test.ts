@@ -12,7 +12,7 @@ import { adminDbConnectionFromEnv, type AdminDbConnection } from './connection.j
 import { createAdminKysely } from './kysely.js'
 
 // 실 MariaDB 의 TLS(2f-2b 스펙 §8-2). 🔴 전제: 서버가 MariaDB 11.4.1+ 이고 TLS 를 켰다 — 11.4 는 인증서 설정 없이도
-//    자체 서명을 만들어 TLS 를 켠다(CI db 잡 · db:test:up 의 mariadb:11.4). `ssl: true` 는 드라이버가 비밀번호 지문으로
+//    자체 서명을 만들어 TLS 를 켠다(CI db 잡 11.4 · 12.3 · db:test:up 의 mariadb:11.4 · db:test:up:12.3). `ssl: true` 는 드라이버가 비밀번호 지문으로
 //    그 자체 서명을 검증해 성공한다. 다른 서버(ADMIN_TEST_DB_URL)가 이 전제를 못 맞추면 1 · 3 · 4 가 실패한다.
 // 실패는 풀을 지나면 acquireTimeout 뒤 ER_GET_CONNECTION_TIMEOUT(45028)이고 원인은 cause 에 실린다 — 2초로 줄인다.
 // 계정은 서버 전역이라 실행마다 이름을 바꾸고 afterAll 에서 지운다.

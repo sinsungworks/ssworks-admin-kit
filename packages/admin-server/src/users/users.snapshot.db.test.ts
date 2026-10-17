@@ -8,7 +8,7 @@ import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { periodsOf, seedPeriod, userRow } from '../test-support/users.js'
 import { AdminUsersService } from './users.service.js'
 
-// 🔴 MariaDB 11.6.2+ 는 innodb_snapshot_isolation=ON 이 기본이다(hangang 은 11.6.2, CI 는 11.4 — 풀 initSql 로 켠다,
+// 🔴 MariaDB 11.6.2+ 는 innodb_snapshot_isolation=ON 이 기본이다(hangang 은 11.6.2, CI 는 11.4 · 12.3 — 11.4 에서는 풀 initSql 로 켠다,
 //    2d §14 R7-8). 잔존으로 감싼 쓰기는 대상 · 줄 역할 · 팀을 잠근 **뒤에** 셈(비잠금)으로 읽기 뷰를 연다(2d-3 스펙 ① A).
 //    그래서 대상의 로그인 실패 · 같은 팀의 이름 바꾸기가 그 잠금 전에 커밋돼도 ON 은 1020 이 아니라 기다렸다 성공하고, OFF 는
 //    보기 읽기(before · item)가 낡지 않는다(2d-3 스펙 §14 R1-1 · R1-5). 옛 순서(센티넬 → 셈 → 대상 잠금)는 ON 409 · OFF 낡은
