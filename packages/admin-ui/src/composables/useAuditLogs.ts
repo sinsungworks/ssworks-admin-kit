@@ -6,7 +6,9 @@ import {
   actorText,
   auditFilterProblem,
   buildActionOptions,
+  decodeAuditLogQuery,
   emptyAuditLogDraft,
+  encodeAuditLogQuery,
   isEmptyAuditLogDraft,
   mergeActionGroups,
   normalizeAuditLogDraft,
@@ -118,8 +120,21 @@ export function useAuditLogs<R extends AdminAuditLog = AdminAuditLog>(
   const filterError = ref<string | null>(null)
   const expanded = shallowRef<readonly string[]>([])
 
-  // Task 5 가 이 자리에 URL 바인딩을 만든다. 🔴 `useServerTable` 보다 먼저여야 한다 — 그 안에서 초기 복원을 부른다.
-  const urlSync: QuerySyncBinding | undefined = undefined
+  // 🔴 `useServerTable` 보다 먼저 만든다 — 그 안에서 초기 복원(`read`)을 동기로 부르고, 그 뒤에 감시를 단다.
+  const urlSync: QuerySyncBinding | undefined =
+    options.urlSync === true
+      ? {
+          read(query) {
+            const next = decodeAuditLogQuery(query)
+            // 복원은 적용값과 입력값 둘 다에 넣는다(A6) — 보이는 칸과 표가 어긋나지 않게
+            applied.value = next
+            draft.value = { ...next }
+            filterError.value = null
+            expanded.value = []
+          },
+          toQuery: () => encodeAuditLogQuery(applied.value),
+        }
+      : undefined
 
   const table = useServerTable<R, AuditLogFilter>({
     fetch: options.fetch,

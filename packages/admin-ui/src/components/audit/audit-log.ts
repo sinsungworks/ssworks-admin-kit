@@ -1,4 +1,11 @@
-import type { AdminAuditLog, AuditCatalog } from '@ssworks/admin-shared'
+import type { LocationQuery, LocationQueryRaw } from 'vue-router'
+import {
+  AUDIT_ACTION_MAX_LENGTH,
+  AUDIT_TARGET_TYPE_MAX_LENGTH,
+  type AdminAuditLog,
+  type AuditCatalog,
+} from '@ssworks/admin-shared'
+import { queryCodec } from '../../composables/query-codec.js'
 import { isDateOnly, localDayStartIso, localNextDayStartIso } from '../../utils/local-date.js'
 
 // 감사 로그 화면의 타입 · 문구 · 순수 함수 — `useAuditLogs` 와 `AuditLogViewer` 가 함께 쓴다(3f 스펙 C1).
@@ -455,4 +462,55 @@ export function diffAuditMeta(meta: unknown, absent: string): AuditMetaDiff {
     if (b !== a) changes.push({ key, before: b, after: a })
   }
   return { hasDiff: true, changes, masked, rest }
+}
+
+// ── URL(A6) ──────────────────────────────────────────────────────────
+
+/** URL 키 — `useServerTable` 의 표 키(page · size · sort)와 겹치지 않는다 */
+export const AUDIT_LOG_QUERY_KEYS = {
+  actorUserNo: 'actor',
+  action: 'action',
+  targetType: 'targetType',
+  targetRefNo: 'targetRefNo',
+  from: 'from',
+  to: 'to',
+} as const satisfies Record<keyof AuditLogDraft, string>
+
+/** 🔴 앞자리 0 을 거부한다 — `007` 과 `7` 이 같은 상태의 두 URL 이 되지 않게(query-codec `bigint` 와 같다) */
+const CANONICAL_UNSIGNED = /^(0|[1-9][0-9]{0,19})$/
+const firstText = queryCodec.string()
+
+function decodeKey(
+  raw: LocationQuery[string] | undefined,
+  valid: (value: string) => boolean,
+): string {
+  const value = firstText.decode(raw)
+  return value !== undefined && valid(value) ? value : ''
+}
+
+/** URL → 입력값. 🔴 던지지 않는다 — 형식이 틀린 키는 없는 것이다(코덱 규약). 거꾸로 된 기간은 둘 다 버린다 */
+export function decodeAuditLogQuery(query: LocationQuery): AuditLogDraft {
+  const keys = AUDIT_LOG_QUERY_KEYS
+  const out: AuditLogDraft = {
+    actorUserNo: decodeKey(query[keys.actorUserNo], (v) => CANONICAL_UNSIGNED.test(v)),
+    action: decodeKey(query[keys.action], (v) => v.length <= AUDIT_ACTION_MAX_LENGTH),
+    targetType: decodeKey(query[keys.targetType], (v) => v.length <= AUDIT_TARGET_TYPE_MAX_LENGTH),
+    targetRefNo: decodeKey(query[keys.targetRefNo], (v) => CANONICAL_UNSIGNED.test(v)),
+    from: decodeKey(query[keys.from], isDateOnly),
+    to: decodeKey(query[keys.to], isDateOnly),
+  }
+  if (out.from !== '' && out.to !== '' && out.from > out.to) {
+    out.from = ''
+    out.to = ''
+  }
+  return out
+}
+
+/** 입력값 → URL. 빈 칸은 뺀다 */
+export function encodeAuditLogQuery(draft: AuditLogDraft): LocationQueryRaw {
+  const out: LocationQueryRaw = {}
+  for (const key of DRAFT_KEYS) {
+    if (draft[key] !== '') out[AUDIT_LOG_QUERY_KEYS[key]] = draft[key]
+  }
+  return out
 }

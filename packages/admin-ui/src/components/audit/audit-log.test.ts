@@ -9,7 +9,9 @@ import {
   auditResultOf,
   auditResultText,
   buildActionOptions,
+  decodeAuditLogQuery,
   diffAuditMeta,
+  encodeAuditLogQuery,
   emptyAuditLogDraft,
   isEmptyAuditLogDraft,
   mergeActionGroups,
@@ -315,5 +317,62 @@ describe('입력값', () => {
       'action',
       'actionMatch',
     ])
+  })
+})
+
+describe('URL 코덱(A6)', () => {
+  it('키를 읽어 입력값으로 — 날짜는 로컬 YYYY-MM-DD 그대로', () => {
+    expect(
+      decodeAuditLogQuery({
+        actor: '12',
+        action: 'org.role.',
+        targetType: 'role',
+        targetRefNo: '3',
+        from: '2026-10-01',
+        to: '2026-10-18',
+      }),
+    ).toEqual(
+      draft({
+        actorUserNo: '12',
+        action: 'org.role.',
+        targetType: 'role',
+        targetRefNo: '3',
+        from: '2026-10-01',
+        to: '2026-10-18',
+      }),
+    )
+  })
+
+  it('🔴 틀린 키는 없는 것으로 — 앞자리 0 · 문자 번호 · 없는 날짜 · 넘친 길이', () => {
+    expect(
+      decodeAuditLogQuery({
+        actor: '007',
+        targetRefNo: 'abc',
+        from: '2026-02-30',
+        to: 'x',
+        action: 'a'.repeat(129),
+        targetType: 't'.repeat(65),
+      }),
+    ).toEqual(emptyAuditLogDraft())
+  })
+
+  it('🔴 거꾸로 된 기간은 둘 다 버린다 — 서버에 400 을 보내지 않는다', () => {
+    expect(decodeAuditLogQuery({ from: '2026-10-18', to: '2026-10-01' })).toEqual(
+      emptyAuditLogDraft(),
+    )
+  })
+
+  it('반복 키는 첫 값 · 빈 값은 없음', () => {
+    expect(decodeAuditLogQuery({ actor: ['5', '6'], action: '' })).toEqual(
+      draft({ actorUserNo: '5' }),
+    )
+  })
+
+  it('빈 칸은 URL 에서 뺀다', () => {
+    expect(encodeAuditLogQuery(emptyAuditLogDraft())).toEqual({})
+    expect(encodeAuditLogQuery(draft({ actorUserNo: '12', to: '2026-10-18' }))).toEqual({
+      actor: '12',
+      to: '2026-10-18',
+    })
   })
 })
