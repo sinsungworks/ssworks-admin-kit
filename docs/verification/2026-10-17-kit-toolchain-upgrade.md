@@ -4,14 +4,41 @@
 
 ## 0. 요약
 
-(Task 11 에서 쓴다)
+**결정**: 킷을 ringside 기준선으로 올린다 — admin-ui peer `pinia ^4.0.0`(`@vue/devtools-api` 는 peer 가 아니라 dev 에만), 저장소 도구 TypeScript 6.0.3 · Vitest 5.0.5 · ESLint 10.12.0(`^10.12.0`) · typescript-eslint 8.71.2, 실 DB 테스트 MariaDB 11.4 + 12.3 매트릭스. 릴리스는 changeset 하나(`.changeset/pinia-4-toolchain.md`)로 세 패키지 모두 0.5.0(admin-ui minor · 나머지 patch, `fixed` 묶음). 공개 API 는 바뀌지 않았다.
+
+**바뀐 버전**: typescript 5.9.3 → 6.0.3 · vitest 4.1.11 → 5.0.5 · eslint 9.39.5 → 10.12.0 · @eslint/js → 10.0.1 · typescript-eslint → 8.71.2 · pinia(dev) 3 → 4.1.0 · @vue/devtools-api(dev) 8.2.1 추가 · 루트 engines.node `>=22.13.0`. 나머지 devDeps 는 범위 안 최신(잠금 파일만).
+
+**통과한 검증**:
+
+- V1 기준선 → 상향 후 `pnpm check`: 단위 1749 / 152 파일, 전후 같다(§1 · §2).
+- V2 실 DB: MariaDB 11.4 · 12.3 모두 468 / 48 파일 통과(§3).
+- V3 발행물 비교: admin-shared 같음 · admin-ui 표기만 · admin-server 주석 한 줄, "의미 있음" 차이 없음(§4).
+- V4 changeset: 드라이런은 권한 계층에 막혀 `changeset status --verbose` 로 대신 — 셋 다 0.5.0, major 없음(§5).
+- V5 소비 앱 스모크(브라우저): TS 6.0.3 · TS 5.9.3 모두 `@ssworks/*` d.ts 오류 0, TS2882 없음, Pinia 3 소비자는 peer 경고, devtools-api 누락은 설치가 알림(§6).
+- V6 서버 스모크: TS 6.0.3 · NodeNext · `skipLibCheck: false` 오류 0, 진입점 셋 해석(§6-6).
+- V7 템플릿 `preset/admin`: ⓐ `73de2be`(도구 상향) · ⓑ `997a81f`(킷 0.5.0, 잠금 파일 없음) 로컬 커밋, tarball clone 에서 lint · typecheck · test · build 초록(§7).
+
+**고친 킷 결함**: 없음. 소스 · 테스트 · tsconfig 변경 없음. 예외는 ESLint 10 `preserve-caught-error` 의 줄 단위 끄기 하나(§2-2).
+
+**사람이 할 일**(스펙 §10 순서):
+
+1. 브랜치 push → PR. **머지 전에** main ruleset 필수 검사 `db` → `db (11.4)` · `db (12.3)`.
+2. PR 머지 → release 워크플로가 Version Packages PR(0.5.0)을 연다.
+3. 🔴 **Version Packages PR 머지 전에 admin-server Trusted Publisher 등록**(스펙 §10-3) — 안 하면 admin-server 스테이징만 OIDC 로 실패한다. 이 PR 에서 §5 의 기대도 확인한다(로컬 드라이런을 건너뛰었다): 버전 0.5.0 ×3 · 1.0.0 없음 · admin-ui peer `@ssworks/admin-shared: ^0` + `pinia: ^4.0.0` · admin-server peer `@ssworks/admin-shared: >=0.4.0 <1.0.0` · CHANGELOG 셋의 `## 0.5.0`.
+4. Version Packages PR 머지 → 셋 스테이징 → `pnpm stage list` → `pnpm stage approve <id>` ×3 → `git pull && pnpm changeset tag && git push --tags`.
+5. `.changeset/README.md` 5단계: 세 패키지 provenance 확인(admin-server 는 첫 OIDC 확인).
+6. 템플릿 `preset/admin`: **0.5.0 이 공개된 뒤에** §7-4 절차(설치 · 검증 · 잠금 파일 + 바뀐 `typed-router.d.ts` amend) 후 push. 그 전에는 ⓐ `73de2be` · ⓑ `997a81f` 를 push 하지 않는다.
+7. ringside 문서를 §8 의 18행대로 고친다. 0.5.0 핀은 stage approve 로 공개된 뒤에 올린다.
+8. (10/27 뒤 별도 작업) Node 26 — `.nvmrc` 26 · CI · 로컬 검증.
 
 ## 1. 기준선 (상향 전 — TS 5.9.3 · vitest 4.1.11 · eslint 9.39.5 · Windows · Node 24.21)
 
-| 층                    | admin-shared | admin-ui  | admin-server | 합계        |
-| --------------------- | ------------ | --------- | ------------ | ----------- |
+기준선 수는 vitest 4.1.11 에서 쟀고, TS 6 로 올리기 전에 범위 안 갱신으로 4.1.12 가 됐다(§2-1).
+
+| 층                    | admin-shared  | admin-ui      | admin-server  | 합계            |
+| --------------------- | ------------- | ------------- | ------------- | --------------- |
 | 단위(`pnpm test`)     | 266 / 16 파일 | 886 / 63 파일 | 597 / 73 파일 | 1749 / 152 파일 |
-| 실 DB 11.4(`test:db`) | —            | —         | 468 / 48 파일 | 468         |
+| 실 DB 11.4(`test:db`) | —             | —             | 468 / 48 파일 | 468             |
 
 테스트 DB 11.4 의 데이터베이스(정리 확인용): information_schema · mysql · performance_schema · sys
 
@@ -23,7 +50,7 @@
 | ---- | ---- | ------- | ----------- |
 | (없음) | typecheck · build · check:dts · test(1749) · lint 모두 첫 시도에 초록 | 소스 · tsconfig 변경 없음 | 없음 |
 
-범위 안 갱신(prettier 3.9.10 · typescript-eslint 8.71.2 · vitest 4.1.12)은 잠금 파일만 바뀌었고 pnpm check 초록. pnpm install 의 peer 경고 없음(eslint 9.39.5 deprecated 안내만).
+범위 안 갱신(prettier 3.9.10 · typescript-eslint 8.71.2 · vitest 4.1.11 → 4.1.12 — 기준선은 4.1.11 에서 쟀고 TS 6 전에 4.1.12 로 올렸다)은 잠금 파일만 바뀌었고 pnpm check 초록. pnpm install 의 peer 경고 없음(eslint 9.39.5 deprecated 안내만).
 
 ### 2-2. eslint 10 · typescript-eslint 8.71
 
@@ -93,7 +120,7 @@ admin-ui 단위 테스트(`pnpm --filter @ssworks/admin-ui test`): 886 / 63 파�
 | 패키지       | 파일 | 바뀜 | 분류        | 내용                                                                                                                                                                                                                                                                                    |
 | ------------ | ---- | ---- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | admin-shared | 36   | 0    | 같음        | 바이트까지 같다                                                                                                                                                                                                                                                                         |
-| admin-ui     | 70   | 8    | 표기만      | d.ts 7곳: 슬롯 임시 이름 `__VLS_n` 번호 이동(BaseDialog · CardLayout · ColumnPane) · 유니온 항 순서(`number \| string` ↔ `string \| number` 등) · `PermissionCheck` → `PermissionCheck<string>`(제네릭 기본값이 `string` 이라 같은 타입). `index.js` 1곳: 번들러가 `if … return` 을 `else if` · 삼항으로 다시 쓴 제어 흐름 표기(분기 뒤에 이어지는 코드 없음 — 같은 동작) |
+| admin-ui     | 70   | 8    | 표기만      | d.ts 7곳: 슬롯 임시 이름 `__VLS_n` 번호 이동(BaseDialog · CardLayout · ColumnPane) · 유니온 항 순서(`number \| string` ↔ `string \| number` 등) · `PermissionCheck` → `PermissionCheck<string>`(제네릭 기본값이 `string` 이라 같은 타입). `index.js` 1 파일 6곳: 번들러가 `if … return` 을 `else if` · 삼항으로 다시 쓴 제어 흐름 표기(분기 뒤에 이어지는 코드 없음 — 같은 동작) |
 | admin-server | 282  | 1    | 주석만      | `database/connection.js` 에 eslint-disable 주석 한 줄(Task 4 의 `preserve-caught-error` 예외). 코드는 같다                                                                                                                                                                              |
 
 "의미 있음" 차이 없음 — export 증감 · 타입 확대/축소 · 런타임 변경 없음. 소비자에게 깨지는 변경 없음. 원인 도구: TS 6(유니온 정렬 · 제네릭 기본값 펼침) · vue-tsc 3.3.13(임시 이름 번호) · rolldown 1.2.14(제어 흐름 표기).
@@ -113,6 +140,8 @@ Running release would release NO packages as a major
 ```
 
 세 패키지 모두 0.5.0 이고 major 는 없다.
+
+기대: `fixed` 가 세 패키지를 묶으므로 admin-shared · admin-server 의 patch changeset 도 0.5.0 이 된다. Version Packages PR 에서 확인할 것 — 버전 0.5.0 ×3 · 1.0.0 없음 · admin-ui peer `@ssworks/admin-shared: ^0` 과 `pinia: ^4.0.0` · admin-server peer `@ssworks/admin-shared: >=0.4.0 <1.0.0` · CHANGELOG 셋 각각 `## 0.5.0` 제목.
 
 tarball(`pnpm build` 뒤 `pnpm --filter … pack`, 킷 본 체크아웃, `AK5/tgz`): package.json 버전이 릴리스 전까지 0.4.1 이라 파일 이름은 `-0.4.1.tgz` 다(내용은 0.5.0 이 실을 것).
 
@@ -220,7 +249,7 @@ pnpm 12.8.1(잠금 파일 · node_modules 삭제 뒤 새 설치)은 설치 때 �
 
 `vite build` 는 두 버전 모두 실패한다. 12.8.1 에서는 앱 코드가 먼저 `vue-router` 를 import 해(`Rolldown failed to resolve import "vue-router" from src/router.ts`) 그 오류가 먼저 보인다. devtools-api 의 해석 실패 자체는 10.33.3 쪽 출력이 보여 준다. 참고: 12.8.1 에서 `pnpm remove` 로만 줄이면(잠금 파일 유지) 경고가 나오지 않는다 — 새 설치에서만 나온다.
 
-즉 설치가 빠진 peer 를 알리고(경고), 빌드가 그 결과를 확인해 준다 — README 의 "함께 설치" 문장의 근거다. vue-router 5 를 쓰는 앱은 우연히 충족되므로 안내 문구는 "router 가 끌어오는 경우도 있다" 정도로 적을 수 있다. 스모크는 원상 복구했다(`@vue/devtools-api` 8.2.1 · vue-router ^5.4.0 추가, `autoInstallPeers` 줄 삭제, 빌드 성공).
+즉 설치가 빠진 peer 를 알리고(경고), 빌드가 그 결과를 확인해 준다 — README 의 "함께 설치" 문장의 근거다. vue-router 5 를 쓰는 앱은 hoisting 으로 우연히 충족될 뿐이니(router 가 끌어오는 경우도 있다) README · changeset 의 "함께 설치" 안내는 그대로 맞다. 스모크는 원상 복구했다(`@vue/devtools-api` 8.2.1 · vue-router ^5.4.0 추가, `autoInstallPeers` 줄 삭제, 빌드 성공).
 
 ### 6-6. 서버 앱 — TS 6.0.3 · NodeNext · `skipLibCheck: false`
 
@@ -240,9 +269,9 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
   - frontend lint: eslint-config-vuetify 4.7 의 `vue/padding-line-between-tags` 68건(빈 줄만) — 템플릿 규약대로 `pnpm lint:fix`, 13개 `.vue` 에 빈 줄 추가(+68 줄 · 삭제 0).
 - 상향 뒤 lint · typecheck · test(shared 6 · frontend 7, 줄지 않음) · build · format:check 모두 초록. `pnpm install --frozen-lockfile` 성공(Review Focus 5, 템플릿 쪽).
 
-### 7-2. 커밋 ⓑ — 킷 0.5.0 · Pinia 4 (package.json 만)
+### 7-2. 커밋 ⓑ — 킷 0.5.0 · Pinia 4 (최종 `997a81f` — package.json ×3 + CLAUDE.md + `typed-router.d.ts`, 잠금 파일 없음)
 
-템플릿 `preset/admin` `08398be`(`73de2be` 위, push 안 함, 잠금 파일 없음).
+템플릿 `preset/admin` 최종 ⓑ 는 `997a81f`(`73de2be` 위, push 안 함, 잠금 파일 없음) — 7-3b 에서 amend 했다. 아래는 처음 `08398be` 의 내용이다.
 
 - `frontend`: `@ssworks/admin-shared` · `@ssworks/admin-ui` `0.5.0`, `pinia` `^4.1.0`, `@vue/devtools-api` `^8.2.1` 추가. `backend`: `@ssworks/admin-server` · `@ssworks/admin-shared` `0.5.0`. `shared`: `@ssworks/admin-shared` `0.5.0`. `CLAUDE.md` 두 줄(0.5.0 · Pinia 4 / devtools-api 8 안내). 새 코어 장이 없어 스텁은 더하지 않았다.
 
@@ -251,7 +280,7 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
 임시 clone(`AK5/tpl`, `preset/admin` ⓑ 위)에 `pnpm-workspace.yaml` `overrides` 로 세 `@ssworks/*` 를 `AK5/tgz/ssworks-admin-{shared,ui,server}-0.4.1.tgz` 에 붙였다. 사람 결정으로 드라이런을 생략해 package.json 버전이 0.4.1 인 채 내용이 0.5.0 이 싣는 것이므로 파일 이름이 `-0.4.1.tgz` 다. pnpm 10.33.0 이 `pnpm-workspace.yaml` 의 `overrides` 를 받아 루트 `package.json` 으로 옮기지 않았다.
 
 - `pnpm install --no-frozen-lockfile` 성공(18.1s). `pnpm list`: frontend `@ssworks/admin-shared@0.4.1` · `@ssworks/admin-ui@0.4.1`(file: tarball — 템플릿 선언은 0.5.0, 예상된 불일치) · `@vue/devtools-api@8.2.1` · `pinia@4.1.0`; backend `@ssworks/admin-server@0.4.1` · `@ssworks/admin-shared@0.4.1`(같은 tarball).
-- peer 경고: admin-ui 의 pinia 경고는 없다. 남은 것은 `vue-router 5.0.4` 의 `unmet peer pinia@^3.0.4: found 4.1.0`(vue-router 의 선택 peer 가 아직 Pinia 4 를 안 담음 — 킷 밖) 과 `unplugin-fonts` 의 vite 8 peer(기존). 그 밖에 Windows 의 sass bin 생성 경고(`.EXE`).
+- peer 경고(7-3b 에서 해소): admin-ui 의 pinia 경고는 없다. 남은 것은 `vue-router 5.0.4` 의 `unmet peer pinia@^3.0.4: found 4.1.0`(vue-router 의 선택 peer 가 아직 Pinia 4 를 안 담음 — 킷 밖) 과 `unplugin-fonts` 의 vite 8 peer(기존). 그 밖에 Windows 의 sass bin 생성 경고(`.EXE`).
 - `pnpm lint` 0 · `pnpm typecheck` 0 · `pnpm test` 0(shared 6 · frontend 7 통과, 7-1 과 같음) · `pnpm build` 0(오류 없음, 500 kB 청크 경고만).
 - clone 은 지웠다(`ak5` 에 `tpl` 없음).
 
@@ -267,8 +296,9 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
 
 1. 템플릿 `preset/admin` 에서 `pnpm install`(0.5.0 이 npm 에 보여야 한다 — 첫 반영이 늦을 수 있다).
 2. `pnpm lint` · `pnpm typecheck` · `pnpm test` · `pnpm build` 가 모두 초록인지 본다(테스트 shared 6 · frontend 7).
-3. `git add pnpm-lock.yaml && git commit --amend --no-edit`(ⓑ 에 잠금 파일을 합친다).
-4. 그다음에야 push(사람). 그 전에는 push 하지 않는다.
+3. `git status` 에서 `packages/frontend/src/typed-router.d.ts` 가 바뀌었으면(새로 만든 잠금 파일이 더 새 vue-router 를 풀 수 있다) `pnpm-lock.yaml` 과 함께 stage 한다.
+4. `git add pnpm-lock.yaml && git commit --amend --no-edit`(ⓑ 에 잠금 파일을 합친다. 3 의 `typed-router.d.ts` 도 같이).
+5. 그다음에야 push(사람). 그 전에는 push 하지 않는다.
 
 ## 8. ringside 에 고칠 것
 
@@ -294,9 +324,9 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
 | 13  | 14.1 admin-server 행 `dev:1376` · 개발 일정 `dev:1206` · 결정 11 `dev:1320` · 14.3 `dev:1420`                        | "2f IP 접근 제어는 Phase 1 C 레인 후반" · "관리자 킷 2b 인증 · 2c 세션·감사 · 2d 사용자·역할 (병행, 2~3주) · 2f IP 접근 제어" · "2f IP는 Phase 1" | 킷 쪽 작업이 아니라 링사이드의 조립 작업이다: `AdminIpAccessModule` import + 슬롯 둘 + `clientIp` 출처 확인(게이트웨이 뒤면 `x-real-ip`/realip — 틀리면 전원 차단). 일정 줄은 "킷 이식 2~3주"가 아니라 "킷 조립(템플릿 기준)"으로                       | 킷 진행표 2f-1 · 템플릿 「IP 접근 제어 켜기」                           |
 | 14  | 개발 계획서 일정 `plan:158` · 위험 `plan:231,345` · `plan:191` · `summary.md:20,46` · `CLAUDE.md:74` · 기획서 `dev:1206` | "공통 관리자 킷 작업 종료, 관리자 로그인·권한이 선다" · "인증·권한·감사 로그는 공통 관리자 킷을 재사용해 첫 3주에 병행으로 끝낸다" · "공통 관리자 킷 작업 지연 / 킷 범위를 인증·권한까지로 줄이고 나머지는 Phase 2로" · "기반 점검 — 킷 2b~2d 종료" · "관리자 (킷 2b~2d 첫 3주)" · "C 관리자(킷 2b~2d 선행)" | 킷 2b~2d 는 레인 안에서 만드는 일이 아니라 끝난 선행 조건이다. C 레인 첫 3주는 "킷 이식"이 아니라 "킷 조립 + 링사이드 관리자 모듈(권한 카탈로그 · 슬롯 맵)"로 쓰고, 위험 행 "공통 관리자 킷 작업 지연"은 삭제하거나 "0.5.0 공개 승인 지연(사람의 stage approve)"으로 바꾼다. 감사 전 금지 규칙(`CLAUDE.md:67`, `dev:1472`)은 유효하되 "(킷 2c)" 는 "AdminAuditModule 을 켠 뒤"로 | 킷 진행표(2b~2f 완료)                                                   |
 | 15  | 기획서 8절 API 표 `dev:807`                                                                                          | "GET /admin/audit-logs, /admin/users, /admin/roles, /admin/sessions, /admin/ip-rules"                                           | IP 접근 제어 경로는 `ip-rules` 가 아니라 `ip-access`(`@Controller('ip-access')`). 킷 라우트 조각: `audit-logs` · `users` · `roles` · `sessions` · `teams` · `legal-documents` · `ip-access` · `auth`(`login` `refresh` `logout` `me` `password` — `dev:783` 은 맞다)  | 킷 `*.controller.ts`                                                    |
-| 16  | 기획서 14.4 권한 카탈로그 초안 `dev:1442-1466`                                                                       | `AUDIT_READ: 'audit:read'` · `ORG_USERS_WRITE: 'org.users:write'` · `ORG_ROLES_WRITE: 'org.roles:write'` 만 킷 몫                | 14.3 이 켜는 킷 모듈(운영자 · 역할 · 세션 · 감사 · IP)에 슬롯 9개가 필요한데 키는 셋뿐. 빠진 슬롯: `sessions.read` · `sessions.manage` · `users.read` · `roles.read` · `ipAccess.read` · `ipAccess.manage`. 제안 키와 규칙은 아래 「권한 슬롯 대조」                | `ADMIN_PERMISSION_SLOTS` · `assertPermissionSlots` 호출 6곳              |
+| 16  | 기획서 14.4 권한 카탈로그 초안 `dev:1442-1466`                                                                       | `AUDIT_READ: 'audit:read'` · `ORG_USERS_WRITE: 'org.users:write'` · `ORG_ROLES_WRITE: 'org.roles:write'` 만 킷 몫                | 14.3 이 켜는 킷 모듈(운영자 · 역할 · 세션 · 감사 · IP)에 슬롯 9개가 필요한데 키는 셋뿐. 빠진 슬롯: `sessions.read` · `sessions.manage` · `users.read` · `roles.read` · `ipAccess.read` · `ipAccess.manage`. 제안 키와 규칙은 아래 「권한 슬롯 대조」                | `ADMIN_PERMISSION_SLOTS` · `assertPermissionSlots` 호출 7곳              |
 | 17  | 14.4 `dev:1458` 주석 · 14.2 권한 문장 `dev:1388` · `dev:807` 의 "audit:read, org.*"                                  | "ORG_USERS_WRITE … // 킷 운영자 관리" · "프론트 가드·메뉴·백엔드 @RequirePermissions가 같은 객체를 쓴다" · "audit:read, org.*" | 킷 패키지 라우트는 `@RequirePermissions` 가 아니라 **슬롯**(`sessions.read` …)을 선언하고, 키는 `AdminServerOptions.permissions` 로 이어진다. 링사이드 자체 라우트(admin-api 모듈)만 `@RequirePermissions`. 8절 표의 권한 열 `org.*` 는 정확한 키(`org.users:read` …)로 | `permission-slots.ts` 머리 주석 · 킷 CLAUDE.md 「admin-server」            |
-| 18  | 14.4 `dev:1445` `definePermissions({…})`                                                                             | 함의(`implies`) 없음                                                                                                            | 읽기 키를 만들면 `definePermissions(…, { implies })` 로 쓰기 → 읽기 함의를 준다(`'org.users:write': ['org.users:read']`). 킷이 서버 정규화(`permissionCatalog`)와 역할 편집기에 같은 표를 쓴다 — 함의가 없으면 쓰기 키만 가진 역할이 읽기 라우트에서 403 이 된다                | 템플릿 `shared/src/admin/permissions.ts` IMPLIES                        |
+| 18  | 14.4 `dev:1445` `definePermissions({…})`                                                                             | 함의(`implies`) 없음(선택이지만 권장 — `implies?:`, 기본 `{}`)                                                                  | 읽기 키를 만들면 `definePermissions(…, { implies })` 로 쓰기 → 읽기 함의를 준다(`'org.users:write': ['org.users:read']`). 킷이 서버 정규화(`permissionCatalog`)와 역할 편집기에 같은 표를 쓴다 — 함의가 없으면 쓰기 키만 가진 역할이 읽기 라우트에서 403 이 된다                | 템플릿 `shared/src/admin/permissions.ts` IMPLIES                        |
 
 ### 권한 슬롯 대조 (Task 10 Step 4)
 
@@ -333,3 +363,23 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
    함께 줄 함의: `org.users:write → org.users:read` · `org.roles:write → org.roles:read` · `sessions:write → sessions:read` · `settings.ipAccess:write → settings.ipAccess:read`. 팀·약관을 나중에 켜면 슬롯 4개가 더 필요하다(`teams.*` · `legal.*`) — 카탈로그에 "Phase 2 권한은 처음부터"라는 규칙(14.2)을 따르려면 미리 키만 두고 모듈은 import 하지 않아도 된다(안 쓰는 슬롯은 `permissions` 에 있어도 무해하다, 이름이 목록 안이기만 하면 된다). 위 키 이름은 제안일 뿐이고 링사이드의 `'리소스:동작'` 규칙과 14.4 의 기존 이름(`audit:read`)을 우선한다.
 
 ## 9. 정리 · 남은 것
+
+**지운 것**
+
+- 12.3 테스트 컨테이너 `admin-kit-test-db-12`(`pnpm db:test:down:12.3`). `docker ps -a --filter name=admin-kit-test-db` 에 `admin-kit-test-db mariadb:11.4 Up` 한 줄만 남았다.
+- 임시 작업 폴더 `AK5`(`C:/Users/kim52/AppData/Local/Temp/ak5` — 기준선 · tarball · 스모크 앱 · ringside 내려받기 · 임시 clone). 지운 뒤 `ak5 없음`.
+- worktree 는 남은 것이 없다(`git worktree list` 에 본 체크아웃 하나). 저장소 루트에 `NUL` 없음.
+
+**남긴 것**
+
+- 이미지 `mariadb:12.3`(다음 `db:test:up:12.3` 용) · 기존 11.4 컨테이너 `admin-kit-test-db`(33306) — 지우거나 멈추지 않았다.
+- 11.4 의 데이터베이스는 §1 과 같다: information_schema · mysql · performance_schema · sys(남은 테스트 DB 없음, drop 한 것 없음).
+
+**넘긴 것**
+
+- Node 26(`.nvmrc` · CI · 로컬 검증) — 26 LTS(10/27) 뒤.
+- `globals` 17 · `happy-dom` 21 · `@changesets/cli` 3 메이저.
+- 템플릿의 pnpm 12 · Node 26.
+- 템플릿 ⓑ 의 잠금 파일(+ 바뀐 `typed-router.d.ts`) amend — 0.5.0 공개 뒤(§7-4). 하한 vue-router 5.2.0 자체에서의 typecheck 는 안 돌렸다(§7-3b).
+- 이 브랜치에서 새로 찾은 킷 결함은 없다. 실서버 확인이 넘긴 결함 둘(기본 정렬 열 오름차순 · 조회 실패 직후 빈 상태)은 그대로 열려 있다.
+- 로컬 `changeset version` 드라이런 — 권한 계층이 막아 Version Packages PR 에서 확인(§5).

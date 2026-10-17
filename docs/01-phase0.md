@@ -202,6 +202,8 @@ admin-server 첫 발행(2026-10-16) 완료 — 세 패키지 모두 0.4.1 공개
 
 템플릿 `kim5257-project-template` `preset/admin` + `.claude/skills/admin-scaffold`(2026-10-16) 완료 — 세 패키지 0.4.1(npm) 위 얇은 앱 골격(인증 · 본인 · 조직 · 설정 화면, 킷 모듈 일곱, 코어 스텁 12, 첫 관리자 시드, Docker)과 화면 한 줄을 만드는 스킬. 생성 앱 · 스킬 시험(두 바퀴) 검증 통과, 킷 결함 없음(스펙 `docs/superpowers/specs/2026-10-16-template-preset-admin-design.md` · 플랜 `docs/superpowers/plans/2026-10-16-template-preset-admin.md` · 검증 `docs/verification/2026-10-16-template-preset-admin.md`). 템플릿 브랜치 push 는 사람이 한다.
 
-다음: 킷 버전 상향(첫 사용 프로젝트 ringside 의 선행 작업 — Pinia 4 peer · TS 6 · vitest 5 · eslint 10 · MariaDB 12.3, 기한 2026-10-30) → Phase 4 — ringside 로 실전 검증 후 A 패키지 1.0 태깅(`docs/00-admin-common-review.md` §4, HANDOFF "다음 플랜" · 「킷 상향 준비 메모」).
+킷 버전 상향(2026-10-17) 완료 — admin-ui peer `pinia ^4.0.0`(devtools-api 는 peer 아님), 저장소 도구 TypeScript 6.0.3 · Vitest 5 · ESLint 10 · typescript-eslint 8.71, 실 DB 테스트 MariaDB 11.4 + 12.3 매트릭스, changeset 하나(0.5.0 — admin-ui minor · 나머지 patch). 템플릿 `preset/admin` 은 도구 상향 커밋과 킷 0.5.0 커밋(잠금 파일은 릴리스 뒤)을 로컬에 두었다(스펙 `docs/superpowers/specs/2026-10-17-kit-toolchain-upgrade-design.md` · 플랜 `docs/superpowers/plans/2026-10-17-kit-toolchain-upgrade.md` · 검증 `docs/verification/2026-10-17-kit-toolchain-upgrade.md`). 발행 · push 는 사람이 한다.
+
+다음: Phase 4 — ringside 로 실전 검증 후 A 패키지 1.0 태깅(`docs/00-admin-common-review.md` §4, HANDOFF "다음 플랜"). Node 26 은 26 LTS(10/27) 뒤 별도.
 
 미확인(추출본에 없어 확정 보류): axion `utils/route-permission.ts`·`post-auth-redirect.ts`, gise `api/error.ts`·`AccountSessionsDialog.vue`, crm `utils/queryCodec.ts`·`components/user/*`·`core/pipe/zod-validation-pipe.ts`·`core/filter/exception.filter.ts`, hangang `api/ip-access.api.ts`·`storage.api.ts`. 이들은 A 배정한 `useQuerySyncedFilter`·`useFieldErrors`의 최종 확정에만 영향. → **2026-10-03 원본 확인으로 해소** — crm `queryCodec.ts`·`useQuerySyncedFilter.ts`, gise `useRouteQuerySync.ts`·`useFieldErrors.ts` 를 읽고 위 결정에 반영했다.
