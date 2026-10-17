@@ -39,13 +39,13 @@ jobs:
       - name: Declaration Check
         run: pnpm check:dts
 
-  db:
+  db-matrix:
     name: db (${{ matrix.mariadb }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # 11.4 — 스냅샷 격리 기본 OFF · 12.3 — 기본 ON(11.6.2+). 둘 다 필수 검사다(main ruleset).
+        # 11.4 — 스냅샷 격리 기본 OFF · 12.3 — 기본 ON(11.6.2+). 결과는 아래 `db` 잡이 모은다.
         mariadb: ['11.4', '12.3']
     services:
       mariadb:
@@ -75,3 +75,15 @@ jobs:
         run: pnpm test:db
         env:
           ADMIN_TEST_DB_URL: mariadb://root:admin-kit-test@127.0.0.1:33306
+
+  # 🔴 main ruleset 의 필수 검사 `db` 는 이 잡이다 — 매트릭스 버전을 더하거나 빼도 ruleset 은 그대로 둔다.
+  db:
+    name: db
+    needs: db-matrix
+    # 🔴 always() 를 지우지 않는다 — 없으면 매트릭스가 실패할 때 이 잡이 건너뛰어지고, 건너뛴 필수 검사는 통과로 친다.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 모든 MariaDB 버전 통과
+        if: needs.db-matrix.result != 'success'
+        run: exit 1

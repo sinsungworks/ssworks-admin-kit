@@ -24,8 +24,8 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
 
 킷 버전 상향(0.5.0) 릴리스 — 순서대로(스펙 `docs/superpowers/specs/2026-10-17-kit-toolchain-upgrade-design.md` §10):
 
-1. 브랜치 `chore/kit-toolchain-upgrade` push → PR. **머지 전에** main ruleset 필수 검사 `db` → `db (11.4)` · `db (12.3)`.
-2. PR 머지 → release 워크플로가 Version Packages PR(0.5.0)을 연다.
+1. `main` push — 브랜치는 `main` 에 로컬 fast-forward 로 병합했다(2026-10-17). ruleset 필수 검사(`check` · `db`)는 **고치지 않는다** — CI 의 `db` 는 `db (11.4)` · `db (12.3)` 매트릭스(`db-matrix`)를 모으는 잡이다. push 뒤 첫 CI 에서 `db (11.4)` · `db (12.3)` · `db` 세 검사가 뜨는지 본다.
+2. push → release 워크플로가 Version Packages PR(0.5.0)을 연다.
 3. 🔴 **0.5.0 Version Packages PR 머지 전에 admin-server Trusted Publisher 등록**(아래 "admin-server npm 설정"). 이 PR 에서 로컬 드라이런을 건너뛴 몫을 확인한다 — 버전 0.5.0 ×3 · 1.0.0 없음 · CHANGELOG 셋의 `## 0.5.0` 제목. peer 줄(`workspace:^0` · `workspace:>=0.4.0 <1.0.0`)은 범위 안이라 PR diff 에 **나오지 않는 게 맞다** — `workspace:^0.5.0` 같은 재작성이 보이면 결함이다(`workspace:` → 범위 변환은 pack · 발행 때). 발행되는 peer 범위(`^0` · `>=0.4.0 <1.0.0` · `pinia ^4.0.0`)는 스테이징 뒤 `npm view @ssworks/<패키지>@0.5.0 peerDependencies` 로 본다(검증 기록 §5).
 4. Version Packages PR 머지 → 셋 스테이징 → `pnpm stage list`(셋) → `pnpm stage approve <id>` ×3 → `git pull && pnpm changeset tag && git push --tags`.
 5. `.changeset/README.md` 5단계: 세 패키지 provenance 확인 — admin-server 는 첫 OIDC 확인이다(기준선: 0.4.1 은 없음). `npm view @ssworks/<패키지>@0.5.0 dist.attestations.provenance.predicateType --prefer-online` → 셋 다 `https://slsa.dev/provenance/v1`.

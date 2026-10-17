@@ -84,7 +84,7 @@
 ### 4-3. CI · 스크립트
 
 - `ci.yml` `db` 잡: `strategy: { fail-fast: false, matrix: { mariadb: ['11.4', '12.3'] } }`, `name: db (${{ matrix.mariadb }})`, `services.mariadb.image: mariadb:${{ matrix.mariadb }}`. Node 는 `.nvmrc` 그대로. `check` 잡은 그대로다.
-  - 🔴 검사 이름이 `db (11.4)` · `db (12.3)` 이 된다. main ruleset 의 필수 검사 `db` 는 다시 보고되지 않아 PR 이 대기에 걸린다. **사람이 PR 머지 전에** 필수 검사를 이 둘로 바꾼다(§10).
+  - 🔴 검사 이름이 `db (11.4)` · `db (12.3)` 이 된다. main ruleset 의 필수 검사 `db` 는 다시 보고되지 않아 PR 이 대기에 걸린다. **사람이 PR 머지 전에** 필수 검사를 이 둘로 바꾼다(§10). → 구현 뒤 바뀜: 매트릭스를 모으는 `db` 잡을 두고 ruleset 은 그대로(§13 마지막 항목).
 - 루트 scripts: `db:test:up:12.3` = `docker run -d --name admin-kit-test-db-12 -e MARIADB_ROOT_PASSWORD=admin-kit-test -p 33307:3306 mariadb:12.3`, `db:test:down:12.3` = `docker rm -f admin-kit-test-db-12`. 기존 `db:test:up` / `db:test:down` 은 그대로다.
 - 12.3 에서 돌리는 법: `ADMIN_TEST_DB_URL=mariadb://root:admin-kit-test@127.0.0.1:33307` 을 주고 `pnpm test:db`. env 를 스크립트에 박지 않는다(cmd.exe 와 호환되지 않고 cross-env 가 필요해진다). CLAUDE.md 「명령어」에 bash · PowerShell 쓰는 법을 적는다.
 
@@ -177,8 +177,8 @@
 
 ## 10. 사람이 할 일 (순서대로)
 
-1. 브랜치 push → PR. **머지 전에** main ruleset 필수 검사 `db` → `db (11.4)` · `db (12.3)`.
-2. PR 머지 → release 워크플로가 Version Packages PR(0.5.0)을 연다.
+1. `main` push(브랜치는 `main` 에 로컬 fast-forward 로 병합 — 사용자 결정). ruleset 필수 검사(`check` · `db`)는 그대로 — CI `db` 가 매트릭스를 모은다(§13 마지막 항목).
+2. push → release 워크플로가 Version Packages PR(0.5.0)을 연다.
 3. 🔴 **Version Packages PR 머지 전에 admin-server Trusted Publisher 등록** — npmjs.com → `@ssworks/admin-server` → Settings: Trusted Publisher(GitHub Actions · `sinsungworks` / `ssworks-admin-kit` / `release.yml` · "Allow npm publish" 끔), Publishing access "Require two-factor authentication and disallow tokens". 안 하면 admin-server 스테이징만 OIDC 로 실패한다.
 4. Version Packages PR 머지 → release 실행에서 셋 스테이징 → `pnpm stage list`(셋) → `pnpm stage approve <id>` ×3 → `git pull && pnpm changeset tag && git push --tags`.
 5. `.changeset/README.md` 5단계: `npm view @ssworks/<패키지>@0.5.0 dist.attestations.provenance.predicateType --prefer-online` — 셋 다 `https://slsa.dev/provenance/v1`. admin-server 는 이것이 첫 OIDC 확인이다(기준선: 0.4.1 은 없음).
@@ -213,3 +213,4 @@
 - 템플릿 ⓐ 의 TS 6 수정 둘: shared `tsconfig.build.json` `rootDir`(TS5011)와 frontend `src/vuetify-styles.d.ts`(TS2882 — 템플릿이 vuetify 4.0.4 로 잠겨 있고, TS 6 기본 `noUncheckedSideEffectImports: true`). 킷 스모크(vuetify 4.2.6)는 오류가 없었다.
 - V5 스모크는 처음에 전역 pnpm 10.33.3 으로 돌았다(스모크에 `packageManager` 없음). `packageManager: pnpm@12.8.1` 을 넣고 다시 쟀다.
 - 킷 코드는 TS 6 · ESLint 10 · Vitest 5 · MariaDB 12.3 에서 고친 곳이 없었다. 예외는 ESLint 10 `preserve-caught-error` 의 줄 단위 끄기 하나다(`packages/admin-server/src/database/connection.ts` readCaFile — `cause` 를 달면 CA 파일 경로가 로그로 샌다).
+- 필수 검사(§4-3 · §10 정정, 사용자 결정 2026-10-17): ruleset 의 필수 검사 이름을 매트릭스 이름 둘로 바꾸는 대신, 매트릭스 잡을 `db-matrix`(검사 이름 `db (11.4)` · `db (12.3)`)로 두고 결과를 모으는 `db` 잡(`needs: db-matrix` · `if: always()` · 결과가 `success` 가 아니면 `exit 1`)을 더했다. ruleset 의 `check` · `db` 는 그대로이고, MariaDB 버전을 더하거나 빼도 ruleset 을 고치지 않는다. `if: always()` 가 없으면 매트릭스 실패 때 `db` 가 건너뛰어지고, 건너뛴 필수 검사는 통과로 친다. 브랜치는 PR 대신 `main` 에 로컬 fast-forward 로 병합했다(사용자 결정).

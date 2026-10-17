@@ -22,7 +22,7 @@
 
 **사람이 할 일**(스펙 §10 순서):
 
-1. 브랜치 push → PR. **머지 전에** main ruleset 필수 검사 `db` → `db (11.4)` · `db (12.3)`.
+1. `main` push(브랜치는 `main` 에 로컬 fast-forward 로 병합). ruleset 필수 검사(`check` · `db`)는 고치지 않는다 — CI `db` 는 `db (11.4)` · `db (12.3)` 매트릭스를 모으는 잡이다(스펙 §13 마지막 항목). 첫 CI 에서 세 검사가 뜨는지 본다.
 2. PR 머지 → release 워크플로가 Version Packages PR(0.5.0)을 연다.
 3. 🔴 **Version Packages PR 머지 전에 admin-server Trusted Publisher 등록**(스펙 §10-3) — 안 하면 admin-server 스테이징만 OIDC 로 실패한다. 이 PR 에서 §5 의 기대도 확인한다(로컬 드라이런을 건너뛰었다): 버전 0.5.0 ×3 · 1.0.0 없음 · CHANGELOG 셋의 `## 0.5.0` 제목. peer 줄은 PR diff 에 나오지 않는 게 맞다(아래 §5) — `workspace:^0.5.0` 같은 재작성이 보이면 결함. 발행 peer 범위는 스테이징 뒤 `npm view @ssworks/<패키지>@0.5.0 peerDependencies`.
 4. Version Packages PR 머지 → 셋 스테이징 → `pnpm stage list` → `pnpm stage approve <id>` ×3 → `git pull && pnpm changeset tag && git push --tags`.

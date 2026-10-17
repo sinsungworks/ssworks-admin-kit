@@ -706,4 +706,4 @@ ADMIN_TEST_DB_URL=mariadb://root:admin-kit-test@127.0.0.1:33307 pnpm test:db
 pnpm db:test:down:12.3
 ```
 
-`pnpm check` 는 DB 없이 돈다(단위 · DB 없는 HTTP 계약). CI 는 `db (11.4)` · `db (12.3)` 두 잡이 `pnpm test:db` 를 필수로 돈다 — 스냅샷 격리 기본값이 다른 두 서버(11.4 OFF · 12.3 ON)다.
+`pnpm check` 는 DB 없이 돈다(단위 · DB 없는 HTTP 계약). CI 는 `db (11.4)` · `db (12.3)` 두 잡이 `pnpm test:db` 를 돌고, 그 결과를 모은 `db` 잡이 필수 검사다 — 스냅샷 격리 기본값이 다른 두 서버(11.4 OFF · 12.3 ON)다.
