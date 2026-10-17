@@ -57,6 +57,17 @@ eslint 10.12.0(범위 ^10.12.0 — 10.13.0 은 2026-10-16 공개라 pnpm 12 기�
 
 ### 2-4. Pinia 4
 
+admin-ui peer `pinia` `^3.0.0` → `^4.0.0`, devDependencies `pinia` `^3.0.4` → `^4.1.0`, devDependencies `@vue/devtools-api` `^8.2.1` 추가(peer 에는 넣지 않는다). README 설치 줄 · peer 표를 Pinia 4 · devtools-api 8 로 고쳤고, changeset `.changeset/pinia-4-toolchain.md`(admin-ui minor · admin-shared · admin-server patch)를 더했다.
+
+| 패키지 | 버전 |
+| ------ | ---- |
+| `pinia` (admin-ui devDependencies) | 4.1.0 |
+| `@vue/devtools-api` (admin-ui devDependencies) | 8.2.1 |
+
+`pnpm --filter @ssworks/admin-ui list pinia @vue/devtools-api` 출력 그대로. `pnpm install` 출력에 pinia peer 경고 없음(끝부분 확인). 소스는 바뀌지 않았다.
+
+admin-ui 단위 테스트(`pnpm --filter @ssworks/admin-ui test`): 886 / 63 파일 통과, 실패 0 — 기준선과 같다(`store/app-store.test.ts` · `wiring.integration.test.ts` 포함).
+
 ## 3. 실 DB — MariaDB 11.4 · 12.3
 
 - 11.4 (vitest 5.0.5 뒤): 468 통과 / 48 파일, 실패 0 — 기준선과 같다.
