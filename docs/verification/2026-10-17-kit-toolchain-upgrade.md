@@ -228,6 +228,40 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
 
 ## 7. 템플릿 preset/admin (V7)
 
+### 7-1. 커밋 ⓐ — 도구 상향 (킷 0.4.1 유지)
+
+템플릿 `preset/admin` `73de2be`(`9355035` 위, push 안 함). 시작 기준선은 초록: shared 6 · frontend 7 테스트(backend 는 테스트 없음).
+
+- 올린 것: typescript `~6.0.3`(루트 · backend · frontend · shared) · eslint `^10.12.0`(설치 10.13.0 — 신규 릴리스 대기 때문에 하한만 10.12.0) · @eslint/js `^10.0.1` · typescript-eslint · plugin · parser `^8.71.2` · eslint-config-vuetify `^4.7.2` · vitest `^5.0.5`(frontend · shared) · vue-tsc `^3.3.13`. 설치 확인: TS 6.0.3 · vitest 5.0.5 · eslint-config-vuetify 4.7.2 · vue-tsc 3.3.13. eslint-config-vuetify 는 eslint 10 에서 설정 오류 없음.
+- 지운 것: `baseUrl` 두 줄(frontend `tsconfig.app.json` · shared `tsconfig.json`). `CLAUDE.md` 의 TypeScript 5.9 → 6.0.
+- 도구가 깬 것을 템플릿 코드에서 고침(규칙 끄기 · `ignoreDeprecations` 없음):
+  - shared `tsc -p tsconfig.build.json`: TS5011 — TS 6 은 `rootDir` 기본이 tsconfig 폴더라 `dist` 배치가 달라진다. `tsconfig.build.json` 에 `"rootDir": "./src"` (`dist/index.js` 위치 유지).
+  - frontend `vue-tsc`: TS2882 — `import 'vuetify/styles'`(`noUncheckedSideEffectImports` 기본 켜짐, 타입 선언 없음). `src/vuetify-styles.d.ts` 에 `declare module 'vuetify/styles'`.
+  - frontend lint: eslint-config-vuetify 4.7 의 `vue/padding-line-between-tags` 68건(빈 줄만) — 템플릿 규약대로 `pnpm lint:fix`, 13개 `.vue` 에 빈 줄 추가(+68 줄 · 삭제 0).
+- 상향 뒤 lint · typecheck · test(shared 6 · frontend 7, 줄지 않음) · build · format:check 모두 초록. `pnpm install --frozen-lockfile` 성공(Review Focus 5, 템플릿 쪽).
+
+### 7-2. 커밋 ⓑ — 킷 0.5.0 · Pinia 4 (package.json 만)
+
+템플릿 `preset/admin` `08398be`(`73de2be` 위, push 안 함, 잠금 파일 없음).
+
+- `frontend`: `@ssworks/admin-shared` · `@ssworks/admin-ui` `0.5.0`, `pinia` `^4.1.0`, `@vue/devtools-api` `^8.2.1` 추가. `backend`: `@ssworks/admin-server` · `@ssworks/admin-shared` `0.5.0`. `shared`: `@ssworks/admin-shared` `0.5.0`. `CLAUDE.md` 두 줄(0.5.0 · Pinia 4 / devtools-api 8 안내). 새 코어 장이 없어 스텁은 더하지 않았다.
+
+### 7-3. clone 검증 (tarball)
+
+임시 clone(`AK5/tpl`, `preset/admin` ⓑ 위)에 `pnpm-workspace.yaml` `overrides` 로 세 `@ssworks/*` 를 `AK5/tgz/ssworks-admin-{shared,ui,server}-0.4.1.tgz` 에 붙였다. 사람 결정으로 드라이런을 생략해 package.json 버전이 0.4.1 인 채 내용이 0.5.0 이 싣는 것이므로 파일 이름이 `-0.4.1.tgz` 다. pnpm 10.33.0 이 `pnpm-workspace.yaml` 의 `overrides` 를 받아 루트 `package.json` 으로 옮기지 않았다.
+
+- `pnpm install --no-frozen-lockfile` 성공(18.1s). `pnpm list`: frontend `@ssworks/admin-shared@0.4.1` · `@ssworks/admin-ui@0.4.1`(file: tarball — 템플릿 선언은 0.5.0, 예상된 불일치) · `@vue/devtools-api@8.2.1` · `pinia@4.1.0`; backend `@ssworks/admin-server@0.4.1` · `@ssworks/admin-shared@0.4.1`(같은 tarball).
+- peer 경고: admin-ui 의 pinia 경고는 없다. 남은 것은 `vue-router 5.0.4` 의 `unmet peer pinia@^3.0.4: found 4.1.0`(vue-router 의 선택 peer 가 아직 Pinia 4 를 안 담음 — 킷 밖) 과 `unplugin-fonts` 의 vite 8 peer(기존). 그 밖에 Windows 의 sass bin 생성 경고(`.EXE`).
+- `pnpm lint` 0 · `pnpm typecheck` 0 · `pnpm test` 0(shared 6 · frontend 7 통과, 7-1 과 같음) · `pnpm build` 0(오류 없음, 500 kB 청크 경고만).
+- clone 은 지웠다(`ak5` 에 `tpl` 없음).
+
+### 7-4. 릴리스 뒤 절차 (0.5.0 공개 후)
+
+1. 템플릿 `preset/admin` 에서 `pnpm install`(0.5.0 이 npm 에 보여야 한다 — 첫 반영이 늦을 수 있다).
+2. `pnpm lint` · `pnpm typecheck` · `pnpm test` · `pnpm build` 가 모두 초록인지 본다(테스트 shared 6 · frontend 7).
+3. `git add pnpm-lock.yaml && git commit --amend --no-edit`(ⓑ 에 잠금 파일을 합친다).
+4. 그다음에야 push(사람). 그 전에는 push 하지 않는다.
+
 ## 8. ringside 에 고칠 것
 
 ## 9. 정리 · 남은 것
