@@ -81,6 +81,7 @@ function readCaFile(path: string): string {
     pem = readFileSync(path, 'utf8')
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? 'UNKNOWN'
+    // eslint-disable-next-line preserve-caught-error -- 의도: 원본 오류 메시지가 파일 경로를 담아 cause 를 달지 않는다(위 🔴)
     throw new Error(`DB_SSL_CA 파일을 읽지 못했다(${code})`)
   }
   if (!pem.includes(PEM_CERTIFICATE)) throw new Error('DB_SSL_CA 가 PEM 인증서가 아니다')

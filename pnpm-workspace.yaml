@@ -9,3 +9,5 @@ strictPeerDependencies: false
 # vue-demi(@he-tree/vue 의 하위 의존)의 postinstall 은 돌리지 않는다 — Vue 3 기본 파일로 동작한다(3d Task 1).
 allowBuilds:
   vue-demi: false
+minimumReleaseAgeExclude:
+  - eslint@10.13.0

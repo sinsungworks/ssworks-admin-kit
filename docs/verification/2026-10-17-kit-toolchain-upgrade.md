@@ -27,6 +27,15 @@
 
 ### 2-2. eslint 10 · typescript-eslint 8.71
 
+eslint 10.13.0 · @eslint/js 10.0.1 · typescript-eslint 8.71.2 · 루트 engines.node >=22.13.0. `eslint.config.js` 는 그대로(폐기 API 없음).
+
+| 규칙                  | 건수 | 고친 방법                                                                                                                                         |
+| --------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preserve-caught-error` | 1    | admin-server `database/connection.ts` readCaFile — 거짓 양성 취급, 그 줄에만 disable. 원본 오류 메시지가 CA 파일 경로를 담아 `cause` 를 달지 않는 것이 의도(🔴 주석) |
+
+`http/*.ts` 의 `cause` 는 5xx 로그(`reason`)로만 가고 응답 본문은 `code` · `message` · `details` 만이다 — 이번 변경은 cause 를 더하지 않았다.
+`pnpm check` · `pnpm format:check` 초록(152 파일 · 1749 테스트).
+
 ### 2-3. vitest 5
 
 ### 2-4. Pinia 4
