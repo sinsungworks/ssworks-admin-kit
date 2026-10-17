@@ -40,10 +40,16 @@ jobs:
         run: pnpm check:dts
 
   db:
+    name: db (${{ matrix.mariadb }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 11.4 — 스냅샷 격리 기본 OFF · 12.3 — 기본 ON(11.6.2+). 둘 다 필수 검사다(main ruleset).
+        mariadb: ['11.4', '12.3']
     services:
       mariadb:
-        image: mariadb:11.4
+        image: mariadb:${{ matrix.mariadb }}
         env:
           MARIADB_ROOT_PASSWORD: admin-kit-test
         ports:

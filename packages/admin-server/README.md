@@ -697,9 +697,13 @@ createApiClient({
 ## 테스트(이 저장소)
 
 ```bash
-pnpm db:test:up   # docker mariadb:11.4, 포트 33306
-pnpm test:db      # 실 MariaDB 층 — ADMIN_TEST_DB_URL 로 다른 서버
+pnpm db:test:up        # docker mariadb:11.4, 포트 33306
+pnpm test:db           # 실 MariaDB 층 — ADMIN_TEST_DB_URL 로 다른 서버
 pnpm db:test:down
+
+pnpm db:test:up:12.3   # docker mariadb:12.3, 포트 33307(컨테이너 admin-kit-test-db-12)
+ADMIN_TEST_DB_URL=mariadb://root:admin-kit-test@127.0.0.1:33307 pnpm test:db
+pnpm db:test:down:12.3
 ```
 
-`pnpm check` 는 DB 없이 돈다(단위 · DB 없는 HTTP 계약). CI 는 `db` 잡이 `pnpm test:db` 를 필수로 돈다.
+`pnpm check` 는 DB 없이 돈다(단위 · DB 없는 HTTP 계약). CI 는 `db (11.4)` · `db (12.3)` 두 잡이 `pnpm test:db` 를 필수로 돈다 — 스냅샷 격리 기본값이 다른 두 서버(11.4 OFF · 12.3 ON)다.

@@ -65,7 +65,7 @@ afterAll(async () => {
   await t?.drop()
 })
 
-describe('DB TLS — 실 MariaDB 11.4(2f-2b)', () => {
+describe('DB TLS — 실 MariaDB(2f-2b)', () => {
   const root = (): AdminDbConnection => ({ ...server, database: t.name })
 
   it('ssl: true — 지문 검증으로 TLS 가 된다', async () => {

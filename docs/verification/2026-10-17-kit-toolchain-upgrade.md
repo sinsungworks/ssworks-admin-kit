@@ -72,6 +72,20 @@ admin-ui 단위 테스트(`pnpm --filter @ssworks/admin-ui test`): 886 / 63 파�
 
 - 11.4 (vitest 5.0.5 뒤): 468 통과 / 48 파일, 실패 0 — 기준선과 같다.
 
+서버 사실(`select version(), @@global…` 실측):
+
+| 항목                           | 11.4 (`admin-kit-test-db` · 33306) | 12.3 (`admin-kit-test-db-12` · 33307) |
+| ------------------------------ | ---------------------------------- | ------------------------------------- |
+| 버전                           | 11.4.13                            | 12.3.3                                |
+| `innodb_snapshot_isolation`    | 0 (OFF)                            | 1 (ON)                                |
+| `have_ssl`                     | YES                                | YES                                   |
+| `character_set_server`         | utf8mb4                            | utf8mb4                               |
+| `collation_server`             | utf8mb4_uca1400_ai_ci              | utf8mb4_uca1400_ai_ci                 |
+| `transaction_isolation`(전역)  | REPEATABLE-READ                    | REPEATABLE-READ                       |
+
+12.3 첫 실행(`vitest.db.config.ts`, 수정 없이): 468 통과 / 48 파일, 실패 0 — 12.3 에서만 깨지는 테스트 없음, 킷 결함 없음, 테스트 수정 없음(테스트 이름의 `11.4` 만 버전 중립으로 바꿨다).
+문서대로 차례로 다시 돌린 결과: 12.3(`ADMIN_TEST_DB_URL=…33307 pnpm test:db`) 468 / 48 파일 통과 · 11.4(`pnpm test:db`) 468 / 48 파일 통과 — 두 버전 모두 `db114-before.json` 과 수가 같다. 20초 타임아웃 흔들림 없음.
+
 ## 4. 발행물 비교 (V3)
 
 ## 5. changeset 드라이런 (V4)

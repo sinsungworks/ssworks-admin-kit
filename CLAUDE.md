@@ -24,6 +24,9 @@ pnpm check:dts                          # 발행 d.ts 를 skipLibCheck: false �
 pnpm test / pnpm test:watch             # vitest (워크스페이스 전체)
 pnpm --filter @ssworks/admin-ui test    # 패키지 하나
 pnpm lint:fix && pnpm format
+pnpm db:test:up && pnpm test:db         # 실 MariaDB 11.4(33306)
+pnpm db:test:up:12.3                    # 실 MariaDB 12.3(33307) — 아래 한 줄로 돌린다
+ADMIN_TEST_DB_URL=mariadb://root:admin-kit-test@127.0.0.1:33307 pnpm test:db   # PowerShell: $env:ADMIN_TEST_DB_URL='…'; pnpm test:db
 pnpm changeset                          # 공개 API 변경 시 반드시
 ```
 
@@ -91,7 +94,7 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 - 진입점 셋: `.`(전부) · `./runner`(Nest 무의존 — `runner-graph.test.ts` 가 지킨다) · `./migrations/<id>`(코어 장, 쓰는 쪽 스텁이 가리킨다). 장 파일 이름 = 장 ID.
 - 데코레이터가 붙은 시그니처의 인터페이스 · 타입 별칭은 `import type`(TS1272), DI 로 받는 클래스는 일반 import.
 - 장은 `Kysely<unknown>` 을 받는다. 제약 · 인덱스 이름은 DB 에서 snake_case(`CamelCasePlugin`).
-- 테스트 세 층: 단위 · DB 없는 HTTP(프로브 모듈, `src/test-support/`)는 `pnpm check`, 실 MariaDB(`*.db.test.ts`)는 `pnpm db:test:up` 뒤 `pnpm test:db`(CI `db` 잡 필수).
+- 테스트 세 층: 단위 · DB 없는 HTTP(프로브 모듈, `src/test-support/`)는 `pnpm check`, 실 MariaDB(`*.db.test.ts`)는 `pnpm db:test:up` 뒤 `pnpm test:db`(CI `db (11.4)` · `db (12.3)` 잡 필수 — 12.3 로컬은 `db:test:up:12.3` · 포트 33307).
 - 인증 · 권한 가드는 **앱 전역**(`AdminAuthModule` 의 `APP_GUARD`)이다. 관리자 밖 컨트롤러는 `@Public()`, 관리자 라우트는 `@RequirePermissions` · `@RequireAnyPermissions` · `@SelfOnly` 중 하나를 선언한다 — 없으면 403(fail-closed).
 - argon2(`hashPassword` · `verifyPassword` · 재인증)는 트랜잭션 밖에서만 부른다. 인증 문구는 `auth/errors.ts` 의 `AUTH_MESSAGES` 하나에서 가져온다.
 - 패키지 라우트의 권한은 **슬롯**(`sessions.read` …)이다 — 키는 쓰는 쪽 `AdminServerOptions.permissions`. 새 슬롯은 `AdminPermissionSlot` · `ADMIN_PERMISSION_SLOTS` 에 더하고 그 모듈의 `onModuleInit` 에서 `assertPermissionSlots` · `assertAuthModuleRegistered`.
