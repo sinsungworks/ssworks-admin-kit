@@ -124,11 +124,11 @@ tarball(`pnpm build` 뒤 `pnpm --filter … pack`, 킷 본 체크아웃, `AK5/tg
 
 ## 6. 소비 앱 스모크 (V5 · V6)
 
-앱은 저장소 밖(`AK5/smoke-ui` · `AK5/smoke-server`)에 두고 §5 의 tarball(`-0.4.1.tgz` 셋)을 `file:` 로 설치했다. pnpm 은 10.33.3 이다. 설치 버전: pinia 4.1.0 · @vue/devtools-api 8.2.1 · vue 3.5.44 · vue-router 5.4.0 · vuetify 4.2.6 · vite 8.3.4 · vue-tsc 3.3.13 · typescript 6.0.3 / 5.9.3 · @nestjs/\* 12.1.3 · kysely 0.29.6 · @types/node 24.19.2. 의존 하한은 조정하지 않았다(최소 릴리스 나이 거부 없음).
+앱은 저장소 밖(`AK5/smoke-ui` · `AK5/smoke-server`)에 두고 §5 의 tarball(`-0.4.1.tgz` 셋)을 `file:` 로 설치했다. 첫 실행은 전역 pnpm 10.33.3 으로 **잘못** 돌았다(스모크 앱에 `packageManager` 가 없었다). 두 앱의 package.json 에 `"packageManager": "pnpm@12.8.1"` 을 더하고 node_modules · 잠금 파일을 지운 뒤 pnpm 12.8.1 로 6-1 · 6-4 · 6-5 · 6-6 을 다시 돌렸다(6-2 · 6-3 은 패키지 매니저와 무관). 아래 결과는 12.8.1 기준이고 10.33.3 과 다른 점은 각 절에 적는다. `allowBuilds: { vue-demi: false }` 는 12.8.1 에서 `ERR_PNPM_IGNORED_BUILDS` 없이 설치됐다(서버 앱도 오류 없음). 설치 버전: pinia 4.1.0 · @vue/devtools-api 8.2.1 · vue 3.5.44 · vue-router 5.4.0 · vuetify 4.2.6 · vite 8.3.4 · vue-tsc 3.3.13 · typescript 6.0.3 / 5.9.3 · @nestjs/\* 12.1.3 · kysely 0.29.6 · @types/node 24.19.2. 의존 하한은 조정하지 않았다(최소 릴리스 나이 거부 없음).
 
 ### 6-1. 브라우저 앱 — TS 6.0.3 · vue-tsc · `skipLibCheck: false`
 
-`tsc -v` = `Version 6.0.3`, vue-tsc exit=2(제3자 d.ts 오류), 출처별:
+`tsc -v` = `Version 6.0.3`, vue-tsc exit=2(제3자 d.ts 오류; pnpm 12.8.1 재실행도 개수 동일, `vite build` 도 성공), 출처별:
 
 ```
 typescript TS2687: 1     (lib.dom.d.ts 'finished' — TS 자체)
@@ -160,22 +160,31 @@ TS 6 결과와 같다. `@ssworks/*` d.ts 오류 0.
 
 ### 6-4. Review Focus 1 — Pinia 3 소비자
 
-`pnpm add pinia@3.0.4` 출력:
+pnpm 12.8.1 의 `pnpm add pinia@3.0.4` 출력(경고 한 줄만 나오고 상세는 `pnpm peers check` 로 본다):
 
 ```
- WARN  Issues with peer dependencies found
-.
-└─┬ @ssworks/admin-ui 0.4.1
-  └── ✕ unmet peer pinia@^4.0.0: found 3.0.4
+[WARN] Issues with peer dependencies found. Run "pnpm peers check" to list them.
 ```
 
-경고가 나온다(설치는 막히지 않는다 — 경고뿐이다).
+`pnpm peers check`(exit 1):
+
+```
+Issues with peer dependencies found
+
+✕ unmet peer pinia
+  Installed: 3.0.4
+  Wanted:
+    ^4.0.0:
+      @ssworks/admin-ui@0.4.1
+```
+
+경고가 나오고 설치는 막히지 않는다. pnpm 10.33.3 은 같은 내용을 설치 출력에 바로 풀어 썼다(`✕ unmet peer pinia@^4.0.0: found 3.0.4`). 4.1.0 으로 되돌린 뒤 `pnpm peers check` = `No peer dependency issues found`.
 
 ### 6-5. Review Focus 2 — `@vue/devtools-api` 를 빠뜨린 Pinia 4 앱
 
-Pinia 4.1.0 의 peer 는 `@vue/devtools-api ^8.2.1` 이고 `optional: false` 다. `autoInstallPeers: false` 로 두고 `pnpm remove @vue/devtools-api` 만 하면 경고도 빌드 오류도 **없다**: `vue-router` 5.4.0 이 같은 패키지를 의존으로 끌고 와서 peer 가 충족된다(`pnpm why` 로 확인 — vue-router 가 있는 한 `node_modules/@vue` 가 최상위에 없어도 해석된다). `vite build` 성공.
+Pinia 4.1.0 의 peer 는 `@vue/devtools-api ^8.2.1` 이고 `optional: false` 다. `autoInstallPeers: false` 로 두고 `pnpm remove @vue/devtools-api` 만 하면 경고도 빌드 오류도 **없다**: `vue-router` 5.4.0 이 같은 패키지를 의존으로 끌고 와서 peer 가 충족된다(`pnpm why` 로 확인 — vue-router 가 있는 한 `node_modules/@vue` 가 최상위에 없어도 해석된다). `vite build` 성공. pnpm 12.8.1 에서 잠금 파일 · node_modules 를 지우고 새로 설치해도 같다(`autoInstallPeers: false`, 설치 경고 없음, `pnpm peers check` = `No peer dependency issues found`, `✓ built`).
 
-vue-router 도 함께 빼서(앱이 router 를 안 쓰는 경우) 재현하면:
+vue-router 도 함께 빼서(앱이 router 를 안 쓰는 경우) 재현하면 pnpm 10.33.3 은:
 
 ```
  WARN  Issues with peer dependencies found
@@ -195,11 +204,27 @@ Peer dependencies that should be installed:
 Error: [vite]: Rolldown failed to resolve import "@vue/devtools-api" from ".../node_modules/.pnpm/pinia@4.1.0_.../node_modules/pinia/dist/pinia.js".
 ```
 
+pnpm 12.8.1(잠금 파일 · node_modules 삭제 뒤 새 설치)은 설치 때 한 줄 경고(`Issues with peer dependencies found. Run "pnpm peers check"`)를 내고 `pnpm peers check`(exit 1) 가 둘 다 짚는다:
+
+```
+✕ missing peer @vue/devtools-api
+  Wanted:
+    ^8.2.1:
+      pinia@4.1.0
+
+✕ missing peer vue-router
+  Wanted:
+    "^4.5 || ^5":
+      @ssworks/admin-ui@0.4.1
+```
+
+`vite build` 는 두 버전 모두 실패한다. 12.8.1 에서는 앱 코드가 먼저 `vue-router` 를 import 해(`Rolldown failed to resolve import "vue-router" from src/router.ts`) 그 오류가 먼저 보인다. devtools-api 의 해석 실패 자체는 10.33.3 쪽 출력이 보여 준다. 참고: 12.8.1 에서 `pnpm remove` 로만 줄이면(잠금 파일 유지) 경고가 나오지 않는다 — 새 설치에서만 나온다.
+
 즉 설치가 빠진 peer 를 알리고(경고), 빌드가 그 결과를 확인해 준다 — README 의 "함께 설치" 문장의 근거다. vue-router 5 를 쓰는 앱은 우연히 충족되므로 안내 문구는 "router 가 끌어오는 경우도 있다" 정도로 적을 수 있다. 스모크는 원상 복구했다(`@vue/devtools-api` 8.2.1 · vue-router ^5.4.0 추가, `autoInstallPeers` 줄 삭제, 빌드 성공).
 
 ### 6-6. 서버 앱 — TS 6.0.3 · NodeNext · `skipLibCheck: false`
 
-`tsc -v` = `Version 6.0.3`, `tsc --noEmit` exit=0, 출처별 `{}` — `KIT+APP OK (0)`. `.` · `./runner` · `./migrations/0012_ip_access_rules` 세 진입점과 `AdminDatabase` 확장이 해석된다. 제3자 d.ts 오류도 없다.
+pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.3`, `tsc --noEmit` exit=0, 출처별 `{}` — `KIT+APP OK (0)`. `.` · `./runner` · `./migrations/0012_ip_access_rules` 세 진입점과 `AdminDatabase` 확장이 해석된다. 제3자 d.ts 오류도 없다.
 
 ## 7. 템플릿 preset/admin (V7)
 
