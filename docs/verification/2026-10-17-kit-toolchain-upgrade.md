@@ -124,6 +124,83 @@ tarball(`pnpm build` 뒤 `pnpm --filter … pack`, 킷 본 체크아웃, `AK5/tg
 
 ## 6. 소비 앱 스모크 (V5 · V6)
 
+앱은 저장소 밖(`AK5/smoke-ui` · `AK5/smoke-server`)에 두고 §5 의 tarball(`-0.4.1.tgz` 셋)을 `file:` 로 설치했다. pnpm 은 10.33.3 이다. 설치 버전: pinia 4.1.0 · @vue/devtools-api 8.2.1 · vue 3.5.44 · vue-router 5.4.0 · vuetify 4.2.6 · vite 8.3.4 · vue-tsc 3.3.13 · typescript 6.0.3 / 5.9.3 · @nestjs/\* 12.1.3 · kysely 0.29.6 · @types/node 24.19.2. 의존 하한은 조정하지 않았다(최소 릴리스 나이 거부 없음).
+
+### 6-1. 브라우저 앱 — TS 6.0.3 · vue-tsc · `skipLibCheck: false`
+
+`tsc -v` = `Version 6.0.3`, vue-tsc exit=2(제3자 d.ts 오류), 출처별:
+
+```
+typescript TS2687: 1     (lib.dom.d.ts 'finished' — TS 자체)
+vuetify TS2344: 693
+vuetify TS2687: 1
+vuetify TS2308: 1
+KIT+APP OK (0)
+```
+
+`@ssworks/*` · 앱 출처 오류 0 (`@ts-expect-error` 도 쓰였다 — 카탈로그 밖 권한은 타입 오류). vuetify 는 CLAUDE.md 가 적은 기존 문제다. `vite build` 성공(`dist/index.html` 생성, `✓ built in 2.99s`, 청크 500 kB 경고만 — `import * as AdminUi` 때문).
+
+### 6-2. Review Focus 4 — TS 6 기본값 side-effect import
+
+`noUncheckedSideEffectImports` 를 적지 않은 tsconfig 에서 `grep -c "TS2882\|TS2307" smoke-ui-ts6.txt` = `0`. `@ssworks/admin-ui/style.css` · `vuetify/styles` · `@mdi/font/...css` 모두 해석된다.
+
+### 6-3. Review Focus 3 — TS 5.9.3 소비자
+
+`tsc -v` = `Version 5.9.3`, 같은 설정(`skipLibCheck: false`)으로 vue-tsc:
+
+```
+typescript TS2687: 1
+vuetify TS2344: 693
+vuetify TS2687: 1
+vuetify TS2308: 1
+KIT+APP OK (0)
+```
+
+TS 6 결과와 같다. `@ssworks/*` d.ts 오류 0.
+
+### 6-4. Review Focus 1 — Pinia 3 소비자
+
+`pnpm add pinia@3.0.4` 출력:
+
+```
+ WARN  Issues with peer dependencies found
+.
+└─┬ @ssworks/admin-ui 0.4.1
+  └── ✕ unmet peer pinia@^4.0.0: found 3.0.4
+```
+
+경고가 나온다(설치는 막히지 않는다 — 경고뿐이다).
+
+### 6-5. Review Focus 2 — `@vue/devtools-api` 를 빠뜨린 Pinia 4 앱
+
+Pinia 4.1.0 의 peer 는 `@vue/devtools-api ^8.2.1` 이고 `optional: false` 다. `autoInstallPeers: false` 로 두고 `pnpm remove @vue/devtools-api` 만 하면 경고도 빌드 오류도 **없다**: `vue-router` 5.4.0 이 같은 패키지를 의존으로 끌고 와서 peer 가 충족된다(`pnpm why` 로 확인 — vue-router 가 있는 한 `node_modules/@vue` 가 최상위에 없어도 해석된다). `vite build` 성공.
+
+vue-router 도 함께 빼서(앱이 router 를 안 쓰는 경우) 재현하면:
+
+```
+ WARN  Issues with peer dependencies found
+.
+├─┬ pinia 4.1.0
+│ └── ✕ missing peer @vue/devtools-api@^8.2.1
+└─┬ @ssworks/admin-ui 0.4.1
+  └── ✕ missing peer vue-router@"^4.5 || ^5"
+Peer dependencies that should be installed:
+  @vue/devtools-api@^8.2.1
+  vue-router@"^4.5 || ^5"
+```
+
+그리고 `vite build` 는 실패한다:
+
+```
+Error: [vite]: Rolldown failed to resolve import "@vue/devtools-api" from ".../node_modules/.pnpm/pinia@4.1.0_.../node_modules/pinia/dist/pinia.js".
+```
+
+즉 설치가 빠진 peer 를 알리고(경고), 빌드가 그 결과를 확인해 준다 — README 의 "함께 설치" 문장의 근거다. vue-router 5 를 쓰는 앱은 우연히 충족되므로 안내 문구는 "router 가 끌어오는 경우도 있다" 정도로 적을 수 있다. 스모크는 원상 복구했다(`@vue/devtools-api` 8.2.1 · vue-router ^5.4.0 추가, `autoInstallPeers` 줄 삭제, 빌드 성공).
+
+### 6-6. 서버 앱 — TS 6.0.3 · NodeNext · `skipLibCheck: false`
+
+`tsc -v` = `Version 6.0.3`, `tsc --noEmit` exit=0, 출처별 `{}` — `KIT+APP OK (0)`. `.` · `./runner` · `./migrations/0012_ip_access_rules` 세 진입점과 `AdminDatabase` 확장이 해석된다. 제3자 d.ts 오류도 없다.
+
 ## 7. 템플릿 preset/admin (V7)
 
 ## 8. ringside 에 고칠 것
