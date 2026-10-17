@@ -255,6 +255,14 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
 - `pnpm lint` 0 · `pnpm typecheck` 0 · `pnpm test` 0(shared 6 · frontend 7 통과, 7-1 과 같음) · `pnpm build` 0(오류 없음, 500 kB 청크 경고만).
 - clone 은 지웠다(`ak5` 에 `tpl` 없음).
 
+### 7-3b. ⓑ 보정 — vue ^3.5.34 · vue-router ^5.2.0 (최종 ⓑ = `997a81f`)
+
+7-3 의 첫 검증(`08398be`)에서 `vue-router 5.0.4` 가 `unmet peer pinia@^3.0.4: found 4.1.0` 을 냈다. vue-router 의 선택 peer 가 `pinia: ^3.0.4 || ^4.0.2` 로 넓어진 첫 버전이 5.2.0 이고 그 버전은 `vue: ^3.5.34 || ^4.0.0` 를 요구한다. 그래서 템플릿 frontend 의 하한을 `vue ^3.5.34` · `vue-router ^5.2.0` 으로 올렸다.
+
+- 새 설치는 vue-router 5.4.0 을 받는데, 저장소에 커밋된 `typed-router.d.ts`(옛 형식)로는 `route.params.userNo` 가 `string | string[]` 로 보여 `vue-tsc` 가 `users.[userNo].vue` 에서 TS2345 두 건으로 실패했다. `vite build` 가 파일을 새 형식(`_ParamParsers` · `RouteNamedMap` · `pathParamNames`)으로 다시 쓰면 통과한다. 그래서 다시 생성한 `typed-router.d.ts` 를 ⓑ 에 함께 커밋했다(생성 파일, 템플릿 규약상 커밋 대상). `08398be` 를 amend 해 `997a81f` 가 됐다(잠금 파일 없음, push 안 함).
+- 새 clone 재검증(같은 `-0.4.1.tgz` overrides, pnpm 10.33.0): 설치 성공. peer 경고는 `unplugin-fonts` 의 vite 8 하나뿐(기존) — pinia · vue · vue-router 경고 없음. 해석: `pinia 4.1.0` · `vue 3.5.44` · `vue-router 5.4.0`. lint 0 · typecheck 0 · test 0(shared 6 · frontend 7) · build 0. 빌드가 `typed-router.d.ts` 를 더는 바꾸지 않는다. clone 은 지웠다.
+- 한계: 하한 5.2.0 자체에서의 typecheck 는 돌려 보지 않았다(잠금 파일 없이 새로 받으면 5.4.0).
+
 ### 7-4. 릴리스 뒤 절차 (0.5.0 공개 후)
 
 1. 템플릿 `preset/admin` 에서 `pnpm install`(0.5.0 이 npm 에 보여야 한다 — 첫 반영이 늦을 수 있다).
