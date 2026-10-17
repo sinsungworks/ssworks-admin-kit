@@ -38,11 +38,11 @@ admin-ui · admin-server 는 admin-shared 를 peer 로 둔다. **`workspace:^` �
 
 | 패키지       | peer `@ssworks/admin-shared` | 발행 시          |
 | ------------ | ---------------------------- | ---------------- |
-| admin-ui     | `workspace:^0`               | `^0`             |
+| admin-ui     | `workspace:>=0.4.0 <1.0.0`   | `>=0.4.0 <1.0.0` |
 | admin-server | `workspace:>=0.4.0 <1.0.0`   | `>=0.4.0 <1.0.0` |
 
 둘 다 0.x 의 모든 minor 를 덮는다 — `config.json` 의 `onlyUpdatePeerDependentsWhenOutOfRange: true` 와 한 벌이다(범위 안이면 changesets 가 의존 패키지를 올리지도, 범위를 다시 쓰지도 않는다). `fixed` 가 세 패키지를 같은 번호로만 내보내므로 소비자는 같은 번호끼리 설치하면 된다. `workspace:` 뒤의 범위는 pnpm 이 pack · publish 때 그대로 꺼내 쓴다.
 
-**admin-server 의 하한**은 admin-server 가 import 하는 admin-shared API 가 모두 처음 실린 버전이다(0.4.0 — 감사 카탈로그 · 사용자 · 팀 · 약관 · IP 액션 · IP 파서). 🔴 admin-server 가 admin-shared 의 **새 export** 를 쓰기 시작하는 PR 은 하한을 그 export 가 실릴 버전으로 올린다 — 아니면 옛 admin-shared 와 함께 설치돼 런타임에 `undefined` 가 된다(예: `@Audit({ action: CoreAuditActions.X })`). admin-ui 는 0.2.0 · 0.3.0 이 이미 `^0` 으로 나갔다 — 같은 규칙이 필요해지면 그때 하한을 둔다.
+**admin-server 의 하한**은 admin-server 가 import 하는 admin-shared API 가 모두 처음 실린 버전이다(0.4.0 — 감사 카탈로그 · 사용자 · 팀 · 약관 · IP 액션 · IP 파서). 🔴 admin-server 가 admin-shared 의 **새 export** 를 쓰기 시작하는 PR 은 하한을 그 export 가 실릴 버전으로 올린다 — 아니면 옛 admin-shared 와 함께 설치돼 런타임에 `undefined` 가 된다(예: `@Audit({ action: CoreAuditActions.X })`). **admin-ui 의 하한**도 같은 규칙이다 — PR #3f(감사 로그 화면)부터 `>=0.4.0` 이다. `coreAuditCatalog` 를 런타임에 쓰기 때문이다. 그 전 판(0.2.0 ~ 0.5.0)은 `^0` 으로 나갔다.
 
 **1.0 으로 갈 때** peer 를 `workspace:^` 로 되돌린다. 1.x 에서는 `^1.0.0` 이 이후 minor 를 덮으므로 실험 옵션만으로 major 연쇄가 생기지 않고, 발행 범위도 그 시점 버전(`^1.x.y`)으로 좁혀진다.

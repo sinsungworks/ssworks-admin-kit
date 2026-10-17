@@ -72,16 +72,17 @@ export const usePermission = createUsePermission<Permission>(
 
 ## Peer 의존
 
-| 패키지              | 필수 | 용도                                                                                                                         |
-| ------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `vue`               | 예   |                                                                                                                              |
-| `vuetify`           | 예   |                                                                                                                              |
-| `vue-router`        | 예   | 셸·가드·메뉴가 라우트 `meta` 를 읽는다 — Pinia 4 와 함께면 vue-router 5.2 이상(그 아래 5.x 는 optional peer `pinia ^3` 경고) |
-| `pinia`             | 예   | `createAppStore` — **4.x**. Pinia 4 의 필수 peer `@vue/devtools-api` 8 을 함께 설치한다                                      |
-| `axios`             | 예   | `createApiClient`                                                                                                            |
-| `@he-tree/vue`      | 예   | `TeamTree`(팀 트리 · 드래그)                                                                                                 |
-| `codemirror`        | 예   | `MarkdownEditor` · `LegalDocumentEditor`(약관 편집기)                                                                        |
-| `@codemirror/state` | 예   | 같음 — `codemirror` 가 쓰는 것과 같은 인스턴스여야 한다                                                                      |
+| 패키지                  | 필수 | 용도                                                                                                                         |
+| ----------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `@ssworks/admin-shared` | 예   | `>=0.4.0 <1.0.0` — 감사 카탈로그 · 오류 코드 · 스키마. 세 패키지를 같은 번호로 설치한다                                      |
+| `vue`                   | 예   |                                                                                                                              |
+| `vuetify`               | 예   |                                                                                                                              |
+| `vue-router`            | 예   | 셸·가드·메뉴가 라우트 `meta` 를 읽는다 — Pinia 4 와 함께면 vue-router 5.2 이상(그 아래 5.x 는 optional peer `pinia ^3` 경고) |
+| `pinia`                 | 예   | `createAppStore` — **4.x**. Pinia 4 의 필수 peer `@vue/devtools-api` 8 을 함께 설치한다                                      |
+| `axios`                 | 예   | `createApiClient`                                                                                                            |
+| `@he-tree/vue`          | 예   | `TeamTree`(팀 트리 · 드래그)                                                                                                 |
+| `codemirror`            | 예   | `MarkdownEditor` · `LegalDocumentEditor`(약관 편집기)                                                                        |
+| `@codemirror/state`     | 예   | 같음 — `codemirror` 가 쓰는 것과 같은 인스턴스여야 한다                                                                      |
 
 🔴 `pinia`·`axios`·`@he-tree/vue`·`codemirror`·`@codemirror/state` 도 **필수**다. 엔트리가 하나(`dist/index.js`)라 두 패키지를 최상단에서 import 한다 — `safeRedirect` 하나만 써도 번들러가 `axios` 를 해석하지 못하면 빌드가 깨진다. 서브패스 export 로 가르지 않는 대가다. he-tree CSS 는 import 하지 않아도 된다 — `TeamTree` 가 필요한 규칙을 `style.css` 에 담는다. CodeMirror 테마 패키지(`@codemirror/theme-one-dark`)는 필요 없다 — 편집기 색은 Vuetify 테마를 따른다.
 
