@@ -1,6 +1,6 @@
 # 킷 버전 상향 설계 — ringside 선행 작업 (0.5.0)
 
-작성일: 2026-10-17 · 상태: 확정(구현 전) · 선행: `docs/HANDOFF.md` 「킷 상향 준비 메모 (2026-10-17)」, ringside 기획서 `docs/ringside-dev-plan.html` 15.4 · 15.5 · 15.6 · 15.7(2026-10-13 기준선), `.changeset/README.md` 「0.x 동안의 peer 범위」, 템플릿 `kim5257-project-template` `preset/admin` CLAUDE.md 「킷 올리기」
+작성일: 2026-10-17 · 상태: 구현 완료(2026-10-17 — 발행은 사람) · 선행: `docs/HANDOFF.md` 「킷 상향 준비 메모 (2026-10-17)」, ringside 기획서 `docs/ringside-dev-plan.html` 15.4 · 15.5 · 15.6 · 15.7(2026-10-13 기준선), `.changeset/README.md` 「0.x 동안의 peer 범위」, 템플릿 `kim5257-project-template` `preset/admin` CLAUDE.md 「킷 올리기」
 
 ## 1. 목표
 
@@ -209,7 +209,7 @@
 
 - eslint 범위 `^10.12.0`(스펙 §3 · §4-1 의 `^10.13.0` 대신, 킷 · 템플릿 둘 다): 10.13.0(2026-10-16T14:24Z 공개)이 pnpm 12 기본 minimumReleaseAge(1일) 안이었고, 공급망 방어에 영구 예외(`minimumReleaseAgeExclude`)를 두지 않기로 했다. 10.12.0 은 ringside 15.5 기준선이다. 템플릿은 pnpm 10.33 이라 잠금 파일이 10.13.0 으로 풀렸다.
 - V4 changeset 드라이런: worktree 의 `changeset version` 은 권한 계층에 막혔다(`.claude/settings.json` deny `pnpm version-packages` → 자동 모드 분류기가 `pnpm exec changeset version` 도 우회로 거부). 사용자 결정으로 `pnpm changeset status --verbose`(셋 다 0.5.0 · major 없음)로 대신했다. peer 재작성 · CHANGELOG 는 Version Packages PR 에서 사람이 본다. tarball 은 HEAD 를 그대로 pack 했다(`ssworks-admin-*-0.4.1.tgz`, 내용은 0.5.0 과 같음).
-- 템플릿 커밋 ⓑ 에 frontend `vue ^3.5.34` · `vue-router ^5.2.0` 과 다시 만든 `typed-router.d.ts` 를 더했다. vue-router 5.0.4 의 optional peer 가 `pinia ^3.0.4` 라 Pinia 4 에서 경고가 났다. 5.2.0 이 `^3.0.4 || ^4.0.2` 로 넓힌 첫 판이고 vue ^3.5.34 를 요구한다. vue-router 5.4.0 은 typed-router 생성 형식이 달라 옛 파일로는 TS2345 가 났다.
+- 템플릿 커밋 ⓑ 에 frontend `vue ^3.5.34` · `vue-router ^5.2.0` 과 다시 만든 `typed-router.d.ts` 를 더했다. vue-router 5.0.4 의 optional peer 가 `pinia ^3.0.4` 라 Pinia 4 에서 경고가 났다. 5.2.0 이 `^3.0.4 || ^4.0.2` 로 넓힌 첫 판이고 vue ^3.5.34 를 요구한다. vue-router 5.4.0 은 typed-router 생성 형식이 달라 옛 파일로는 TS2345 가 났다. 커밋된 `typed-router.d.ts` 가 5.4.0 출력이고 5.4.0 에서만 typecheck 했으므로 최종 리뷰에서 하한을 `vue-router ^5.4.0` 으로 올렸다(5.2.0 은 Pinia 4 를 받는 첫 판일 뿐) — ⓑ 는 `ddf1d7d`. 새 설치가 이미 Task 9 에서 5.4.0 으로 풀렸으므로 재설치 · 재검증은 하지 않았다.
 - 템플릿 ⓐ 의 TS 6 수정 둘: shared `tsconfig.build.json` `rootDir`(TS5011)와 frontend `src/vuetify-styles.d.ts`(TS2882 — 템플릿이 vuetify 4.0.4 로 잠겨 있고, TS 6 기본 `noUncheckedSideEffectImports: true`). 킷 스모크(vuetify 4.2.6)는 오류가 없었다.
 - V5 스모크는 처음에 전역 pnpm 10.33.3 으로 돌았다(스모크에 `packageManager` 없음). `packageManager: pnpm@12.8.1` 을 넣고 다시 쟀다.
 - 킷 코드는 TS 6 · ESLint 10 · Vitest 5 · MariaDB 12.3 에서 고친 곳이 없었다. 예외는 ESLint 10 `preserve-caught-error` 의 줄 단위 끄기 하나다(`packages/admin-server/src/database/connection.ts` readCaFile — `cause` 를 달면 CA 파일 경로가 로그로 샌다).

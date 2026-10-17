@@ -26,11 +26,11 @@ Cowork 세션에서 Claude Code 로 넘기는 인계 문서. 새 세션은 이 �
 
 1. 브랜치 `chore/kit-toolchain-upgrade` push → PR. **머지 전에** main ruleset 필수 검사 `db` → `db (11.4)` · `db (12.3)`.
 2. PR 머지 → release 워크플로가 Version Packages PR(0.5.0)을 연다.
-3. 🔴 **0.5.0 Version Packages PR 머지 전에 admin-server Trusted Publisher 등록**(아래 "admin-server npm 설정"). 이 PR 에서 로컬 드라이런을 건너뛴 몫을 확인한다 — 버전 0.5.0 ×3 · 1.0.0 없음 · admin-ui peer `@ssworks/admin-shared: ^0` + `pinia: ^4.0.0` · admin-server peer `@ssworks/admin-shared: >=0.4.0 <1.0.0` · CHANGELOG 셋의 `## 0.5.0`(검증 기록 §5).
+3. 🔴 **0.5.0 Version Packages PR 머지 전에 admin-server Trusted Publisher 등록**(아래 "admin-server npm 설정"). 이 PR 에서 로컬 드라이런을 건너뛴 몫을 확인한다 — 버전 0.5.0 ×3 · 1.0.0 없음 · CHANGELOG 셋의 `## 0.5.0` 제목. peer 줄(`workspace:^0` · `workspace:>=0.4.0 <1.0.0`)은 범위 안이라 PR diff 에 **나오지 않는 게 맞다** — `workspace:^0.5.0` 같은 재작성이 보이면 결함이다(`workspace:` → 범위 변환은 pack · 발행 때). 발행되는 peer 범위(`^0` · `>=0.4.0 <1.0.0` · `pinia ^4.0.0`)는 스테이징 뒤 `npm view @ssworks/<패키지>@0.5.0 peerDependencies` 로 본다(검증 기록 §5).
 4. Version Packages PR 머지 → 셋 스테이징 → `pnpm stage list`(셋) → `pnpm stage approve <id>` ×3 → `git pull && pnpm changeset tag && git push --tags`.
 5. `.changeset/README.md` 5단계: 세 패키지 provenance 확인 — admin-server 는 첫 OIDC 확인이다(기준선: 0.4.1 은 없음). `npm view @ssworks/<패키지>@0.5.0 dist.attestations.provenance.predicateType --prefer-online` → 셋 다 `https://slsa.dev/provenance/v1`.
-6. 템플릿 `preset/admin`: 커밋 ⓐ `73de2be`(도구 상향) · ⓑ `997a81f`(킷 0.5.0)는 로컬이고 push 하지 않았다(ⓑ 에 잠금 파일 없음). **0.5.0 이 공개된 뒤에** `pnpm install` → lint · typecheck · test · build → 잠금 파일(바뀌었으면 `packages/frontend/src/typed-router.d.ts` 도)을 ⓑ 에 amend → push (검증 기록 §7-4).
-7. ringside 문서를 목록대로 고친다(검증 기록 §8 — 18행 + 권한 슬롯 대조). 0.5.0 핀은 stage approve 로 공개된 뒤에 올린다.
+6. 템플릿 `preset/admin`: 커밋 ⓐ `73de2be`(도구 상향) · ⓑ `ddf1d7d`(킷 0.5.0)는 로컬이고 push 하지 않았다(ⓑ 에 잠금 파일 없음). **0.5.0 이 공개된 뒤에** `pnpm install` → lint · typecheck · test · build → 잠금 파일(바뀌었으면 `packages/frontend/src/typed-router.d.ts` 도)을 ⓑ 에 amend → push (검증 기록 §7-4).
+7. ringside 문서를 목록대로 고친다(검증 기록 §8 — 18행 + 권한 슬롯 대조). 0.5.0 핀은 stage approve 로 공개된 뒤에 올린다. ringside 는 pnpm 12.11 이라 기본 `minimumReleaseAge` 가 1일이다 — 승인 직후 `pnpm add @ssworks/*@0.5.0` 은 거부되거나 `minimumReleaseAgeExclude` 가 자동으로 들어간다. `stage approve` 하루 뒤에 설치하고, 자동으로 붙은 예외는 커밋하지 않는다.
 8. (10/27 뒤 별도 작업) Node 26 — `.nvmrc` 26 · CI · 로컬 검증.
 
 이전 항목:
@@ -62,7 +62,7 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
 | 0.3.0 승인 · AdminDbConnection TLS                                 | 끝남                                                                          | 0.4.1 공개 · 2f-2b TLS                                                                                                                                                                                                          |
 
 - 릴리스: `fixed` 라 세 패키지가 함께 0.5.0 으로 오른다(`changeset status` 확인, major 없음). 🔴 그 전에 사람이 admin-server Trusted Publisher 를 등록하고, 이 릴리스에서 admin-server 첫 OIDC 스테이징을 확인한다(`.changeset/README.md` 5단계).
-- ringside 에 알릴 것은 검증 기록 §8 의 18행 목록과 「권한 슬롯 대조」에 있다(낡은 가정 넷: 킷 2b~2d 미완 · admin-server 미발행 · 코어 장 7개 · `teams.enabled:false` 등). 템플릿 `preset/admin` 은 도구 상향(ⓐ `73de2be`) · 킷 0.5.0(ⓑ `997a81f`) 로컬 커밋이다 — 0.5.0 공개 뒤 잠금 파일을 합쳐 push(검증 기록 §7-4). 자세한 결과는 `docs/verification/2026-10-17-kit-toolchain-upgrade.md`.
+- ringside 에 알릴 것은 검증 기록 §8 의 18행 목록과 「권한 슬롯 대조」에 있다(낡은 가정 넷: 킷 2b~2d 미완 · admin-server 미발행 · 코어 장 7개 · `teams.enabled:false` 등). 템플릿 `preset/admin` 은 도구 상향(ⓐ `73de2be`) · 킷 0.5.0(ⓑ `ddf1d7d`) 로컬 커밋이다 — 0.5.0 공개 뒤 잠금 파일을 합쳐 push(검증 기록 §7-4). 자세한 결과는 `docs/verification/2026-10-17-kit-toolchain-upgrade.md`.
 
 ## 결정 사항 (바꾸려면 `docs/01-phase0.md` §4 를 먼저 고친다)
 
@@ -171,7 +171,7 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
   - 킷 후속 후보(A): runner 에서 임시 비밀번호 생성기를 export 해 템플릿 seed 의 알파벳 복사를 없앤다. Phase 4 에서 사용자 · 역할 화면 조립(템플릿 B 코드 약 900줄)을 admin-ui 후보로 본다.
   - 템플릿에 없는 화면: IP 접근 제어 · 감사 로그 조회. 킷 모듈(`AdminIpAccessModule` · `AdminAuditModule` 조회)은 있다 — 프로젝트마다 같아야 하는 화면이라 후속 admin-ui PR 후보. IP 모듈은 템플릿에서 꺼 두었고 켜는 법은 템플릿 CLAUDE.md 「IP 접근 제어 켜기」.
   - `preset/auth` 와의 관계: `00` 검토 §4 는 `preset/auth` 위를 말했지만 `preset/db` 위에 만들었고(사용자 결정), admin 이 auth 의 자리(로그인 · 세션 · 사용자)를 킷으로 대신한다. `preset/auth` 를 남길지 · 정리할지는 사람이 정한다.
-  - 킷 결함은 없었다 — 템플릿 핀(0.4.1)을 올릴 일 없음. 킷을 올리는 절차는 템플릿 CLAUDE.md 「킷 올리기」.
+  - 킷 결함은 없었다 — 템플릿 핀(0.4.1)을 올릴 일 없음 → 2026-10-17 킷 상향으로 0.5.0(「킷 상향 결과」). 킷을 올리는 절차는 템플릿 CLAUDE.md 「킷 올리기」.
   - 템플릿 결함으로 고친 것(다시 생기면 같은 자리): 개발 서버 사전 번들(`vite.config.mts` `optimizeDeps` — vuetify 제외 · shared 의 luxon · zod · `vue-router/experimental` 미리 묶기), `.dockerignore` 의 `**/` 패턴, backend `incremental: false`, frontend 는 prettier 밖(eslint-config-vuetify). 스펙 §13 6~13. 최종 리뷰로: 예시 env 의 JWT 키 비움 · `.env.backend` 무시 · 검색 칸 ✕(null) `filterText` · 코어 장 스텁 이름 · `.gitattributes`(LF) · 스킬의 재인증 서버 확인(검증 기록 §4).
   - 실서버 확인이 넘긴 결함 둘(기본 정렬 열 오름차순 · 조회 실패 직후 빈 상태)은 템플릿이 `#no-data` 에서 오류를 먼저 보는 것으로 비켜 갔다 — 킷 쪽은 그대로 열려 있다.
 
@@ -179,7 +179,7 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
   - Node 26 — `.nvmrc` · CI · 로컬 검증. 26 LTS(10/27) 뒤.
   - `globals` 17 · `happy-dom` 21 · `@changesets/cli` 3 메이저 — 따로.
   - 템플릿의 pnpm 12.
-  - 템플릿 ⓑ 의 잠금 파일(+ 바뀐 `typed-router.d.ts`) amend — 0.5.0 공개 뒤. 하한 vue-router 5.2.0 자체의 typecheck 는 안 돌렸다.
+  - 템플릿 ⓑ 의 잠금 파일(+ 바뀐 `typed-router.d.ts`) amend — 0.5.0 공개 뒤. vue-router 하한은 시험한 5.4.0 으로 올렸다(ⓑ `ddf1d7d`).
   - 이 브랜치에서 찾은 남은 것: 로컬 `changeset version` 드라이런을 못 돌렸다(Version Packages PR 에서 확인) 등 — 검증 기록 §9.
 
 ## 작업 폴더 밖에 남은 것

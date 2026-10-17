@@ -164,7 +164,7 @@ export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 
   🔴 `ssl: { rejectUnauthorized: false }` 는 검증을 끈다 — 암호화는 되지만 중간자를 막지 못한다. 쓰지 말고 CA 를 고정한다.
 
-- **실측 범위**: MariaDB 11.4 + mariadb 드라이버 3.5.4 에서 `ssl: true` 지문 검증 · `REQUIRE SSL` 계정 · 엉뚱한 CA 거부를 실 DB 로 확인했다. 관리형 DB 의 CA 묶음 · 호스트 이름 검증 · 소켓 실접속은 재지 않았다 — 처음 붙을 때 `SHOW SESSION STATUS LIKE 'Ssl_cipher'` 가 비지 않은지 본다. peer `^3.4.0` 중 3.5.4 보다 낮은 mariadb 는 11.4 지문 경로를 확인하지 않았다.
+- **실측 범위**: MariaDB 11.4 · 12.3 + mariadb 드라이버 3.5.4 에서 `ssl: true` 지문 검증 · `REQUIRE SSL` 계정 · 엉뚱한 CA 거부를 실 DB 로 확인했다. 관리형 DB 의 CA 묶음 · 호스트 이름 검증 · 소켓 실접속은 재지 않았다 — 처음 붙을 때 `SHOW SESSION STATUS LIKE 'Ssl_cipher'` 가 비지 않은지 본다. peer `^3.4.0` 중 3.5.4 보다 낮은 mariadb 는 11.4 지문 경로를 확인하지 않았다.
 - **소켓**: `DB_SOCKET_PATH=/run/mysqld/mysqld.sock`(Windows 는 명명 파이프 경로). `DB_HOST` · `DB_PORT` · `DB_SSL=true` · `DB_SSL_CA` 와 함께 두면 기동 실패다 — 접속 대상이 모호하고, 소켓은 로컬 연결이라 TLS 를 얹지 않는다. 객체로는 `{ socketPath, user, password, database }`(`host` 와 하나만).
 - 앱(`AdminServerModule`)과 러너(`kysely.config.ts`)가 같은 `adminPoolConfig` 를 지나므로 **env** 하나로 둘 다 바뀐다(코드로 만든 `ssl` 은 위 공용 함수를 두 곳에 넘겨야 둘 다 바뀐다). 기본은 지금처럼 평문 TCP 다. 오류 메시지는 env 이름(과 파일 오류의 errno 코드)만 담는다.
 

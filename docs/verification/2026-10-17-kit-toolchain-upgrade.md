@@ -16,7 +16,7 @@
 - V4 changeset: 드라이런은 권한 계층에 막혀 `changeset status --verbose` 로 대신 — 셋 다 0.5.0, major 없음(§5).
 - V5 소비 앱 스모크(브라우저): TS 6.0.3 · TS 5.9.3 모두 `@ssworks/*` d.ts 오류 0, TS2882 없음, Pinia 3 소비자는 peer 경고, devtools-api 누락은 설치가 알림(§6).
 - V6 서버 스모크: TS 6.0.3 · NodeNext · `skipLibCheck: false` 오류 0, 진입점 셋 해석(§6-6).
-- V7 템플릿 `preset/admin`: ⓐ `73de2be`(도구 상향) · ⓑ `997a81f`(킷 0.5.0, 잠금 파일 없음) 로컬 커밋, tarball clone 에서 lint · typecheck · test · build 초록(§7).
+- V7 템플릿 `preset/admin`: ⓐ `73de2be`(도구 상향) · ⓑ `ddf1d7d`(킷 0.5.0, 잠금 파일 없음) 로컬 커밋, tarball clone 에서 lint · typecheck · test · build 초록(§7).
 
 **고친 킷 결함**: 없음. 소스 · 테스트 · tsconfig 변경 없음. 예외는 ESLint 10 `preserve-caught-error` 의 줄 단위 끄기 하나(§2-2).
 
@@ -24,11 +24,11 @@
 
 1. 브랜치 push → PR. **머지 전에** main ruleset 필수 검사 `db` → `db (11.4)` · `db (12.3)`.
 2. PR 머지 → release 워크플로가 Version Packages PR(0.5.0)을 연다.
-3. 🔴 **Version Packages PR 머지 전에 admin-server Trusted Publisher 등록**(스펙 §10-3) — 안 하면 admin-server 스테이징만 OIDC 로 실패한다. 이 PR 에서 §5 의 기대도 확인한다(로컬 드라이런을 건너뛰었다): 버전 0.5.0 ×3 · 1.0.0 없음 · admin-ui peer `@ssworks/admin-shared: ^0` + `pinia: ^4.0.0` · admin-server peer `@ssworks/admin-shared: >=0.4.0 <1.0.0` · CHANGELOG 셋의 `## 0.5.0`.
+3. 🔴 **Version Packages PR 머지 전에 admin-server Trusted Publisher 등록**(스펙 §10-3) — 안 하면 admin-server 스테이징만 OIDC 로 실패한다. 이 PR 에서 §5 의 기대도 확인한다(로컬 드라이런을 건너뛰었다): 버전 0.5.0 ×3 · 1.0.0 없음 · CHANGELOG 셋의 `## 0.5.0` 제목. peer 줄은 PR diff 에 나오지 않는 게 맞다(아래 §5) — `workspace:^0.5.0` 같은 재작성이 보이면 결함. 발행 peer 범위는 스테이징 뒤 `npm view @ssworks/<패키지>@0.5.0 peerDependencies`.
 4. Version Packages PR 머지 → 셋 스테이징 → `pnpm stage list` → `pnpm stage approve <id>` ×3 → `git pull && pnpm changeset tag && git push --tags`.
 5. `.changeset/README.md` 5단계: 세 패키지 provenance 확인(admin-server 는 첫 OIDC 확인).
-6. 템플릿 `preset/admin`: **0.5.0 이 공개된 뒤에** §7-4 절차(설치 · 검증 · 잠금 파일 + 바뀐 `typed-router.d.ts` amend) 후 push. 그 전에는 ⓐ `73de2be` · ⓑ `997a81f` 를 push 하지 않는다.
-7. ringside 문서를 §8 의 18행대로 고친다. 0.5.0 핀은 stage approve 로 공개된 뒤에 올린다.
+6. 템플릿 `preset/admin`: **0.5.0 이 공개된 뒤에** §7-4 절차(설치 · 검증 · 잠금 파일 + 바뀐 `typed-router.d.ts` amend) 후 push. 그 전에는 ⓐ `73de2be` · ⓑ `ddf1d7d` 를 push 하지 않는다.
+7. ringside 문서를 §8 의 18행대로 고친다. 0.5.0 핀은 stage approve 로 공개된 뒤에 올린다. ringside 는 pnpm 12.11 이라 기본 `minimumReleaseAge` 가 1일이다 — 승인 직후 `pnpm add @ssworks/*@0.5.0` 은 거부되거나 `minimumReleaseAgeExclude` 가 자동으로 들어간다. `stage approve` 하루 뒤에 설치하고, 자동으로 붙은 예외는 커밋하지 않는다.
 8. (10/27 뒤 별도 작업) Node 26 — `.nvmrc` 26 · CI · 로컬 검증.
 
 ## 1. 기준선 (상향 전 — TS 5.9.3 · vitest 4.1.11 · eslint 9.39.5 · Windows · Node 24.21)
@@ -141,7 +141,7 @@ Running release would release NO packages as a major
 
 세 패키지 모두 0.5.0 이고 major 는 없다.
 
-기대: `fixed` 가 세 패키지를 묶으므로 admin-shared · admin-server 의 patch changeset 도 0.5.0 이 된다. Version Packages PR 에서 확인할 것 — 버전 0.5.0 ×3 · 1.0.0 없음 · admin-ui peer `@ssworks/admin-shared: ^0` 과 `pinia: ^4.0.0` · admin-server peer `@ssworks/admin-shared: >=0.4.0 <1.0.0` · CHANGELOG 셋 각각 `## 0.5.0` 제목.
+기대: `fixed` 가 세 패키지를 묶으므로 admin-shared · admin-server 의 patch changeset 도 0.5.0 이 된다. Version Packages PR 에서 확인할 것 — 버전 0.5.0 ×3 · 1.0.0 없음 · CHANGELOG 셋 각각 `## 0.5.0` 제목. peer 줄(`workspace:^0` · `workspace:>=0.4.0 <1.0.0`)은 `changeset version` 이 건드리지 않아 PR diff 에 **나오지 않는 게 맞다**(apply-release-plan 7.1.1 `shouldUpdateDependencyBasedOnConfig` 가 `onlyUpdatePeerDependentsWhenOutOfRange: true` 아래에서 범위 안 peer 에 false) — `workspace:^0.5.0` 같은 재작성이 보이면 결함이다. `workspace:` → 범위 변환은 pack · 발행 때만 일어나며, 발행 peer 범위(`^0` · `>=0.4.0 <1.0.0` · `pinia ^4.0.0`)는 스테이징 뒤 `npm view @ssworks/<패키지>@0.5.0 peerDependencies` 로 본다.
 
 tarball(`pnpm build` 뒤 `pnpm --filter … pack`, 킷 본 체크아웃, `AK5/tgz`): package.json 버전이 릴리스 전까지 0.4.1 이라 파일 이름은 `-0.4.1.tgz` 다(내용은 0.5.0 이 실을 것).
 
@@ -269,9 +269,9 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
   - frontend lint: eslint-config-vuetify 4.7 의 `vue/padding-line-between-tags` 68건(빈 줄만) — 템플릿 규약대로 `pnpm lint:fix`, 13개 `.vue` 에 빈 줄 추가(+68 줄 · 삭제 0).
 - 상향 뒤 lint · typecheck · test(shared 6 · frontend 7, 줄지 않음) · build · format:check 모두 초록. `pnpm install --frozen-lockfile` 성공(Review Focus 5, 템플릿 쪽).
 
-### 7-2. 커밋 ⓑ — 킷 0.5.0 · Pinia 4 (최종 `997a81f` — package.json ×3 + CLAUDE.md + `typed-router.d.ts`, 잠금 파일 없음)
+### 7-2. 커밋 ⓑ — 킷 0.5.0 · Pinia 4 (최종 `ddf1d7d` — package.json ×3 + CLAUDE.md + `typed-router.d.ts`, 잠금 파일 없음)
 
-템플릿 `preset/admin` 최종 ⓑ 는 `997a81f`(`73de2be` 위, push 안 함, 잠금 파일 없음) — 7-3b 에서 amend 했다. 아래는 처음 `08398be` 의 내용이다.
+템플릿 `preset/admin` 최종 ⓑ 는 `ddf1d7d`(`73de2be` 위, push 안 함, 잠금 파일 없음) — 7-3b 에서 amend 했고(`997a81f`), 최종 리뷰에서 vue-router 하한을 `^5.4.0` 으로 올리며 다시 amend 했다. 아래는 처음 `08398be` 의 내용이다.
 
 - `frontend`: `@ssworks/admin-shared` · `@ssworks/admin-ui` `0.5.0`, `pinia` `^4.1.0`, `@vue/devtools-api` `^8.2.1` 추가. `backend`: `@ssworks/admin-server` · `@ssworks/admin-shared` `0.5.0`. `shared`: `@ssworks/admin-shared` `0.5.0`. `CLAUDE.md` 두 줄(0.5.0 · Pinia 4 / devtools-api 8 안내). 새 코어 장이 없어 스텁은 더하지 않았다.
 
@@ -284,13 +284,13 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
 - `pnpm lint` 0 · `pnpm typecheck` 0 · `pnpm test` 0(shared 6 · frontend 7 통과, 7-1 과 같음) · `pnpm build` 0(오류 없음, 500 kB 청크 경고만).
 - clone 은 지웠다(`ak5` 에 `tpl` 없음).
 
-### 7-3b. ⓑ 보정 — vue ^3.5.34 · vue-router ^5.2.0 (최종 ⓑ = `997a81f`)
+### 7-3b. ⓑ 보정 — vue ^3.5.34 · vue-router ^5.4.0 (최종 ⓑ = `ddf1d7d`)
 
-7-3 의 첫 검증(`08398be`)에서 `vue-router 5.0.4` 가 `unmet peer pinia@^3.0.4: found 4.1.0` 을 냈다. vue-router 의 선택 peer 가 `pinia: ^3.0.4 || ^4.0.2` 로 넓어진 첫 버전이 5.2.0 이고 그 버전은 `vue: ^3.5.34 || ^4.0.0` 를 요구한다. 그래서 템플릿 frontend 의 하한을 `vue ^3.5.34` · `vue-router ^5.2.0` 으로 올렸다.
+7-3 의 첫 검증(`08398be`)에서 `vue-router 5.0.4` 가 `unmet peer pinia@^3.0.4: found 4.1.0` 을 냈다. vue-router 의 선택 peer 가 `pinia: ^3.0.4 || ^4.0.2` 로 넓어진 첫 버전이 5.2.0 이고 그 버전은 `vue: ^3.5.34 || ^4.0.0` 를 요구한다. 그래서 템플릿 frontend 의 하한을 `vue ^3.5.34` · `vue-router ^5.2.0` 으로 올렸다. 최종 리뷰에서 vue-router 하한을 `^5.4.0` 으로 다시 올렸다: 5.2.0 은 Pinia 4 를 받는 첫 판이지만, 커밋된 `typed-router.d.ts` 가 5.4.0 출력이고 5.4.0 에서만 typecheck 했기 때문이다(`ddf1d7d`, 재설치 없음 — 새 설치가 이미 5.4.0 으로 풀렸다).
 
-- 새 설치는 vue-router 5.4.0 을 받는데, 저장소에 커밋된 `typed-router.d.ts`(옛 형식)로는 `route.params.userNo` 가 `string | string[]` 로 보여 `vue-tsc` 가 `users.[userNo].vue` 에서 TS2345 두 건으로 실패했다. `vite build` 가 파일을 새 형식(`_ParamParsers` · `RouteNamedMap` · `pathParamNames`)으로 다시 쓰면 통과한다. 그래서 다시 생성한 `typed-router.d.ts` 를 ⓑ 에 함께 커밋했다(생성 파일, 템플릿 규약상 커밋 대상). `08398be` 를 amend 해 `997a81f` 가 됐다(잠금 파일 없음, push 안 함).
+- 새 설치는 vue-router 5.4.0 을 받는데, 저장소에 커밋된 `typed-router.d.ts`(옛 형식)로는 `route.params.userNo` 가 `string | string[]` 로 보여 `vue-tsc` 가 `users.[userNo].vue` 에서 TS2345 두 건으로 실패했다. `vite build` 가 파일을 새 형식(`_ParamParsers` · `RouteNamedMap` · `pathParamNames`)으로 다시 쓰면 통과한다. 그래서 다시 생성한 `typed-router.d.ts` 를 ⓑ 에 함께 커밋했다(생성 파일, 템플릿 규약상 커밋 대상). `08398be` 를 amend 해 `997a81f` 가 됐다(잠금 파일 없음, push 안 함; 이후 하한 보정으로 `ddf1d7d`).
 - 새 clone 재검증(같은 `-0.4.1.tgz` overrides, pnpm 10.33.0): 설치 성공. peer 경고는 `unplugin-fonts` 의 vite 8 하나뿐(기존) — pinia · vue · vue-router 경고 없음. 해석: `pinia 4.1.0` · `vue 3.5.44` · `vue-router 5.4.0`. lint 0 · typecheck 0 · test 0(shared 6 · frontend 7) · build 0. 빌드가 `typed-router.d.ts` 를 더는 바꾸지 않는다. clone 은 지웠다.
-- 한계: 하한 5.2.0 자체에서의 typecheck 는 돌려 보지 않았다(잠금 파일 없이 새로 받으면 5.4.0).
+- 한계(해소): 하한 5.2.0 자체에서의 typecheck 는 돌려 보지 않았다 — 그래서 하한을 실제로 시험한 5.4.0 으로 올렸다.
 
 ### 7-4. 릴리스 뒤 절차 (0.5.0 공개 후)
 
@@ -305,7 +305,7 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
 - **읽은 ringside**: `sinsungworks/ssworks-ringside` 최신 커밋 `c39df68` (2026-10-14T06:20:54Z). `gh api` GET 만. 훑은 문서 `CLAUDE.md` · `docs/summary.md` · `docs/ringside-dev-plan.html` · `docs/ringside-development-plan.html`.
 - **위치 표기**: `dev` = `ringside-dev-plan.txt:<줄>`(HTML 을 텍스트로 푼 것의 줄 번호 — 내려받은 HTML 은 `AK5/ringside/`), `plan` = `ringside-development-plan.txt:<줄>`, `CLAUDE.md:<줄>` · `summary.md:<줄>` 은 원문 줄.
 - **키워드 적중**: 141줄(`AK5/ringside/hits.txt`). 그중 킷 현재와 어긋나는 것만 아래 18행에 모았다. 같은 문장이 여러 곳에 있으면 한 행에 위치를 모았다.
-- **킷 사실(근거 약어)**: 진행표 = 킷 `CLAUDE.md` 진행표 · npm = `@ssworks/*` 0.4.1 공개(admin-server 는 2026-10-16 첫 발행), 0.5.0 은 아직 안 나갔다(Version Packages PR 머지 + `pnpm stage approve` 뒤).
+- **킷 사실(근거 약어)**: 진행표 = 킷 `CLAUDE.md` 진행표 · npm = `@ssworks/*` 0.4.1 공개(admin-server 는 2026-10-16 첫 발행), 0.5.0 은 아직 안 나갔다(Version Packages PR 머지 + `pnpm stage approve` 뒤). ringside 의 pnpm 12.11 은 기본 `minimumReleaseAge` 1일이라 0.5.0 핀(`pnpm add @ssworks/*@0.5.0`)은 승인 하루 뒤에 한다 — 그전에는 거부되거나 `minimumReleaseAgeExclude` 가 자동으로 붙는다(그 예외는 커밋하지 않는다).
 
 | #   | 파일 · 위치                                                                                                          | 지금 문장                                                                                                                       | 고칠 내용                                                                                                                                                                                                                                                  | 근거                                                                    |
 | --- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -318,7 +318,7 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
 | 7   | 15.6 "Node 26 · MariaDB 12.3 전환" `dev:1572` · 15.1 MariaDB 행 `dev:1490` · 15.7 `dev:1582` · `dev:1208`            | "둘 다 킷이 테스트한 버전(24, 11.4)보다 위다. 킷의 pnpm check와 pnpm test:db를 Node 26 · mariadb:12.3 컨테이너로 돌려 초록을 확인한 뒤 올린다" · "킷 테스트 DB를 11.4 → 12.3으로 올려 확인" · "db:test:up 이미지 mariadb:12.3, .nvmrc 26 (10/27 이후)" | MariaDB 12.3 은 끝났다: 킷 CI `db` 잡이 MariaDB 11.4 · 12.3 매트릭스(468 테스트 둘 다 초록)이고 11.4 도 계속 지원한다 — "11.4 → 12.3 교체"가 아니라 "둘 다 검증". Node 26 은 아직이다: 킷은 Node 24 에서만 확인했고 `.nvmrc 26` 은 26 LTS(10/27) 뒤. 15.6 문장은 "MariaDB 12.3 확인 완료, Node 26 은 10/27 뒤 킷 확인 대기"로 | 킷 CI · 검증 기록 · 스펙 §2-1                                           |
 | 8   | 14.5 `dev:1476` · 15.7 `dev:1584`                                                                                    | "AdminDbConnection에 TLS 옵션이 아직 없다 — 관리형 MariaDB가 TLS를 요구하면 킷에 먼저 추가한다" · "AdminDbConnection TLS 옵션 (관리형 MariaDB 대비, 14.5)" | 있다(0.4.0 부터). env `DB_SSL=true` · `DB_SSL_CA`(검증하는 TLS 둘만) 와 `socketPath` 를 `adminPoolConfig` 하나가 받는다. 14.5 항목은 "TLS 는 `DB_SSL`·`DB_SSL_CA` 로 켠다" 로, 15.7 항목은 삭제                                                       | 킷 CLAUDE.md 「admin-server」 · 0.4.0                                   |
 | 9   | 14.5 `dev:1478` · 기술 스택 표 admin SPA 행 `dev:439`                                                                | "템플릿 preset/admin과 스킬이 아직 없다 — 첫 조립은 수동이고" · "14절. 템플릿 preset/admin이 아직 없어 수동 조립"               | 템플릿 `kim5257-project-template` 의 `preset/admin` 과 `.claude/skills/admin-scaffold` 가 있다(생성 앱 · 스킬 시험 두 바퀴 통과, 킷 결함 0). 단 템플릿 push 는 사람 몫이라 push 뒤에 "있다"로 쓴다. "수동 조립" 대신 "preset/admin 에서 시작". 마지막 "킷 Phase 3" 도 끝(Phase 3 완료, 다음은 Phase 4 = 링사이드) | 킷 CLAUDE.md 진행표 · 템플릿 CLAUDE.md                                  |
-| 10  | 코어 장 수 — 기획서 7절 표 `dev:677` · 9절 결정 11 `dev:1320` · 14.2 `dev:1386` · `CLAUDE.md:39`/`:66` · 5절 `dev:462` | "관리자 킷 코어 마이그레이션 0001~0007" · "운영자 테이블은 킷 코어 7장" · "audit_logs·ip_access_rules·legal_documents 장은 킷 2c·2e·2f에서 추가" · "킷 스텁 0001~0007" · "킷 코어 스텁 순서는 assertAdminMigrationStubs로 검사" | 코어는 12장 `0001_roles` … `0012_ip_access_rules`(0008_audit_logs · 0009_guard_locks · 0010_team_tree_lock · 0011_legal_documents · 0012_ip_access_rules 포함). "나중에 추가" 문장은 삭제 — 이미 코어에 있다. 스텁은 12장 모두 필요하다(켜지 않는 팀 · 약관 장 0003~0006 · 0011 포함 — 빠진 장은 `빠진 장 <id>` 로 migrate 가 시작 전에 멈춘다). `assertAdminMigrationStubs` 이름은 맞다 | `ADMIN_MIGRATIONS` 12개(`database/migrations/index.ts`) · 템플릿 「킷 올리기」3 |
+| 10  | 코어 장 수 — 기획서 7절 표 `dev:677` · 9절 결정 11 `dev:1320` · 14.2 `dev:1386` · `CLAUDE.md:39`/`:66` · 5절 `dev:462` | "관리자 킷 코어 마이그레이션 0001~0007" · "운영자 테이블은 킷 코어 7장" · "audit_logs·ip_access_rules·legal_documents 장은 킷 2c·2e·2f에서 추가" · "킷 스텁 0001~0007" · "킷 코어 스텁 순서는 assertAdminMigrationStubs로 검사" | 코어는 12장 `0001_roles` … `0012_ip_access_rules`(0008_audit_logs · 0009_guard_locks · 0010_team_tree_lock · 0011_legal_documents · 0012_ip_access_rules 포함). "나중에 추가" 문장은 삭제 — 이미 코어에 있다. 스텁은 12장 모두 필요하다(켜지 않는 팀 · 약관 장 0003~0005 · 0011 포함 — 빠진 장은 `빠진 장 <id>` 로 migrate 가 시작 전에 멈춘다). `assertAdminMigrationStubs` 이름은 맞다 | `ADMIN_MIGRATIONS` 12개(`database/migrations/index.ts`) · 템플릿 「킷 올리기」3 |
 | 11  | 프로젝트 장 번호 — `dev:462` · `dev:1386` · `CLAUDE.md:39`                                                          | "마이그레이션(킷 스텁 0001~0007 + P1 0008~ + P2 0030~)" · "같은 마이그레이션 폴더(코어 스텁 0001~0007 + P1 0008~ + P2 0030~ …)" | 🔴 번호 이름을 쓰지 않는다. P1 `0008~` 은 코어 `0008_audit_logs`~`0012` 와 이름이 겹친다. 프로젝트 장은 타임스탬프 이름(`migrate:make`)으로 — 번호로 이름 지으면 이미 적용된 DB 에서 코어 새 장이 그 앞에 정렬되어 Kysely 가 "corrupted migrations" 로 멈춘다. "P1 0008~ · P2 0030~" 구획은 타임스탬프 + 레인 접두로 대체. 킷이 장을 더하면 스텁 한 줄을 `admin_<장 이름>` 으로 | 템플릿 CLAUDE.md 「킷 올리기」3 · `migrations/index.ts` 머리 주석       |
 | 12  | 결정 11 `dev:1320` · 14.1 admin-server 행 `dev:1376`                                                                 | "2e 팀은 비활성" · "2e 팀은 teams.enabled:false로 미룸"                                                                         | `teams.enabled` 옵션은 킷에 없다. 팀을 빼는 방법은 `AdminTeamsModule` 을 `imports` 에 넣지 않는 것 — 그러면 `teams.read/manage` 슬롯도 필요 없다. (테이블 `teams` · `team_closure` · `team_user_map` 은 코어 장이라 어차피 생긴다)                          | 킷 `AdminTeamsModule`(`teams.module.ts`) · 스펙 §8 항목 4               |
 | 13  | 14.1 admin-server 행 `dev:1376` · 개발 일정 `dev:1206` · 결정 11 `dev:1320` · 14.3 `dev:1420`                        | "2f IP 접근 제어는 Phase 1 C 레인 후반" · "관리자 킷 2b 인증 · 2c 세션·감사 · 2d 사용자·역할 (병행, 2~3주) · 2f IP 접근 제어" · "2f IP는 Phase 1" | 킷 쪽 작업이 아니라 링사이드의 조립 작업이다: `AdminIpAccessModule` import + 슬롯 둘 + `clientIp` 출처 확인(게이트웨이 뒤면 `x-real-ip`/realip — 틀리면 전원 차단). 일정 줄은 "킷 이식 2~3주"가 아니라 "킷 조립(템플릿 기준)"으로                       | 킷 진행표 2f-1 · 템플릿 「IP 접근 제어 켜기」                           |
@@ -380,6 +380,6 @@ pnpm 12.8.1 로 새로 설치(오류 · 경고 없음). `tsc -v` = `Version 6.0.
 - Node 26(`.nvmrc` · CI · 로컬 검증) — 26 LTS(10/27) 뒤.
 - `globals` 17 · `happy-dom` 21 · `@changesets/cli` 3 메이저.
 - 템플릿의 pnpm 12 · Node 26.
-- 템플릿 ⓑ 의 잠금 파일(+ 바뀐 `typed-router.d.ts`) amend — 0.5.0 공개 뒤(§7-4). 하한 vue-router 5.2.0 자체에서의 typecheck 는 안 돌렸다(§7-3b).
+- 템플릿 ⓑ 의 잠금 파일(+ 바뀐 `typed-router.d.ts`) amend — 0.5.0 공개 뒤(§7-4). vue-router 하한은 시험한 5.4.0 으로 올렸다(§7-3b, ⓑ `ddf1d7d`).
 - 이 브랜치에서 새로 찾은 킷 결함은 없다. 실서버 확인이 넘긴 결함 둘(기본 정렬 열 오름차순 · 조회 실패 직후 빈 상태)은 그대로 열려 있다.
 - 로컬 `changeset version` 드라이런 — 권한 계층이 막아 Version Packages PR 에서 확인(§5).
