@@ -3,6 +3,8 @@ dist/
 pnpm-lock.yaml
 CHANGELOG.md
 docs/phase0-reports/
+# 다른 저장소가 보낸 보고 원문 — 고치지 않는다
+docs/reports/
 .superpowers/
 # 생성물 — 스크래치패드의 gen-real.mjs 가 만든다
 docs/verification/
