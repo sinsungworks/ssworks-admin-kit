@@ -4,7 +4,7 @@ import { defineConfig } from 'vite'
 import dts from 'vite-plugin-dts'
 
 // 라이브러리 빌드 — ESM 엔트리 둘(index · vite) + style.css 하나. vue · vuetify 는 소비 프로젝트 것을 쓴다(external).
-// 🔴 vite 엔트리(src/vite.ts)는 소비자의 vite.config 가 Node 에서 읽는다 — 아무것도 import 하지 않아 공유 청크가 없다.
+// 🔴 vite 엔트리(src/vite.ts)는 소비자의 vite.config 가 Node 에서 읽는다 — vuetify/layer-order.ts 만 import 하고 index.ts 는 그 파일을 import 하지 않아 공유 청크가 없다.
 export default defineConfig({
   plugins: [
     vue(),

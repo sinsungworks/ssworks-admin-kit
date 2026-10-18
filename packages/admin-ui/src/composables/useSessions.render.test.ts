@@ -269,6 +269,8 @@ describe('useSessions — 사용자 전체', () => {
     const onRevoked = vi.fn()
     await setup({ list, revokeUser, onRevoked }, { showUser: true })
     await clickLabel('이(lee) 사용자 전체 끊기')
+    expect(document.querySelector('.v-overlay--active')).not.toBeNull()
+    expect(activeDialog().textContent).toContain('사용자 전체 끊기')
     expect(document.body.textContent).toContain('「이(lee)」의 모든 세션이 즉시 로그아웃됩니다.')
     await clickInDialog('모두 끊기')
     expect(revokeUser).toHaveBeenCalledWith(OTHERS[0])
@@ -295,6 +297,8 @@ describe('useSessions — 사용자 전체', () => {
       },
     })
     await clickLabel('김(kim) 사용자 전체 끊기')
+    expect(document.querySelector('.v-overlay--active')).not.toBeNull()
+    expect(activeDialog().textContent).toContain('사용자 전체 끊기')
     expect(document.body.textContent).toContain('이 계정은 지금 로그인한 당신 자신입니다.')
     await clickInDialog('모두 끊기')
     expect(revokeUser).toHaveBeenCalledTimes(1)

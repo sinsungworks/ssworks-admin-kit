@@ -60,7 +60,7 @@ const ok = await useConfirm().ask({
 
 `createAdminVuetify({ theme, defaults })` — ko 로케일, `density: compact`, `hideDetails: 'auto'`, 필드 10종 outlined, `VBtn` flat primary. 테마 색은 프로젝트가 넘긴다. `vuetify/styles` 와 `@mdi/font` CSS 는 프로젝트의 `plugins/vuetify.ts` 가 import 한다.
 
-🔴 **레이어 순서 선언 — `vite.config` 의 `plugins` 맨 앞에 `vuetifyLayerOrder()` 를 넣는다.** admin-ui 는 `vuetify/components` 를 import 한다. 그래서 앱이 admin-ui 를 처음 import 하는 순간 Vuetify 부품 CSS(`@layer vuetify-components`)가 `vuetify/styles` 의 레이어 순서 선언보다 먼저 들어가고, reset 레이어가 `<button>` VBtn 의 `size` · 굵기를 이긴다(22px · 400 — `<a>` VBtn 은 멀쩡하다). import 순서로는 고칠 수 없다 — 개발 서버는 모듈 평가 순서, 운영 빌드는 청크 CSS 순서를 따른다. 플러그인이 개발 · 빌드 모두 `<head>` 맨 앞에 Vuetify 의 레이어 순서를 선언한다. `index.html` 은 고치지 않는다.
+🔴 **레이어 순서 선언 — `vite.config` 의 `plugins` 에 `vuetifyLayerOrder()` 를 넣는다(순서 무관).** admin-ui 는 `vuetify/components` 를 import 한다. 그래서 앱이 admin-ui 를 처음 import 하는 순간 Vuetify 부품 CSS(`@layer vuetify-components`)가 `vuetify/styles` 의 레이어 순서 선언보다 먼저 들어가고, reset 레이어가 `<button>` VBtn 의 `size` · 굵기를 이긴다(22px · 400 — `<a>` VBtn 은 멀쩡하다). import 순서로는 고칠 수 없다 — 개발 서버는 모듈 평가 순서, 운영 빌드는 청크 CSS 순서를 따른다. 플러그인이 개발 · 빌드 모두 `<head>` 맨 앞에 Vuetify 의 레이어 순서를 선언한다. `index.html` 은 고치지 않는다.
 
 ```ts
 // vite.config.ts
@@ -71,7 +71,7 @@ export default defineConfig({
 })
 ```
 
-- 선언은 인라인 `<style>` 이다. `style-src` 를 좁힌 CSP 는 해시나 nonce 가 필요하다(Vuetify 테마 `<style>` 과 같은 처지).
+- 선언은 인라인 `<style>` 이다. `style-src` 를 좁힌 CSP 는 해시나 nonce 가 필요하다(Vuetify 테마 `<style>` 과 같은 처지). Vite 의 `html.cspNonce` 옵션을 주면 이 `<style>` 에도 nonce 가 자동으로 붙는다(Vite 의 nonce 훅은 개발 · 빌드 모두 일반 `transformIndexHtml` 훅 뒤에 돈다).
 - 선언은 킷이 시험한 Vuetify(4.2.6)의 `lib/styles/main.css` 머리와 같다 — 킷 테스트가 대조한다. 킷보다 새 Vuetify 를 쓰는데 레이어가 바뀌었으면 킷을 올린다.
 - `@ssworks/admin-ui/vite` 는 Node 에서 읽히는 빌드 설정용 서브패스다 — vue · vuetify 를 끌지 않는다.
 
@@ -693,7 +693,9 @@ const all = useSessions({
 
 #### 표 문구
 
-열 제목 · 버튼 · 접근 이름은 `useSessions({ messages })` 로 바꾼다 — 확인 창 문구와 같은 곳이다. 버튼 문구를 바꾸면 그 접근 이름과 "사용자 전체 끊기" 확인 창 제목(남 · 본인)이 따라온다.
+열 제목 · 버튼 · 접근 이름은 `useSessions({ messages })` 로 바꾼다 — 확인 창 문구와 같은 곳이다. `revokeUserButton` 을 바꾸면 그 접근 이름과 "사용자 전체 끊기" 확인 창 제목(남 · 본인)이 따라온다.
+
+- `revokeButton` 을 바꾸면 접근 이름은 그대로 "… 세션 끝내기 (마지막 활동 …)" 이므로 같은 말을 쓰려면 `revokeButtonLabel` 도 함께 준다.
 
 ```ts
 const all = useSessions({

@@ -195,11 +195,11 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
   - 카드의 두 목록(새로 잠김 · 규칙만 바뀜)이 겉보기로 갈리지 않는다(스펙 §11-1 수동 확인) — 제목 또는 잠김 목록만 강조를 정한다.
 - **PR #3h 가 넘긴 것(2026-10-18)** — 입력 `docs/reports/2026-10-18-ringside-admin-kit-report.md` · 스펙 `docs/superpowers/specs/2026-10-18-admin-ui-ringside-feedback-design.md`
   - **ringside 적용법**(0.8.0 공개 뒤 — pnpm 12 의 최소 공개 기간 1일이 지나서 설치하고, 자동으로 붙은 `minimumReleaseAgeExclude` 는 커밋하지 않는다):
-    - ① 레이어: 킷 셋을 0.8.0 으로 올리고 관리자 앱 `vite.config` 의 `plugins` 맨 앞에 `vuetifyLayerOrder()`(`import { vuetifyLayerOrder } from '@ssworks/admin-ui/vite'`). `index.html` · `public/layers.css` 는 만들지 않는다. 새로 고침 `<button>` VBtn 이 14px · 500, `size="small"` 이 12px 인지 본다.
+    - ① 레이어: 킷 셋을 0.8.0 으로 올리고 관리자 앱 `vite.config` 의 `plugins` 에 `vuetifyLayerOrder()`(순서 무관 — `import { vuetifyLayerOrder } from '@ssworks/admin-ui/vite'`). `index.html` · `public/layers.css` 는 만들지 않는다. 새로 고침 `<button>` VBtn 이 14px · 500, `size="small"` 이 12px 인지 본다.
     - ② 설정 셸: 부모 `height: calc(100dvh - var(--v-layout-top, 64px))`(README 「설정 셸」) — 이미 그렇게 고쳤으면 그대로.
     - ③ 세션 표 문구: `useSessions({ …, messages: { userColumn: '운영자', revokeUserButton: '운영자 전체 끊기' } })` — 열 · 버튼 · 접근 이름 · 확인 창 제목이 함께 바뀐다. 표에 `:messages` 를 따로 주지 않는다.
     - ④ 권한 매트릭스: 코드 변경 없음(0.8.0 이면 같은 순번 열이 한 줄). 매트릭스를 `table` · `thead th` 단위로 재는 테스트가 있으면 `tbody` · `th[scope]` 로 고친다.
-  - **템플릿 세션 입력**(`kim5257-project-template` `preset/admin` — push 는 사람): 킷 핀 0.5.0 → 0.8.0 · `packages/frontend/vite.config.mts` 의 `plugins` 맨 앞에 `vuetifyLayerOrder()` · `pages/settings.vue:26` · `teams.vue:130` 의 `64px` → `var(--v-layout-top, 64px)` · 감사 로그 · IP 접근 제어 페이지(「PR #3f 가 넘긴 것」 · 「PR #3g 가 넘긴 것」) · PermissionMatrix 를 표 단위로 재는 템플릿 테스트 확인.
+  - **템플릿 세션 입력**(`kim5257-project-template` `preset/admin` — push 는 사람): 킷 핀 0.5.0 → 0.8.0 · `packages/frontend/vite.config.mts` 의 `plugins` 에 `vuetifyLayerOrder()`(순서 무관) · `pages/settings.vue:26` · `teams.vue:130` 의 `64px` → `var(--v-layout-top, 64px)` · 감사 로그 · IP 접근 제어 페이지(「PR #3f 가 넘긴 것」 · 「PR #3g 가 넘긴 것」) · PermissionMatrix 를 표 단위로 재는 템플릿 테스트 확인.
 
 ## 작업 폴더 밖에 남은 것
 

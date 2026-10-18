@@ -26,7 +26,7 @@ export interface VuetifyLayerOrderPlugin {
   transformIndexHtml: () => VuetifyLayerOrderTag[]
 }
 
-/** vite.config 의 plugins 맨 앞에 넣는다. index.html 은 고치지 않는다. */
+/** vite.config 의 plugins 에 넣는다(순서 무관). index.html 은 고치지 않는다. */
 export function vuetifyLayerOrder(): VuetifyLayerOrderPlugin {
   return {
     name: '@ssworks/admin-ui:vuetify-layer-order',

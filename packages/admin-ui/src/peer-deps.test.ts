@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-// 🔴 엔트리가 하나(`dist/index.js`)다. 소스가 import 하는 외부 패키지는 소비자가 그 기능을 안 써도
+// 🔴 브라우저 엔트리가 하나(`dist/index.js`)다(`./vite` 는 바깥 import 가 없다 — `vite.test.ts` 가 지킨다). 소스가 import 하는 외부 패키지는 소비자가 그 기능을 안 써도
 //    번들러가 해석해야 한다 — optional peer 로 두면 pnpm 이 설치하지 않고, `safeRedirect` 하나만 쓰는
 //    앱의 `vite build` 가 "failed to resolve import axios" 로 깨진다(R12). 그래서 전부 필수 peer 다.
 
