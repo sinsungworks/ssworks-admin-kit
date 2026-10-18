@@ -39,6 +39,7 @@ import {
   toCreateBody,
   toUpdateBody,
   userOptionTitle,
+  withScopeType,
   type IpAccessAlert,
   type IpAccessMessages,
   type IpPreviewView,
@@ -288,9 +289,10 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
           teamItems.value = items
         },
         (error: unknown) => {
-          if (mine !== teamSeq || disposed) return
           // 칸 아래 문구로 보인다 — 전역 토스트로 두 번 알리지 않는다(C7)
+          // 🔴 버린 요청의 실패도 처리됨으로 — 칸은 새 요청의 결과를 보이고, 버린 실패가 전역 토스트로 뜨면 지금 화면과 어긋난 알림이다.
           if (error instanceof ApiError) error.handled = true
+          if (mine !== teamSeq || disposed) return
           teamsFailed.value = true
         },
       )
@@ -404,7 +406,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   function updateForm(next: IpRuleForm): void {
     if (editing.value === null || busy.value) return
     // 🔴 범위를 바꾸면 대상을 비운다(I19) — 팀 번호가 사용자 번호로, 본 적 없는 번호가 남지 않게
-    form.value = next.scopeType !== form.value.scopeType ? { ...next, scopeRefNo: '' } : { ...next }
+    form.value = withScopeType({ ...next, scopeType: form.value.scopeType }, next.scopeType)
     clientErrors.value = {}
     flow.clearFieldErrors()
     syncTarget()

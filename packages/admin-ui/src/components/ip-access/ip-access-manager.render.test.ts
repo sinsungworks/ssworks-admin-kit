@@ -207,6 +207,7 @@ describe('IpAccessManager — 편집 패널', () => {
     )
     expect(text()).toContain(M.cidrInvalid)
     expect(buttonByText(M.save)!.disabled).toBe(true)
+    expect(buttonByText(M.cancel)!.disabled).toBe(true)
   })
 
   it('수정 — 제목에 지금 규칙', async () => {

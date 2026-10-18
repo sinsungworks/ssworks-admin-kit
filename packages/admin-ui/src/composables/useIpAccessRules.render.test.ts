@@ -316,6 +316,32 @@ describe('useIpAccessRules — 대상 후보', () => {
     expect(ip.manager.value.teamItems).toEqual([{ value: '4', title: '상담센터' }])
   })
 
+  it('🔴 버린 팀 후보 요청의 실패도 처리됨 — 새 요청의 결과를 보인다', async () => {
+    const error = new ApiError('x', { status: 500, raw: null })
+    let rejectFirst!: (e: unknown) => void
+    const loadTeams = vi
+      .fn<() => Promise<AdminTeamNode[]>>()
+      .mockReturnValueOnce(
+        new Promise<AdminTeamNode[]>((_, reject) => {
+          rejectFirst = reject
+        }),
+      )
+      .mockResolvedValueOnce(tree)
+    const { ip } = await setup({ loadTeams })
+    await ip.openEdit(TEAM)
+    await ip.openEdit(USER)
+    await flushPromises()
+    expect(loadTeams).toHaveBeenCalledTimes(2)
+    rejectFirst(error)
+    await flushPromises()
+    expect(error.handled).toBe(true)
+    expect(ip.manager.value.teamsFailed).toBe(false)
+    expect(ip.manager.value.teamItems).toEqual([
+      { value: '1', title: '본사' },
+      { value: '4', title: '본사 › 상담센터' },
+    ])
+  })
+
   it('사용자 — 300ms 뒤 검색, 수정 때는 지금 대상을 이름(아이디)으로', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const options: IpUserOption[] = [{ userNo: 9n, userId: 'park', userName: '박보안' }]

@@ -477,6 +477,16 @@ describe('전체 허용 · 관문 · 409', () => {
     expect(isGlobalAllowCidr(' 0.0.0.0/0 ')).toBe(true)
     expect(isGlobalAllowCidr('::/0')).toBe(true)
     expect(isGlobalAllowCidr('0.0.0.0/1')).toBe(false)
+    expect(isGlobalAllowCidr('0:0:0:0:0:0:0:0/0')).toBe(true)
+    expect(isGlobalAllowCidr('잘못된')).toBe(false)
+  })
+
+  it('🔴 파서로 판정 — 계열을 바꾸는 수정 · /0 의 모든 표기', () => {
+    expect(removesGlobalAllow('0.0.0.0/0', '::/0')).toBe(true)
+    expect(removesGlobalAllow('::/0', '0.0.0.0/0')).toBe(true)
+    expect(removesGlobalAllow('::0/0', null)).toBe(true)
+    expect(removesGlobalAllow('0.0.0.0/0', '0.0.0.0/00')).toBe(false)
+    expect(removesGlobalAllow('::ffff:0.0.0.0/96', null)).toBe(true)
   })
 
   it('🔴 범위가 아니라 CIDR 로 판정 — ㉠ 좁은 전체 규칙 삭제는 경고 아님, ㉡ ::/0 을 좁히는 수정은 경고', () => {

@@ -15,6 +15,7 @@ import {
 // 바꾼 점:
 //  - 페이지 안 상태를 composable 하나로 떼어 따로 잰다.
 //  - 편집 질의에 300ms 디바운스(hangang 은 없었다) — 현행 · 삭제는 바로.
+//  - 404 는 수정 · 삭제 미리보기만 stale(지워진 규칙) — 현행 · 만들기의 404 는 failed.
 //  - 400 을 "입력 중"이 아니라 failed 로 — 킷은 화면 · 서버가 같은 CIDR 파서라 400 은 계약 어긋남이다(I11).
 //  - 🔴 `flush()` — 관문을 열기 전에 미리보기를 끝낸다(I12). hangang 은 창을 먼저 열고 그 안 문구가 바뀌었다.
 
@@ -64,6 +65,8 @@ export function useIpPreview(options: IpPreviewOptions): IpPreviewController {
   }
 
   async function run(query: AdminIpPreviewQuery, mine: number): Promise<void> {
+    // 🔴 404 가 "이미 지워진 규칙"인 것은 수정 · 삭제뿐이다 — 현행 · 만들기에는 지울 규칙이 없다(스펙 §9). 시작 때의 op 로 가른다.
+    const op = target.value.op
     try {
       const result = await options.preview(query)
       if (mine !== seq || disposed) return
@@ -76,7 +79,7 @@ export function useIpPreview(options: IpPreviewOptions): IpPreviewController {
       const status = error instanceof ApiError ? error.status : undefined
       if (status === 403) {
         show('forbidden', null)
-      } else if (status === 404) {
+      } else if (status === 404 && (op === 'update' || op === 'delete')) {
         show('stale', null)
         options.onStale?.()
       } else {

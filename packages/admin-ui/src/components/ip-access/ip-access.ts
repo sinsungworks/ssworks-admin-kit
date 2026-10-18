@@ -3,6 +3,7 @@ import {
   IP_CIDR_MAX_LENGTH,
   IP_RULE_DESCRIPTION_MAX_LENGTH,
   ipCidrSchema,
+  parseCidr,
   type AdminIpPreview,
   type AdminIpPreviewItem,
   type AdminIpPreviewQuery,
@@ -633,21 +634,29 @@ export function impactLine(view: IpPreviewView, messages: IpAccessMessages): str
 
 // ── 전체 허용 · 관문 · 409 ───────────────────────────────────────────
 
-/** 전체 허용 CIDR 은 이 둘뿐이다 — 문자열 대조로 충분하다(파싱이 아니다 · hangang) */
-export const GLOBAL_ALLOW_CIDRS: readonly string[] = Object.freeze(['0.0.0.0/0', '::/0'])
+/**
+ * 전체 허용 CIDR 의 주소 계열(IPv4 = 4, IPv6 = 16). 전체 허용이 아니면 null.
+ * 🔴 문자열 대조가 아니라 서버와 같은 파서(`parseCidr`)로 판정한다 — 프리픽스 0 이면 전체 허용이고(`::0/0` ·
+ * `0.0.0.0/00` · `1.2.3.4/0` · `::ffff:0.0.0.0/96` 도 같다), 계열이 다르면 서로를 통과시키지 않는다.
+ */
+function globalAllowFamily(cidr: string | null): number | null {
+  if (cidr == null) return null
+  const parsed = parseCidr(cidr.trim())
+  return parsed !== null && parsed.prefix === 0 ? parsed.net.length : null
+}
 
 export function isGlobalAllowCidr(cidr: string): boolean {
-  const text = cidr.trim()
-  return GLOBAL_ALLOW_CIDRS.some((allow) => allow === text)
+  return globalAllowFamily(cidr) !== null
 }
 
 /**
  * 이 변경이 전체 허용 행을 없애는가. before = 손대는 규칙의 지금 CIDR(만들기면 null), after = 바꾼 뒤(삭제면 null).
  * 🔴 범위가 아니라 CIDR 로 판정한다 — 범위로 재면 ㉠ 좁은 전체 규칙 삭제에 거짓 경고, ㉡ ::/0 을 좁히는 수정에 침묵(I7 · hangang).
+ * 🔴 계열별로 본다 — 0.0.0.0/0 을 ::/0 으로 바꾸는 수정은 IPv4 접속자를 모두 잠그는데 서버 검사(409)도 미리보기도 잡지 못한다.
  */
 export function removesGlobalAllow(before: string | null, after: string | null): boolean {
-  if (before == null || !isGlobalAllowCidr(before)) return false
-  return after == null || !isGlobalAllowCidr(after)
+  const family = globalAllowFamily(before)
+  return family !== null && globalAllowFamily(after) !== family
 }
 
 /** 관문 창의 영향 한 줄. 🔴 미리보기를 못 받았으면 "0명"이 아니라 "확인하지 못했다"(I12) */

@@ -162,9 +162,7 @@
         <VBtn color="primary" :disabled="busy" :loading="submitting" type="submit" variant="flat">
           {{ messages.save }}
         </VBtn>
-        <VBtn :disabled="submitting" variant="text" @click="emit('cancel')">{{
-          messages.cancel
-        }}</VBtn>
+        <VBtn :disabled="busy" variant="text" @click="emit('cancel')">{{ messages.cancel }}</VBtn>
       </div>
     </form>
   </section>

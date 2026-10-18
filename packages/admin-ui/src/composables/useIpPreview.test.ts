@@ -153,6 +153,25 @@ describe('useIpPreview', () => {
     expect(errors.every((error) => error.handled)).toBe(true)
   })
 
+  it('🔴 404 는 수정 · 삭제 미리보기만 stale — 현행 · 만들기의 404 는 failed (onStale 없음)', async () => {
+    const error = new ApiError('x', { status: 404, raw: null })
+    const preview = vi.fn<PreviewFn>().mockRejectedValue(error)
+    const onStale = vi.fn()
+    const c = setup(preview, { onStale })
+    await flushPromises()
+    expect(c.view.value.state).toBe('failed')
+    c.setTarget({ op: 'create', form: ready })
+    vi.advanceTimersByTime(IP_PREVIEW_DEBOUNCE_MS)
+    await flushPromises()
+    expect(c.view.value).toMatchObject({ state: 'failed', op: 'create' })
+    expect(onStale).not.toHaveBeenCalled()
+    c.setTarget({ op: 'update', ruleNo: 3n, form: ready })
+    vi.advanceTimersByTime(IP_PREVIEW_DEBOUNCE_MS)
+    await flushPromises()
+    expect(c.view.value.state).toBe('stale')
+    expect(onStale).toHaveBeenCalledTimes(1)
+  })
+
   it('🔴 늦게 온 앞 응답은 버린다', async () => {
     const a = deferred<AdminIpPreview>()
     const b = deferred<AdminIpPreview>()

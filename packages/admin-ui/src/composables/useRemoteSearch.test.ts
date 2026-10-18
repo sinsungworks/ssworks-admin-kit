@@ -111,6 +111,25 @@ describe('useRemoteSearch', () => {
     expect(search.failed.value).toBe(false)
   })
 
+  it('🔴 버린 요청의 실패도 처리됨 — 새 요청의 결과를 보인다', async () => {
+    const error = new ApiError('x', { status: 500, raw: null })
+    const first = deferred<readonly string[]>()
+    const second = deferred<readonly string[]>()
+    const fetch = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+    const search = setup<string>(fetch)
+    search.search('김')
+    vi.advanceTimersByTime(REMOTE_SEARCH_DEBOUNCE_MS)
+    search.search('이')
+    vi.advanceTimersByTime(REMOTE_SEARCH_DEBOUNCE_MS)
+    second.resolve(['이'])
+    await flushPromises()
+    first.reject(error)
+    await flushPromises()
+    expect(error.handled).toBe(true)
+    expect(search.items.value).toEqual(['이'])
+    expect(search.failed.value).toBe(false)
+  })
+
   it('실패한 검색어를 다시 알리면 다시 부른다', async () => {
     const fetch = vi.fn(async () => {
       throw new Error('x')
