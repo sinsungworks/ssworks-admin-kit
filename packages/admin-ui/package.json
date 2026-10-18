@@ -21,6 +21,10 @@
       "import": "./dist/index.js"
     },
     "./style.css": "./dist/style.css",
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
