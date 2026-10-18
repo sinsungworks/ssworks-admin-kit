@@ -942,7 +942,7 @@ router.push({
   path: '/settings/audit-logs',
   query: { targetType: 'role', targetRefNo: String(role.roleNo) },
 })
-// 묶음은 값 끝에 점 — 로그인 실패 · 차단만
+// 묶음은 값 끝에 점 — 로그인 사건 전체(성공 · 실패 · 차단)
 router.push({ path: '/settings/audit-logs', query: { action: 'auth.login.' } })
 ```
 

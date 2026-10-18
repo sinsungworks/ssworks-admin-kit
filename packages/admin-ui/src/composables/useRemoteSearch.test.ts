@@ -111,6 +111,21 @@ describe('useRemoteSearch', () => {
     expect(search.failed.value).toBe(false)
   })
 
+  it('실패한 검색어를 다시 알리면 다시 부른다', async () => {
+    const fetch = vi.fn(async () => {
+      throw new Error('x')
+    })
+    const search = setup<string>(fetch)
+    search.search('김')
+    vi.advanceTimersByTime(REMOTE_SEARCH_DEBOUNCE_MS)
+    await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    search.search('김')
+    vi.advanceTimersByTime(REMOTE_SEARCH_DEBOUNCE_MS)
+    await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   it('해제 뒤에는 부르지 않고, 날아오던 응답도 버린다', async () => {
     const pending = deferred<readonly string[]>()
     const fetch = vi.fn().mockReturnValueOnce(pending.promise)

@@ -42,11 +42,30 @@
     () => props.actorItems.find((item) => item.value === props.draft.actorUserNo)?.title ?? null,
   )
 
-  /** 🔴 항목을 고르면 VAutocomplete 가 검색어를 그 항목 글자로 바꾼다 — 그 글자로 다시 검색하지 않는다 */
+  /**
+   * 🔴 항목을 고르면 VAutocomplete 가 모델을 바꾼 바로 뒤에 검색어를 그 항목 글자로 바꾸며 update:search 를 낸다.
+   *   그때는 부모가 아직 다시 그리기 전이라 draft 가 옛 값이다 — selectedActorTitle 만으로는 못 막는다.
+   *   그래서 고른 항목의 글자를 모델 변경 때 먼저 적어 둔다(update:modelValue 가 update:search 보다 앞선다).
+   *   놓치면 사람을 고를 때마다 그 글자로 검색 요청이 한 번 더 나가고(64자 넘으면 400) 후보가 그 사람 하나로 접힌다.
+   */
+  let pickedTitle: string | null = null
+
+  function onActorModel(value: unknown): void {
+    pickedTitle =
+      typeof value === 'string'
+        ? (props.actorItems.find((item) => item.value === value)?.title ?? null)
+        : null
+    patch('actorUserNo', value)
+  }
+
   function onActorSearch(value: string | null): void {
     const keyword = value ?? ''
+    if (keyword === pickedTitle || keyword === selectedActorTitle.value) {
+      // 고른 항목 글자는 사람이 친 검색어가 아니다 — 검색 안내 줄이 그 글자를 검색어로 알지 않게 비운다
+      actorSearchText.value = ''
+      return
+    }
     actorSearchText.value = keyword
-    if (keyword === selectedActorTitle.value) return
     emit('searchActors', keyword)
   }
 
@@ -55,6 +74,19 @@
     return actorSearchText.value.trim() === ''
       ? props.messages.actorSearchHint
       : props.messages.actorSearchEmpty
+  })
+
+  /**
+   * 🔴 고른 사람이 목록에 늘 붙어 있어 items 가 비지 않는다 — Vuetify 는 no-data 를 items 가 빌 때만 그린다.
+   *   그 상태에서 "맞는 사람 없음" · "검색 실패"가 사라지면 조용한 실패가 된다(A8 · C7). 그래서 메뉴 맨 위 줄로 따로 그린다.
+   *   items 가 비면 no-data-text 가 이미 같은 글자를 그리므로 겹쳐 그리지 않는다.
+   */
+  const actorStatusLine = computed<string | null>(() => {
+    if (actorItemList.value.length === 0) return null
+    if (props.actorSearchFailed) return props.messages.actorSearchFailed
+    if (props.actorSearching || actorSearchText.value.trim() === '') return null
+    const others = props.actorItems.some((item) => item.value !== props.draft.actorUserNo)
+    return others ? null : props.messages.actorSearchEmpty
   })
 </script>
 
@@ -79,9 +111,18 @@
         :no-data-text="actorNoData"
         :placeholder="messages.allPlaceholder"
         variant="outlined"
-        @update:model-value="patch('actorUserNo', $event)"
+        @update:model-value="onActorModel"
         @update:search="onActorSearch"
-      />
+      >
+        <template v-if="actorStatusLine" #prepend-item>
+          <div
+            class="audit-log-filter__actor-status text-body-2 text-medium-emphasis"
+            role="status"
+          >
+            {{ actorStatusLine }}
+          </div>
+        </template>
+      </VAutocomplete>
       <VTextField
         v-else
         autocomplete="off"
@@ -193,6 +234,9 @@
   }
   .audit-log-filter__actor {
     flex: 1 1 220px;
+  }
+  .audit-log-filter__actor-status {
+    padding: 8px 16px;
   }
   .audit-log-filter__action {
     flex: 1 1 280px;

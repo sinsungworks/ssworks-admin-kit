@@ -327,3 +327,36 @@ describe('useAuditLogs — 행위자 칸(A8 · A9)', () => {
     expect(audit.viewer.value.actorItems[0]).toEqual({ value: '77', title: '박보안 (park)' })
   })
 })
+
+describe('useAuditLogs — 해제', () => {
+  it('🔴 해제 뒤에 온 첫 응답은 버린다 — 던지지 않고 다시 부르지 않는다', async () => {
+    let resolve!: (value: { items: AdminAuditLog[]; total: number }) => void
+    const fetch = vi.fn<Fetch>(
+      () =>
+        new Promise((res) => {
+          resolve = res
+        }),
+    )
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const warns = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    wrapper = mount(
+      defineComponent({
+        setup() {
+          useAuditLogs({ fetch })
+          return () => h('div')
+        },
+      }),
+    )
+    await flushPromises()
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    wrapper.unmount()
+    wrapper = null
+    resolve({ items: [log()], total: 1 })
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(errors).not.toHaveBeenCalled()
+    expect(warns).not.toHaveBeenCalled()
+  })
+})

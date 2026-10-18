@@ -184,7 +184,7 @@ describe('AuditLogViewer — 셀', () => {
   it('이 사람 기록만 — 접근 이름이 사람을 가리키고, 행을 넘긴다', async () => {
     const b = await mountViewer(bindings())
     const button = document.querySelector<HTMLButtonElement>(
-      'button[aria-label="김운영 (ops01) 기록만 보기"]',
+      'button[aria-label="이 사람 기록만 — 김운영 (ops01)"]',
     )
     expect(button?.textContent?.trim()).toBe('이 사람 기록만')
     button!.click()
@@ -309,26 +309,6 @@ describe('AuditLogViewer — 필터', () => {
       .find((c) => c.props('label') === '동작')!
     expect((action.props('items') as { title: string }[])[0]!.title).toBe('[묶음] 인증 (auth.*)')
   })
-
-  it('검색 모드 — 검색어를 알리고, 🔴 고른 항목 글자로는 다시 알리지 않는다', async () => {
-    const b = await mountViewer(
-      bindings({
-        actorMode: 'search',
-        draft: { ...emptyAuditLogDraft(), actorUserNo: '12' },
-        actorItems: [{ value: '12', title: '김운영 (ops01)' }],
-      }),
-    )
-    const actor = wrapper!
-      .findAllComponents(VAutocomplete)
-      .find((c) => c.props('label') === '행위자')!
-    expect(actor.props('modelValue')).toBe('12')
-    actor.vm.$emit('update:search', '김')
-    actor.vm.$emit('update:search', '김운영 (ops01)')
-    expect(b.onSearchActors).toHaveBeenCalledTimes(1)
-    expect(b.onSearchActors).toHaveBeenCalledWith('김')
-    actor.vm.$emit('update:modelValue', null)
-    expect(b['onUpdate:draft']).toHaveBeenLastCalledWith(emptyAuditLogDraft())
-  })
 })
 
 describe('흐름 + 화면 — useAuditLogs 와 함께', () => {
@@ -361,9 +341,95 @@ describe('흐름 + 화면 — useAuditLogs 와 함께', () => {
     expect(document.querySelector('.audit-log-detail')?.textContent).toContain('바뀐 항목')
 
     document
-      .querySelector<HTMLButtonElement>('button[aria-label="김운영 (ops01) 기록만 보기"]')!
+      .querySelector<HTMLButtonElement>('button[aria-label="이 사람 기록만 — 김운영 (ops01)"]')!
       .click()
     await flushPromises()
     expect(fetch.mock.lastCall?.[0].filter).toEqual({ actorUserNo: 12n, targetRefNo: 3n })
+  })
+})
+
+describe('행위자 자동완성 — 진짜 Vuetify 선택 경로', () => {
+  const ACTORS = [{ userNo: 12n, userId: 'ops01', userName: '김운영' }]
+  const fetch = async (_params: ServerTableParams<AuditLogFilter>) => ({ items: ROWS, total: 3 })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function mountFlow(
+    searchActors: (keyword: string) => Promise<readonly (typeof ACTORS)[number][]>,
+  ) {
+    let audit!: ReturnType<typeof useAuditLogs>
+    wrapper = mount(
+      defineComponent({
+        setup() {
+          audit = useAuditLogs({ fetch, searchActors })
+          return () => h(AuditLogViewer as Component, { ...audit.viewer.value, formatDate: utc })
+        },
+      }),
+      { attachTo: document.body, global: { plugins: [vuetify] } },
+    )
+    return () => audit
+  }
+
+  async function typeActor(keyword: string): Promise<void> {
+    const input = wrapper!.find('.audit-log-filter__actor input:not([type="hidden"])')
+    await input.trigger('focusin')
+    // 고른 뒤에는 메뉴가 닫혀 있다 — 사람이 칸을 눌러 다시 연다
+    await wrapper!.find('.audit-log-filter__actor .v-field').trigger('mousedown')
+    await input.setValue(keyword)
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+  }
+
+  const overlayText = () =>
+    Array.from(document.querySelectorAll('.v-overlay--active'))
+      .map((e) => e.textContent)
+      .join('|')
+
+  async function pickFirst(): Promise<void> {
+    const item = Array.from(
+      document.querySelectorAll<HTMLElement>('.v-overlay--active .v-list-item'),
+    ).find((e) => e.textContent?.includes('김운영'))!
+    item.click()
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+  }
+
+  it('🔴 사람을 고른 직후 Vuetify 가 내는 검색어(항목 글자)로는 다시 검색하지 않는다', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const searchActors = vi.fn(async (_keyword: string) => ACTORS)
+    const audit = mountFlow(searchActors)
+    await flushPromises()
+    await typeActor('김')
+    await pickFirst()
+    expect(searchActors.mock.calls).toEqual([['김']])
+    expect(audit().viewer.value.draft.actorUserNo).toBe('12')
+  })
+
+  it('고른 사람이 있어도 "맞는 사람이 없습니다" 가 보인다', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const searchActors = vi.fn(async (keyword: string) => (keyword === '김' ? ACTORS : []))
+    mountFlow(searchActors)
+    await flushPromises()
+    await typeActor('김')
+    await pickFirst()
+    await typeActor('없는사람')
+    expect(overlayText()).toContain(M.actorSearchEmpty)
+    expect(overlayText()).toContain('김운영 (ops01)')
+  })
+
+  it('고른 사람이 있어도 "검색하지 못했습니다" 가 보인다', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const searchActors = vi.fn(async (keyword: string) => {
+      if (keyword === '김') return ACTORS
+      throw new Error('boom')
+    })
+    mountFlow(searchActors)
+    await flushPromises()
+    await typeActor('김')
+    await pickFirst()
+    await typeActor('오류')
+    expect(overlayText()).toContain(M.actorSearchFailed)
   })
 })

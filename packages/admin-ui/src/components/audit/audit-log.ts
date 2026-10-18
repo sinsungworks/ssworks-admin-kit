@@ -158,7 +158,7 @@ export const DEFAULT_AUDIT_LOG_MESSAGES: Readonly<AuditLogMessages> = Object.fre
   noActor: '계정 없음',
   unknownAccount: (actorUserNo: bigint) => `#${actorUserNo} (계정 정보 없음)`,
   filterByActor: '이 사람 기록만',
-  filterByActorLabel: (actor: string) => `${actor} 기록만 보기`,
+  filterByActorLabel: (actor: string) => `이 사람 기록만 — ${actor}`,
   resultSuccess: '성공',
   resultRedirect: '이동',
   resultDenied: '거부',
@@ -208,6 +208,10 @@ export function emptyAuditLogDraft(): AuditLogDraft {
 export function normalizeAuditLogDraft(draft: AuditLogDraft): AuditLogDraft {
   const out = emptyAuditLogDraft()
   for (const key of DRAFT_KEYS) out[key] = draft[key].trim()
+  // 🔴 앞의 0 을 뗀다 — URL 코덱(CANONICAL_UNSIGNED)은 `007` 을 버려서, 적용은 되는데 새로고침하면 사라지고 `7` 은 같은 조건으로 보여 다시 부르지 않는다
+  for (const key of ['actorUserNo', 'targetRefNo'] as const) {
+    if (UNSIGNED_DIGITS.test(out[key])) out[key] = String(BigInt(out[key]))
+  }
   return out
 }
 

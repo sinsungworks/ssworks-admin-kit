@@ -279,6 +279,13 @@ describe('입력값', () => {
     )
   })
 
+  it('번호 칸은 앞의 0 을 떼어 URL 코덱과 같은 꼴로 맞춘다 — 숫자가 아니면 그대로', () => {
+    expect(normalizeAuditLogDraft(draft({ actorUserNo: ' 007 ', targetRefNo: '0' }))).toEqual(
+      draft({ actorUserNo: '7', targetRefNo: '0' }),
+    )
+    expect(normalizeAuditLogDraft(draft({ actorUserNo: 'abc' })).actorUserNo).toBe('abc')
+  })
+
   it('검증 — 번호 형식 · 날짜 형식 · 기간 역전, 같은 날 · 한쪽만은 정상', () => {
     expect(auditFilterProblem(draft(), M)).toBeNull()
     expect(auditFilterProblem(draft({ actorUserNo: 'abc' }), M)).toBe(M.actorRefInvalid)

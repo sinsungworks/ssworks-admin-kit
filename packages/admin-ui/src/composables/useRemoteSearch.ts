@@ -38,6 +38,8 @@ export function useRemoteSearch<T>(
       if (error instanceof ApiError) error.handled = true
       items.value = []
       failed.value = true
+      // 같은 검색어를 다시 알리면 다시 부른다(재시도)
+      lastKeyword = null
     } finally {
       if (mine === seq && !disposed) searching.value = false
     }
