@@ -44,6 +44,40 @@ const PERMISSIONS = [
   '*',
 ]
 
+/** 열 수가 다른 카테고리(2 · 4) — 같은 순번 열 정렬을 잰다(ringside 보고 §4) */
+const MIXED: PermissionMatrixCategory[] = [
+  {
+    id: 'org',
+    label: '조직',
+    columns: [
+      { action: 'read', label: '읽기' },
+      { action: 'write', label: '편집' },
+    ],
+    rows: [
+      { resource: 'org.users', label: '직원' },
+      { resource: 'org.roles', label: '역할' },
+    ],
+  },
+  {
+    id: 'member',
+    label: '회원',
+    columns: [
+      { action: 'read', label: '읽기' },
+      { action: 'write', label: '편집' },
+      { action: 'suspend', label: '정지' },
+      { action: 'export', label: '내보내기' },
+    ],
+    rows: [{ resource: 'members', label: '회원' }],
+  },
+]
+
+const table = () => document.querySelector('table')!
+const categoryBodies = () => [...table().querySelectorAll('tbody')]
+const allRows = () => [...table().querySelectorAll('tr')]
+const cellTexts = (tr: Element) => [...tr.children].map((c) => c.textContent?.trim() ?? '')
+/** 행 줄(머리 줄 제외) — 행 머리가 있는 줄 */
+const resourceRows = () => allRows().filter((tr) => tr.querySelector('th[scope="row"]'))
+
 let wrapper: VueWrapper | null = null
 
 afterEach(() => {
@@ -87,14 +121,57 @@ async function clickCell(key: string) {
 }
 
 describe('PermissionMatrix — 렌더', () => {
-  it('카테고리마다 표 하나 — 머리 칸은 카테고리 라벨과 열 라벨, 행 머리는 행 라벨', async () => {
+  it('표 하나에 카테고리마다 tbody — 머리 줄은 카테고리 라벨(rowgroup)과 열 라벨, 행 머리는 행 라벨', async () => {
     await setup()
-    const tables = document.querySelectorAll('table')
-    expect(tables).toHaveLength(2)
-    const heads = [...tables[0]!.querySelectorAll('thead th')].map((th) => th.textContent?.trim())
-    expect(heads).toEqual(['조직', '읽기', '편집', '삭제'])
-    const rows = [...tables[0]!.querySelectorAll('tbody th')].map((th) => th.textContent?.trim())
-    expect(rows).toEqual(['직원', '역할'])
+    expect(document.querySelectorAll('table')).toHaveLength(1)
+    expect(table().querySelector('thead')).toBeNull()
+    const [org, log] = categoryBodies()
+    expect(categoryBodies()).toHaveLength(2)
+    expect(org!.querySelector('th[scope="rowgroup"]')?.textContent?.trim()).toBe('조직')
+    expect(
+      [...org!.querySelectorAll('th[scope="col"]')].map((th) => th.textContent?.trim()),
+    ).toEqual(['읽기', '편집', '삭제'])
+    expect(
+      [...org!.querySelectorAll('th[scope="row"]')].map((th) => th.textContent?.trim()),
+    ).toEqual(['직원', '역할'])
+    expect(log!.querySelector('th[scope="rowgroup"]')?.textContent?.trim()).toBe('기록')
+  })
+
+  it('🔴 열 수가 다른 카테고리(2 · 4)도 모든 줄의 칸 수가 같다 — 같은 순번 열이 한 줄로 선다', async () => {
+    await setup({ categories: MIXED })
+    expect(allRows().map((tr) => tr.children.length)).toEqual([5, 5, 5, 5, 5])
+    expect(cellTexts(categoryBodies()[0]!.querySelector('tr')!)).toEqual([
+      '조직',
+      '읽기',
+      '편집',
+      '',
+      '',
+    ])
+    // 두 카테고리의 첫 액션 칸이 모두 둘째 칸이다
+    const firstAction = (body: Element) =>
+      body.querySelectorAll('tr')[1]!.children[1]!.querySelector('input')?.getAttribute('name')
+    expect(firstAction(categoryBodies()[0]!)).toBe('org.users:read')
+    expect(firstAction(categoryBodies()[1]!)).toBe('members:read')
+  })
+
+  it('열이 없는 카테고리도 칸 수가 같다', async () => {
+    await setup({
+      categories: [
+        ...MIXED,
+        {
+          id: 'empty',
+          label: '빈 카테고리',
+          columns: [],
+          rows: [{ resource: 'x', label: '엑스' }],
+        },
+      ],
+    })
+    expect(new Set(allRows().map((tr) => tr.children.length))).toEqual(new Set([5]))
+  })
+
+  it('카테고리가 없으면 표를 그리지 않는다', async () => {
+    await setup({ categories: [] })
+    expect(document.querySelector('table')).toBeNull()
   })
 
   it('칸의 접근 가능한 이름은 「행 라벨 열 라벨」, name 은 권한 키다', async () => {
@@ -147,22 +224,25 @@ describe('PermissionMatrix — 토글', () => {
 })
 
 describe('PermissionMatrix — 슬롯 · 도우미', () => {
-  it('#row-extra 를 주면 열 하나를 더해 행마다 그린다', async () => {
+  it('#row-extra 를 주면 열 하나를 더한다 — 모든 줄의 칸 수가 같고 슬롯은 늘 마지막 칸이다', async () => {
     await setup(
-      {},
+      { categories: MIXED },
       {
         'row-extra': ({ row, category }: { row: { resource: string }; category: { id: string } }) =>
           h('span', `${category.id}/${row.resource}`),
       },
     )
-    expect(document.body.textContent).toContain('org/org.users')
-    expect(document.body.textContent).toContain('log/log')
-    expect(document.querySelectorAll('table')[0]!.querySelectorAll('thead th')).toHaveLength(5)
+    expect(allRows().map((tr) => tr.children.length)).toEqual([6, 6, 6, 6, 6])
+    expect(resourceRows().map((tr) => tr.lastElementChild?.textContent?.trim())).toEqual([
+      'org/org.users',
+      'org/org.roles',
+      'member/members',
+    ])
   })
 
   it('슬롯이 없으면 열을 더하지 않는다', async () => {
     await setup()
-    expect(document.querySelectorAll('table')[0]!.querySelectorAll('thead th')).toHaveLength(4)
+    expect(allRows().map((tr) => tr.children.length)).toEqual([4, 4, 4, 4, 4])
   })
 
   it("assertMatrixCoversPermissions — 모든 권한('*' 제외)에 칸이 있으면 통과, 아니면 빠진 키를 나열한다", () => {
