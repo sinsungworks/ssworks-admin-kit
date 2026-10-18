@@ -172,6 +172,28 @@ describe('useIpPreview', () => {
     expect(c.view.value.clientIp).toBe('198.51.100.2')
   })
 
+  it('🔴 버린 응답의 실패도 처리됨 — 전역 토스트가 뒤늦게 뜨지 않게', async () => {
+    const a = deferred<AdminIpPreview>()
+    const b = deferred<AdminIpPreview>()
+    const preview = vi
+      .fn<PreviewFn>()
+      .mockResolvedValueOnce(result())
+      .mockReturnValueOnce(a.promise)
+      .mockReturnValueOnce(b.promise)
+    const c = setup(preview)
+    await flushPromises()
+    c.setTarget({ op: 'delete', ruleNo: 1n })
+    c.setTarget({ op: 'delete', ruleNo: 2n })
+    b.resolve(result('198.51.100.2'))
+    await flushPromises()
+    const error = new ApiError('x', { status: 500, raw: null })
+    a.reject(error)
+    await flushPromises()
+    expect(error.handled).toBe(true)
+    expect(c.view.value.state).toBe('ready')
+    expect(c.view.value.clientIp).toBe('198.51.100.2')
+  })
+
   it('flush — 디바운스 중이면 바로 부르고 그 결과를 돌려준다', async () => {
     const preview = vi.fn<PreviewFn>(async () => result())
     const c = setup(preview)

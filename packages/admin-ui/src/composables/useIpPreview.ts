@@ -69,9 +69,10 @@ export function useIpPreview(options: IpPreviewOptions): IpPreviewController {
       if (mine !== seq || disposed) return
       show('ready', result, result.clientIp)
     } catch (error) {
-      if (mine !== seq || disposed) return
       // 🔴 카드가 문구로 보인다 — 전역 토스트로 두 번 알리지 않는다(C7). catch 의 동기 구간에서 세운다.
+      // 🔴 버린 응답의 실패도 처리됨으로 — 카드는 새 요청의 결과를 보이고, 버린 실패가 전역 토스트로 뜨면 지금 화면과 어긋난 알림이다.
       if (error instanceof ApiError) error.handled = true
+      if (mine !== seq || disposed) return
       const status = error instanceof ApiError ? error.status : undefined
       if (status === 403) {
         show('forbidden', null)
