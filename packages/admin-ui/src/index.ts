@@ -254,3 +254,23 @@ export {
   type AuditLogs,
   type AuditLogViewerBindings,
 } from './composables/useAuditLogs.js'
+
+// ── IP 접근 제어 ──────────────────────────────────────────────────────
+export { default as IpAccessManager } from './components/ip-access/IpAccessManager.vue'
+export {
+  type IpRuleForm,
+  type IpPreviewState,
+  type IpPreviewView,
+  type IpUserOption,
+  type IpWriteContext,
+  type IpSelectItem,
+  type IpAccessAlert,
+  type IpAccessMessages,
+} from './components/ip-access/ip-access.js'
+export {
+  useIpAccessRules,
+  type UseIpAccessRulesOptions,
+  type IpAccessRules,
+  type IpAccessManagerBindings,
+  type IpRuleDoneEvent,
+} from './composables/useIpAccessRules.js'

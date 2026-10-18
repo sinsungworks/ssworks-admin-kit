@@ -171,7 +171,7 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
   - 클라이언트 IP(사용자 결정 2026-10-16): 템플릿 nginx 는 게이트웨이(`kim5257_gateway_backbone`)가 넘긴 `X-Forwarded-For` 의 **마지막** 값을 믿는다(realip, 사설 대역 셋 출처, `real_ip_recursive` 끔 — `9355035`). backbone 대역은 서버마다 달라 고정하지 않는다. 게이트웨이(v1 · v2 모두 80/443 `mode: host`)는 지금 클라이언트 값 뒤에 실제 주소를 덧붙이므로 마지막 값은 이미 실제 주소다. 헤더 오염(앞쪽 값)은 게이트웨이 웹 서버에서 보완한다(`X-Forwarded-For $remote_addr` 로 덮어쓰기 — `kim5257-gateway` `docs/improvements.md` R-19) — 게이트웨이 저장소 몫. 남은 확인: 운영 배포 뒤 세션 화면의 IP 가 실제 주소인지.
   - 최종 리뷰가 넘긴 Minor 일곱(스킬 정렬 동률 기준 · 다른 자원 읽기에 기댄 화면 · components README 문구 · 템플릿 CLAUDE.md 보완 · 한국 시간 셈 · 스킬 서버 끄기 · README CREATE DATABASE)은 검증 기록 §4 끝. 템플릿에 `.claude/settings.local.json` 이 추적되는 것(생성 앱이 물려받는다)은 이 브랜치 전부터 — 둘지 사람이 정한다.
   - 킷 후속 후보(A): runner 에서 임시 비밀번호 생성기를 export 해 템플릿 seed 의 알파벳 복사를 없앤다. Phase 4 에서 사용자 · 역할 화면 조립(템플릿 B 코드 약 900줄)을 admin-ui 후보로 본다.
-  - 템플릿에 없는 화면: IP 접근 제어 · 감사 로그 조회. 킷 모듈(`AdminIpAccessModule` · `AdminAuditModule` 조회)은 있다 — 프로젝트마다 같아야 하는 화면이라 후속 admin-ui PR 후보. IP 모듈은 템플릿에서 꺼 두었고 켜는 법은 템플릿 CLAUDE.md 「IP 접근 제어 켜기」.
+  - 템플릿에 없는 화면: IP 접근 제어 · 감사 로그 조회. 킷 모듈(`AdminIpAccessModule` · `AdminAuditModule` 조회)은 있다 — 프로젝트마다 같아야 하는 화면이라 후속 admin-ui PR 후보. IP 모듈은 템플릿에서 꺼 두었고 켜는 법은 템플릿 CLAUDE.md 「IP 접근 제어 켜기」. → **3f · 3g 에서 닫음**(admin-ui `AuditLogViewer` · `IpAccessManager` — 템플릿 페이지 반영은 「PR #3g 가 넘긴 것」)
   - `preset/auth` 와의 관계: `00` 검토 §4 는 `preset/auth` 위를 말했지만 `preset/db` 위에 만들었고(사용자 결정), admin 이 auth 의 자리(로그인 · 세션 · 사용자)를 킷으로 대신한다. `preset/auth` 를 남길지 · 정리할지는 사람이 정한다.
   - 킷 결함은 없었다 — 템플릿 핀(0.4.1)을 올릴 일 없음 → 2026-10-17 킷 상향으로 0.5.0(「킷 상향 결과」). 킷을 올리는 절차는 템플릿 CLAUDE.md 「킷 올리기」.
   - 템플릿 결함으로 고친 것(다시 생기면 같은 자리): 개발 서버 사전 번들(`vite.config.mts` `optimizeDeps` — vuetify 제외 · shared 의 luxon · zod · `vue-router/experimental` 미리 묶기), `.dockerignore` 의 `**/` 패턴, backend `incremental: false`, frontend 는 prettier 밖(eslint-config-vuetify). 스펙 §13 6~13. 최종 리뷰로: 예시 env 의 JWT 키 비움 · `.env.backend` 무시 · 검색 칸 ✕(null) `filterText` · 코어 장 스텁 이름 · `.gitattributes`(LF) · 스킬의 재인증 서버 확인(검증 기록 §4).
@@ -185,7 +185,11 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
   - 이 브랜치에서 찾은 남은 것: 로컬 `changeset version` 드라이런을 못 돌렸다(Version Packages PR 에서 확인) 등 — 검증 기록 §9.
 - **PR #3f 가 넘긴 것(2026-10-18)**
   - 템플릿 `preset/admin` 에 감사 로그 페이지를 반영한다 — `pages/settings/audit-logs.vue` · `api/audit.ts`(admin-ui README "## 감사 로그" 예시 그대로, `canSearchActors` 는 users 읽기 권한). 템플릿 push 는 사람.
-  - PR #3g(IP 접근 제어 화면) 플랜 — 3f 의 `useRemoteSearch` · `local-date` · 화면 한 벌 패턴을 쓴다.
+  - PR #3g(IP 접근 제어 화면) 플랜 — 3f 의 `useRemoteSearch` · `local-date` · 화면 한 벌 패턴을 쓴다. → **3g 에서 닫음**
+- **PR #3g 가 넘긴 것(2026-10-18)**
+  - 템플릿 `preset/admin` 에 IP 접근 제어 페이지를 반영한다 — `pages/settings/ip-access.vue` · `api/ip-access.ts`(admin-ui README "## IP 접근 제어" 예시 그대로). 템플릿은 IP 모듈을 꺼 두었으니 켜는 법(템플릿 CLAUDE.md 「IP 접근 제어 켜기」)과 메뉴 노출을 함께 정한다. 템플릿 push 는 사람.
+  - 3f 최종 리뷰의 범위 밖 관찰: `useServerTable`(3a)이 스코프 해제 뒤 도착한 응답을 refs 에 쓴다(무해) — dispose 가드를 넣을지 정한다.
+  - 실브라우저 확인: 대상 사용자 · 감사 행위자를 고른 뒤 다시 타이핑하면 검색이 나가는지(happy-dom 에서는 재현 안 됨), 좁은 폭 배치.
 
 ## 작업 폴더 밖에 남은 것
 

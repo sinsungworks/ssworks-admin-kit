@@ -204,7 +204,9 @@ admin-server 첫 발행(2026-10-16) 완료 — 세 패키지 모두 0.4.1 공개
 
 킷 버전 상향(2026-10-17) 완료 — admin-ui peer `pinia ^4.0.0`(devtools-api 는 peer 아님), 저장소 도구 TypeScript 6.0.3 · Vitest 5 · ESLint 10 · typescript-eslint 8.71, 실 DB 테스트 MariaDB 11.4 + 12.3 매트릭스, changeset 하나(0.5.0 — admin-ui minor · 나머지 patch). 템플릿 `preset/admin` 은 도구 상향 커밋과 킷 0.5.0 커밋(잠금 파일은 릴리스 뒤)을 로컬에 두었다(스펙 `docs/superpowers/specs/2026-10-17-kit-toolchain-upgrade-design.md` · 플랜 `docs/superpowers/plans/2026-10-17-kit-toolchain-upgrade.md` · 검증 `docs/verification/2026-10-17-kit-toolchain-upgrade.md`). 발행 · push 는 사람이 한다.
 
-admin-ui 감사 로그 화면 PR #3f(2026-10-18) 완료 — `useAuditLogs` · `AuditLogViewer`(입력/적용 · 묶음 prefix · 행위자 서버 검색 · URL · 바뀐 항목 diff), admin-ui peer admin-shared 하한 0.4.0(스펙 `docs/superpowers/specs/2026-10-18-admin-ui-audit-ip-design.md` · 플랜 `docs/superpowers/plans/2026-10-18-admin-ui-audit.md`). IP 접근 제어 화면 PR #3g 는 다음이다.
+admin-ui 감사 로그 화면 PR #3f(2026-10-18) 완료 — `useAuditLogs` · `AuditLogViewer`(입력/적용 · 묶음 prefix · 행위자 서버 검색 · URL · 바뀐 항목 diff), admin-ui peer admin-shared 하한 0.4.0(스펙 `docs/superpowers/specs/2026-10-18-admin-ui-audit-ip-design.md` · 플랜 `docs/superpowers/plans/2026-10-18-admin-ui-audit.md`).
+
+admin-ui IP 접근 제어 화면 PR #3g(2026-10-18) 완료 — `useIpAccessRules` · `IpAccessManager`(접속 상태와 변경 영향 카드 · 인라인 편집 패널 · 팀 경로 · 사용자 검색 · 미리보기 뒤 관문 · revision 충돌 · 409 자기 잠금), 공용 내부 부품 `RemoteSearchField`(스펙 `docs/superpowers/specs/2026-10-18-admin-ui-audit-ip-design.md` · 플랜 `docs/superpowers/plans/2026-10-18-admin-ui-ip-access.md`). 템플릿에 없던 두 화면(감사 · IP)이 admin-ui 에 갖춰졌다.
 
 다음: Phase 4 — ringside 로 실전 검증 후 A 패키지 1.0 태깅(`docs/00-admin-common-review.md` §4, HANDOFF "다음 플랜"). Node 26 은 26 LTS(10/27) 뒤 별도.
 

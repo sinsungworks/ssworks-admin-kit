@@ -950,3 +950,64 @@ router.push({ path: '/settings/audit-logs', query: { action: 'auth.login.' } })
 
 - 행위자 칸에 번호로만 들어온 사람(URL · 셀 버튼)은 목록에 그 사람의 행이 보이기 전까지 `#번호` 로 보인다. 번호로 이름을 찾으려고 따로 부르지 않는다.
 - 테스트가 잴 수 없어 사람이 확인하는 것 — 좁은 폭에서 필터 칸 일곱이 줄바꿈되는지, 자동완성 디바운스(300ms)와 검색 중 표시의 체감.
+
+## IP 접근 제어
+
+관리자가 어디서 접속할 수 있는지 정하는 규칙(사용자 > 팀 > 전체 중 가장 가까운 층 하나 · 규칙이 없으면 거부)을 고치는 화면이다. 위에서 아래로 접속 상태와 변경 영향 카드(늘) · 편집 패널(열렸을 때) · 규칙 목록이고, 확인 · 재인증 · 고친 값 버리기 창이 화면 안에 있다. 페이지 제목 · 카드 틀 · 메뉴는 템플릿 몫이다.
+
+### Phase 2 서버를 쓰는 새 서비스
+
+```ts
+// api/ip-access.ts
+export const ipAccessApi = {
+  list: () => api.get<AdminIpRuleList>('/admin/ip-access').then((r) => r.items),
+  preview: (query: AdminIpPreviewQuery) =>
+    api.get<AdminIpPreview>('/admin/ip-access/preview', { params: query }),
+  create: (body: AdminIpRuleCreate, ctx: IpWriteContext) =>
+    api.post('/admin/ip-access', { ...body, ...ctx }),
+  update: (rule: AdminIpRule, body: AdminIpRuleUpdate, ctx: IpWriteContext) =>
+    api.patch(`/admin/ip-access/${rule.ruleNo}`, { ...body, ...ctx }),
+  // 🔴 두 번째 인자가 본문이다 — 빠뜨리면 revision 이 사라져 400
+  remove: (rule: AdminIpRule, body: AdminIpRuleRemove, ctx: IpWriteContext) =>
+    api.del(`/admin/ip-access/${rule.ruleNo}`, { ...body, ...ctx }),
+}
+```
+
+```ts
+const ip = useIpAccessRules({
+  ...ipAccessApi,
+  canManage: () => can(P.IP_ACCESS_MANAGE), // 거짓이면 목록만 — 미리보기 · 쓰기를 부르지 않는다
+  reauth: true, // 서버 AdminServerModule 의 reauth 와 같게. false 여도 쓰기는 확인 창을 거친다
+  loadTeams: () => api.get<AdminTeamTree>('/admin/teams/tree').then((r) => r.items),
+  canLoadTeams: () => can(P.TEAMS_READ), // 거짓이면 팀 번호 칸
+  searchUsers: (keyword) =>
+    api
+      .get<Paginated<AdminUser>>('/admin/users', {
+        params: { page: 1, itemsPerPage: 20, filter: { keyword, status: 'active' } },
+      })
+      .then((r) =>
+        r.items.map((u) => ({ userNo: u.userNo, userId: u.userId, userName: u.userName })),
+      ),
+  canSearchUsers: () => can(P.USERS_READ), // 거짓이면 사용자 번호 칸
+  onDone: () => toast.success('IP 규칙을 바꿨습니다.'),
+  messages: { hintRecovery: '잠긴 사람은 … 복구 절차는 docs/runbook/ip-lockout.md' },
+})
+```
+
+```vue
+<CardLayout>
+  <VCardTitle>IP 접근 제어</VCardTitle>
+  <IpAccessManager v-bind="ip.manager.value" />
+</CardLayout>
+```
+
+- **미리보기**: 편집하는 동안 300ms 뒤 서버 미리보기를 불러, 지금 접속 IP · 그 변경 뒤에도 통과하는지 · 새로 잠기는 사람 · 규칙만 바뀌는 사람을 보인다. 미리보기는 예고다 — 실제로 막는 것은 저장할 때 요청자 주소를 다시 평가하는 서버 검사(409)이고, 그 검사는 요청자 본인만 본다.
+- **저장**: 칸 검증(서버와 같은 CIDR 파서) → 미리보기 마무리 → 확인 또는 재인증 창(문구에 그 변경의 최종 영향) → 요청 → 목록 재조회. 전체 허용(`0.0.0.0/0` · `::/0`)을 지우거나 좁히면 카드와 창 문구에 경고가 붙는다.
+- **세션 끊기 제안이 없는 이유**: 킷 서버는 로그인 · 매 요청 · 토큰 갱신에서 IP 를 본다. 막힌 주소의 요청은 저장 직후 다음 요청부터 403 이고, 규칙을 풀면 같은 세션이 다시 된다. 끊어야 하면 세션 화면에서 끊는다.
+- **오류**: 자기 잠금 · 전권자 잔존 409 는 서버 문구 그대로 빨간 알림(자기 잠금이면 서버가 본 주소를 덧붙인다). 다른 관리자가 먼저 고쳤으면(revision 충돌) 고치던 값을 두고 새 값을 노란 알림으로 보인다 — 한 번 더 저장해야 덮는다.
+- **본인 표시**: 잠기는 사람 목록의 본인 판정은 `createAdminUi` 의 `user().userId` 다. 아이디가 바뀌는 서비스면 `isSelf` 를 넘긴다.
+
+### 알려진 한계 · 수동 확인
+
+- 팀 후보는 편집을 열 때마다 트리 전체를 다시 부른다(팀은 많지 않다는 전제).
+- 테스트가 잴 수 없어 사람이 확인하는 것 — 좁은 폭에서 편집 패널 칸 넷이 줄바꿈되는지, 카드의 긴 문단이 읽히는지, 실제 브라우저에서 대상 사용자를 고른 뒤 다시 타이핑하면 검색이 나가는지.
