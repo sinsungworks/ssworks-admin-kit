@@ -12,12 +12,12 @@ import '@ssworks/admin-ui/style.css' // 소비 프로젝트가 한 번 import
 
 ## 레이아웃 프리미티브
 
-| 컴포넌트       | 설명                                                                                                            |
-| -------------- | --------------------------------------------------------------------------------------------------------------- |
-| `CardLayout`   | 옅은 테두리의 outlined 카드. `fillHeight`                                                                       |
-| `PanelLayout`  | top / content / bottom 세로 3분할. `scrollable` 이면 content 만 스크롤. **부모가 definite height 를 줘야 한다** |
-| `ColumnLayout` | 가로 flex. `gap`, `divider`                                                                                     |
-| `ColumnPane`   | `ColumnLayout` 의 열. 자신이 VCard. `width`(없으면 `flex: 1`), `scrollable`                                     |
+| 컴포넌트       | 설명                                                                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `CardLayout`   | 옅은 테두리의 outlined 카드. `fillHeight`                                                                                                 |
+| `PanelLayout`  | top / content / bottom 세로 3분할. `scrollable` 이면 content 만 스크롤. **부모가 definite height 를 줘야 한다** — 「설정 셸」의 높이 예시 |
+| `ColumnLayout` | 가로 flex. `gap`, `divider`                                                                                                               |
+| `ColumnPane`   | `ColumnLayout` 의 열. 자신이 VCard. `width`(없으면 `flex: 1`), `scrollable`                                                               |
 
 ## 다이얼로그 · 필드
 
@@ -60,6 +60,21 @@ const ok = await useConfirm().ask({
 
 `createAdminVuetify({ theme, defaults })` — ko 로케일, `density: compact`, `hideDetails: 'auto'`, 필드 10종 outlined, `VBtn` flat primary. 테마 색은 프로젝트가 넘긴다. `vuetify/styles` 와 `@mdi/font` CSS 는 프로젝트의 `plugins/vuetify.ts` 가 import 한다.
 
+🔴 **레이어 순서 선언 — `vite.config` 의 `plugins` 맨 앞에 `vuetifyLayerOrder()` 를 넣는다.** admin-ui 는 `vuetify/components` 를 import 한다. 그래서 앱이 admin-ui 를 처음 import 하는 순간 Vuetify 부품 CSS(`@layer vuetify-components`)가 `vuetify/styles` 의 레이어 순서 선언보다 먼저 들어가고, reset 레이어가 `<button>` VBtn 의 `size` · 굵기를 이긴다(22px · 400 — `<a>` VBtn 은 멀쩡하다). import 순서로는 고칠 수 없다 — 개발 서버는 모듈 평가 순서, 운영 빌드는 청크 CSS 순서를 따른다. 플러그인이 개발 · 빌드 모두 `<head>` 맨 앞에 Vuetify 의 레이어 순서를 선언한다. `index.html` 은 고치지 않는다.
+
+```ts
+// vite.config.ts
+import { vuetifyLayerOrder } from '@ssworks/admin-ui/vite'
+
+export default defineConfig({
+  plugins: [vuetifyLayerOrder(), vue(), vuetify()],
+})
+```
+
+- 선언은 인라인 `<style>` 이다. `style-src` 를 좁힌 CSP 는 해시나 nonce 가 필요하다(Vuetify 테마 `<style>` 과 같은 처지).
+- 선언은 킷이 시험한 Vuetify(4.2.6)의 `lib/styles/main.css` 머리와 같다 — 킷 테스트가 대조한다. 킷보다 새 Vuetify 를 쓰는데 레이어가 바뀌었으면 킷을 올린다.
+- `@ssworks/admin-ui/vite` 는 Node 에서 읽히는 빌드 설정용 서브패스다 — vue · vuetify 를 끌지 않는다.
+
 ## 권한 훅
 
 ```ts
@@ -84,7 +99,7 @@ export const usePermission = createUsePermission<Permission>(
 | `codemirror`            | 예   | `MarkdownEditor` · `LegalDocumentEditor`(약관 편집기)                                                                        |
 | `@codemirror/state`     | 예   | 같음 — `codemirror` 가 쓰는 것과 같은 인스턴스여야 한다                                                                      |
 
-🔴 `pinia`·`axios`·`@he-tree/vue`·`codemirror`·`@codemirror/state` 도 **필수**다. 엔트리가 하나(`dist/index.js`)라 두 패키지를 최상단에서 import 한다 — `safeRedirect` 하나만 써도 번들러가 `axios` 를 해석하지 못하면 빌드가 깨진다. 서브패스 export 로 가르지 않는 대가다. he-tree CSS 는 import 하지 않아도 된다 — `TeamTree` 가 필요한 규칙을 `style.css` 에 담는다. CodeMirror 테마 패키지(`@codemirror/theme-one-dark`)는 필요 없다 — 편집기 색은 Vuetify 테마를 따른다.
+🔴 `pinia`·`axios`·`@he-tree/vue`·`codemirror`·`@codemirror/state` 도 **필수**다. 엔트리가 하나(`dist/index.js`)라 두 패키지를 최상단에서 import 한다 — `safeRedirect` 하나만 써도 번들러가 `axios` 를 해석하지 못하면 빌드가 깨진다. 서브패스 export 로 가르지 않는 대가다. 예외는 `@ssworks/admin-ui/vite` 하나다 — 브라우저 엔트리가 아니라 `vite.config` 가 읽는 빌드 설정용이다. he-tree CSS 는 import 하지 않아도 된다 — `TeamTree` 가 필요한 규칙을 `style.css` 에 담는다. CodeMirror 테마 패키지(`@codemirror/theme-one-dark`)는 필요 없다 — 편집기 색은 Vuetify 테마를 따른다.
 
 pnpm 10 이상은 의존 패키지의 설치 스크립트를 막는다. he-tree 의 하위 의존 `vue-demi` 의 postinstall 이 걸려 pnpm 12 는 `pnpm install` 이 `ERR_PNPM_IGNORED_BUILDS` 로 멈춘다. 소비자 앱의 `pnpm-workspace.yaml` 에 `allowBuilds:` / `vue-demi: false` 를 두면 된다 — Vue 3 에서는 그 스크립트가 할 일이 없다:
 
@@ -121,7 +136,7 @@ allowBuilds:
 | `PermissionMatrix` · `assertMatrixCoversPermissions` · `PermissionMatrixCategory` · `PermissionMatrixColumn` · `PermissionMatrixRow`                                                                                                           | 자원 행 × 액션 열 권한 격자(`v-model` = 권한 키 배열) · 카탈로그 누락 검사. 아래 "역할 · 설정"                                                                                                                          |
 | `useRoleEditor` · `RoleEditor` · `RoleEditorApi` · `RoleEditorOptions` · `RoleEditorAction` · `RoleDialogText` · `RoleForm` · `RoleWriteContext` · `PermissionMatrixBindings`                                                                  | 역할 편집 headless 상태 · 규칙(목록 · 선택 · 폼 · 함의 · 권한 상승 방지 · revision 충돌 · 관문)                                                                                                                         |
 | `SettingsShell`                                                                                                                                                                                                                                | 설정 2단 셸 — 라우트 직속 자식 `meta` 에서 파생한 좌측 메뉴 + `RouterView`. 부모로 들어오면 허용된 첫 자식으로                                                                                                          |
-| `SessionTable` · `SessionTableRow`                                                                                                                                                                                                             | 세션 표(기기 · 접속 IP · 최근 활동 · 끝내기, 선택 열 `showUser` · `showIp` · `showLoginAt` · `showExpireAt`). `useSessions().table` 을 `v-bind`. 아래 "세션 · 비밀번호"                                                 |
+| `SessionTable` · `SessionTableRow` · `SessionTableMessages` · `SessionLabelView`                                                                                                                                                               | 세션 표(기기 · 접속 IP · 최근 활동 · 끝내기, 선택 열 `showUser` · `showIp` · `showLoginAt` · `showExpireAt`). `useSessions().table` 을 `v-bind`. 아래 "세션 · 비밀번호" · 문구 `messages`                               |
 | `useSessions` · `Sessions` · `UseSessionsOptions` · `SessionTableBindings` · `SessionMessages` · `SessionDialogText` · `SessionAction` · `SessionRevokedEvent`                                                                                 | 세션 목록 headless — 전량(`list`) · 서버 페이징(`fetch`), 끝내기 · 다른 세션 모두 · 사용자 전체, 확인 관문                                                                                                              |
 | `TemporaryPasswordDialog`                                                                                                                                                                                                                      | 임시 비밀번호 1회 표시 · 복사. `v-model` 이 곧 값(닫으면 `null`)                                                                                                                                                        |
 | `PasswordChangeForm`                                                                                                                                                                                                                           | 비밀번호 변경 · 강제 변경 폼 — 정책 검증 · 이중 제출 방지 · 서버 필드 오류 포커스                                                                                                                                       |
@@ -561,14 +576,14 @@ const {
 
 #### `PermissionMatrix` props · 슬롯
 
-| prop / 슬롯                      | 내용                                                                               |
-| -------------------------------- | ---------------------------------------------------------------------------------- |
-| `v-model`                        | 체크된 권한 키 배열. 칸 키는 `자원:액션`(`'org.users:read'`)                       |
-| `categories`                     | 카테고리마다 열(액션) × 행(자원) 표 하나                                           |
-| `permissions`                    | 유효 권한 목록(카탈로그). 칸 키가 여기 없으면 그 칸은 비활성 · 미체크              |
-| `disabled`                       | 기본 `false`. 칸 전부 비활성                                                       |
-| `canPick`                        | `(permission) => boolean`. false 인 칸은 비활성(권한 상승 방지)                    |
-| `#row-extra="{ row, category }"` | 행 끝 열 — scope 선택 상자 같은 프로젝트 몫. 슬롯을 주지 않으면 열이 생기지 않는다 |
+| prop / 슬롯                      | 내용                                                                                                                                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `v-model`                        | 체크된 권한 키 배열. 칸 키는 `자원:액션`(`'org.users:read'`)                                                                        |
+| `categories`                     | 한 표에 카테고리마다 머리 줄 + 행(자원) × 열(액션). 같은 순번 열이 카테고리를 넘어 한 줄로 선다 — 열이 적은 카테고리는 끝 칸이 빈다 |
+| `permissions`                    | 유효 권한 목록(카탈로그). 칸 키가 여기 없으면 그 칸은 비활성 · 미체크                                                               |
+| `disabled`                       | 기본 `false`. 칸 전부 비활성                                                                                                        |
+| `canPick`                        | `(permission) => boolean`. false 인 칸은 비활성(권한 상승 방지)                                                                     |
+| `#row-extra="{ row, category }"` | 행 끝 열 — scope 선택 상자 같은 프로젝트 몫. 슬롯을 주지 않으면 열이 생기지 않는다                                                  |
 
 ### 설정 셸
 
@@ -594,6 +609,24 @@ defineAdminRoute<Permission>({
 | `forbiddenPath` | 허용된 자식이 없을 때 갈 곳. 기본 `'/403'`(가드 기본값과 같음)              |
 | `menuWidth`     | 메뉴 pane 너비. 기본 `'240px'`                                              |
 | default 슬롯    | 기본 내용 `<RouterView />`. 전환 효과 등으로 감쌀 자리                      |
+
+🔴 **`SettingsShell` 은 부모가 정한 높이(definite height)를 받는다.** 셸 · 메뉴 pane · 자식 페이지의 `ColumnPane` 이 모두 `height: 100%` 다 — 높이가 없으면 `scrollable` pane 의 본문이 0 높이로 접히거나 페이지 전체가 스크롤된다(`PanelLayout` 과 같다). 앱바 높이는 숫자로 박지 않고 Vuetify 가 `VMain` 에 다는 `--v-layout-top` 으로 뺀다 — 프리셋(compact) 앱바는 48px 다.
+
+```vue
+<!-- pages/settings.vue -->
+<template>
+  <div class="settings"><SettingsShell /></div>
+</template>
+
+<style scoped>
+  .settings {
+    height: calc(100dvh - var(--v-layout-top, 64px));
+  }
+</style>
+```
+
+- `AdminShell` 의 `banner` 슬롯에 내용이 있으면 그 높이만큼 넘친다 — 배너 높이도 뺀다.
+- `PanelLayout` · 팀 화면처럼 높이를 받아야 하는 다른 페이지도 같은 식이다.
 
 - 메뉴는 직속 자식의 `meta` 에서 만든다(인덱스 `path: ''` · `:id` 자식 제외, 제목은 `meta.menu.title` → `meta.title`, 순서는 `meta.menu.order` → 선언 순서). 부모로 들어오면 권한이 있는 첫 자식으로 보내고, 없으면 `forbiddenPath`(기본 `/403`).
 - 🔴 부모의 `anyPermissions` 가 자식 권한을 덮지 않으면 가드가 셸을 열기 전에 막는다 — 라우트 테스트에서 `assertParentAnyPermissionsCoverChildren(routes)` 를 부른다.
@@ -657,6 +690,28 @@ const all = useSessions({
 - 내 계정 전체 끊기는 1인칭 경고로 확인받고, 성공하면 재조회 대신 `onSelfSignedOut` 을 부른다.
 - 성공 문구는 `onRevoked` 로 화면이 띄운다. 서버가 `revokedCount` 를 주지 않으면 개수를 지어내지 않는다.
 - 계정별 세션 다이얼로그는 대상마다 자식 컴포넌트를 새로 마운트한다 — `<AccountSessions v-if="target" :key="String(target.userNo)" :user="target" />` — 이 컴포넌트의 setup 이 `useSessions({ list: () => …(props.user.userNo), … })` 를 부른다(immediate). 전량 모드는 실패해도 rows 를 두므로 인스턴스를 재사용하면 앞 사람의 세션이 남는다. 내 계정 · 상위 계정 행의 버튼을 막는 판단은 사용자 목록 화면의 몫이다.
+
+#### 표 문구
+
+열 제목 · 버튼 · 접근 이름은 `useSessions({ messages })` 로 바꾼다 — 확인 창 문구와 같은 곳이다. 버튼 문구를 바꾸면 그 접근 이름과 "사용자 전체 끊기" 확인 창 제목(남 · 본인)이 따라온다.
+
+```ts
+const all = useSessions({
+  // … 위와 같음
+  messages: { userColumn: '운영자', revokeUserButton: '운영자 전체 끊기' },
+})
+```
+
+| 키                                                                                                     | 기본값                                                      |
+| ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `userColumn` · `deviceColumn` · `ipColumn` · `loginAtColumn` · `lastAccessAtColumn` · `expireAtColumn` | 사용자 · 기기 · IP · 로그인 · 마지막 활동 · 만료            |
+| `currentDevice` · `currentDeviceNote`                                                                  | 이 기기 · 이 기기는 로그아웃으로 끝냅니다.                  |
+| `revokeButton` · `revokeButtonLabel(row, view)`                                                        | 끝내기 · `{이름 · }{기기} 세션 끝내기 (마지막 활동 {시각})` |
+| `revokeUserButton` · `revokeUserButtonLabel(row, view)`                                                | 사용자 전체 끊기 · `{이름}({아이디}) {view.button}`         |
+
+- `view` = `{ device, lastAccessAt, showUser, button }` — 표가 셈한 기기 요약 · `formatDate` 를 거친 시각 · 사용자 열 표시 여부 · 그 버튼의 문구.
+- 🔴 `v-bind="all.table.value"` 뒤에 `:messages` 를 따로 주면 바인딩의 것을 통째로 덮는다(병합하지 않는다) — `useSessions` 한 곳에서 바꾼다. `useSessions` 없이 표만 쓸 때는 `SessionTable` 의 `messages` prop 으로 바꾼다.
+- 빈 목록 문구는 그대로 `emptyText` · `#no-data` 다.
 
 ### 임시 비밀번호
 

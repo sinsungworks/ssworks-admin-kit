@@ -208,6 +208,8 @@ admin-ui 감사 로그 화면 PR #3f(2026-10-18) 완료 — `useAuditLogs` · `A
 
 admin-ui IP 접근 제어 화면 PR #3g(2026-10-18) 완료 — `useIpAccessRules` · `IpAccessManager`(접속 상태와 변경 영향 카드 · 인라인 편집 패널 · 팀 경로 · 사용자 검색 · 미리보기 뒤 관문 · revision 충돌 · 409 자기 잠금), 공용 내부 부품 `RemoteSearchField`(스펙 `docs/superpowers/specs/2026-10-18-admin-ui-audit-ip-design.md` · 플랜 `docs/superpowers/plans/2026-10-18-admin-ui-ip-access.md`). 템플릿에 없던 두 화면(감사 · IP)이 admin-ui 에 갖춰졌다.
 
+admin-ui ringside 보고 반영 PR #3h(2026-10-18) 완료 — `@ssworks/admin-ui/vite` 의 `vuetifyLayerOrder()`(Vuetify 레이어 순서를 `<head>` 맨 앞에서 선언 · 설치된 vuetify 와 대조 테스트) · `SessionTable` `messages`(`useSessions` 한 곳에서 표 · 확인 창 문구) · `PermissionMatrix` 한 표(카테고리마다 tbody) · README 설정 셸 높이(스펙 `docs/superpowers/specs/2026-10-18-admin-ui-ringside-feedback-design.md` · 플랜 `docs/superpowers/plans/2026-10-18-admin-ui-ringside-feedback.md`). 입력은 ringside 보고(`docs/reports/2026-10-18-ringside-admin-kit-report.md`).
+
 다음: Phase 4 — ringside 로 실전 검증 후 A 패키지 1.0 태깅(`docs/00-admin-common-review.md` §4, HANDOFF "다음 플랜"). Node 26 은 26 LTS(10/27) 뒤 별도.
 
 미확인(추출본에 없어 확정 보류): axion `utils/route-permission.ts`·`post-auth-redirect.ts`, gise `api/error.ts`·`AccountSessionsDialog.vue`, crm `utils/queryCodec.ts`·`components/user/*`·`core/pipe/zod-validation-pipe.ts`·`core/filter/exception.filter.ts`, hangang `api/ip-access.api.ts`·`storage.api.ts`. 이들은 A 배정한 `useQuerySyncedFilter`·`useFieldErrors`의 최종 확정에만 영향. → **2026-10-03 원본 확인으로 해소** — crm `queryCodec.ts`·`useQuerySyncedFilter.ts`, gise `useRouteQuerySync.ts`·`useFieldErrors.ts` 를 읽고 위 결정에 반영했다.
