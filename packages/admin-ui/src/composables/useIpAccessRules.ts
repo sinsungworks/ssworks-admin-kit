@@ -8,6 +8,7 @@ import {
   type ComputedRef,
   type Ref,
 } from 'vue'
+import { CommonErrorCodes } from '@ssworks/admin-shared'
 import type {
   AdminIpPreview,
   AdminIpPreviewItem,
@@ -21,15 +22,22 @@ import type {
 import { ApiError, toApiError } from '../api/error.js'
 import {
   DEFAULT_IP_ACCESS_MESSAGES,
+  IP_RULE_FORM_FIELDS,
   changedItemsOf,
+  conflictAlertText,
   emptyIpRuleForm,
   flattenTeamPaths,
+  formScopeTitle,
+  gateMessage,
   ipRuleFormProblems,
   lockedItemsOf,
   removesGlobalAllow,
+  ruleScopeTitle,
   ruleToForm,
   sameIpRuleForm,
   scopeTypeItems,
+  toCreateBody,
+  toUpdateBody,
   userOptionTitle,
   type IpAccessAlert,
   type IpAccessMessages,
@@ -419,14 +427,192 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     }
   }
 
-  // ── 쓰기 — Task 5 가 채운다 ────────────────────────────────────────
+  // ── 쓰기 ──────────────────────────────────────────────────────────
 
-  async function save(): Promise<boolean> {
-    return false
+  /**
+   * 409 ERR_COMMON_CONFLICT(자기 잠금 · 전권자 잔존) — 서버 문구 그대로 + 주소로 빨간 알림.
+   * 🔴 처리됨 표시는 이 catch 의 동기 구간에서 — 지연 전역 onError 보다 먼저다. useWriteFlow 를 고치지 않는다(I17).
+   */
+  function guardConflict(call: () => Promise<unknown>): Promise<unknown> {
+    return call().catch((error: unknown) => {
+      if (error instanceof ApiError && error.code === CommonErrorCodes.ERR_COMMON_CONFLICT) {
+        error.handled = true
+        pushAlert('error', conflictAlertText(error, messages))
+      }
+      throw error
+    })
   }
 
-  async function remove(_rule: R): Promise<boolean> {
-    return false
+  function targetTitleOf(value: IpRuleForm): string | null {
+    if (value.scopeType === 'global') return null
+    return knownTargets.get(`${value.scopeType}:${value.scopeRefNo.trim()}`) ?? null
+  }
+
+  async function save(): Promise<boolean> {
+    const target = editing.value
+    // ① 🔴 첫 줄 가드 — :disabled 는 마우스만 막는다
+    if (target === null || !options.canManage() || busy.value) return false
+    const problems = ipRuleFormProblems(form.value, messages)
+    if (Object.keys(problems).length > 0) {
+      // ② 🔴 비밀번호를 묻기 전에 멈춘다
+      clientErrors.value = problems
+      return false
+    }
+    working.value = true
+    alerts.value = []
+    try {
+      const submitted = { ...form.value }
+      // ③ 🔴 관문은 미리보기가 끝난 뒤 — 창 문구를 열 때 고정하므로 기다려야 최종 영향이다(I12)
+      const snapshot = await preview.flush()
+      if (editing.value !== target || !sameIpRuleForm(form.value, submitted)) return false
+      if (snapshot.state === 'stale') return false
+      const kind = target === 'new' ? 'create' : 'update'
+      const cidr = submitted.cidr.trim()
+      const message = gateMessage(
+        {
+          kind,
+          scope: formScopeTitle(submitted, targetTitleOf(submitted), messages),
+          cidr,
+          irreversible: false,
+          globalRemoval: target !== 'new' && removesGlobalAllow(target.cidr, cidr),
+          view: snapshot,
+        },
+        messages,
+      )
+      let attempted = false
+      let conflicted = false
+      const send = (ctx: IpWriteContext): Promise<unknown> => {
+        // 🔴 확인 순간에 다시 본다 — 창이 열린 사이 권한이 회수됐으면 보내지 않는다(스펙 §4-3 · 3e D10).
+        //    attempted 가 거짓으로 남아 아래에서 false — 패널 · onDone 을 건드리지 않는다
+        if (!options.canManage()) return Promise.resolve(undefined)
+        attempted = true
+        return guardConflict(() =>
+          target === 'new'
+            ? options.create(toCreateBody(submitted), ctx)
+            : options.update(target, toUpdateBody(submitted, target.revision), ctx),
+        )
+      }
+      const common = {
+        title: kind === 'create' ? messages.createTitle : messages.updateTitle,
+        message,
+        confirmLabel: kind === 'create' ? messages.createConfirm : messages.updateConfirm,
+        fields: IP_RULE_FORM_FIELDS,
+        onConflict: () => {
+          conflicted = true
+        },
+      }
+      // ④ 🔴 관문 없이 나가는 IP 쓰기는 없다 — IP 변경은 사람을 잠근다(I13)
+      const ok =
+        options.reauth === true
+          ? await flow.run({ gate: 'reauth', ...common, action: send })
+          : await flow.run({ gate: 'confirm', reversible: true, ...common, action: () => send({}) })
+      if (!attempted) return false
+      // ⑤ 🔴 요청이 나갔으면 성공이든 실패든 다시 부른다 — 404 는 "목록이 낡았다", 409 는 "상태가 갈렸다"
+      const applied = await load()
+      if (ok) {
+        // ⑦ 🔴 만들기는 재조회가 반영되지 않아도 닫는다 — 채운 폼을 남기면 같은 규칙을 또 만든다(useRoleEditor R8)
+        setEditor(null)
+        if (snapshot.state !== 'ready') pushAlert('warning', messages.savedWithoutPreview)
+        await options.onDone?.({
+          action: kind,
+          rule: target === 'new' ? null : (findRule(target.ruleNo) ?? target),
+        })
+        return true
+      }
+      if (target !== 'new' && applied) {
+        const fresh = findRule(target.ruleNo)
+        if (fresh == null) {
+          setEditor(null)
+          pushAlert('warning', messages.ruleGone)
+        } else if (conflicted) {
+          // 🔴 폼은 둔다 — 편집 대상만 새 행으로(다음 저장은 새 revision · 사용자가 본 뒤 한 번 더 눌러야 덮는다 · I18)
+          editing.value = fresh
+          rememberTarget(fresh)
+          pushAlert(
+            'warning',
+            messages.revisionConflict(ruleScopeTitle(fresh, messages), fresh.cidr),
+          )
+          syncTarget()
+        }
+      }
+      preview.refresh()
+      return false
+    } finally {
+      working.value = false
+    }
+  }
+
+  async function remove(rule: R): Promise<boolean> {
+    if (!options.canManage() || busy.value) return false
+    // 🔴 삭제 미리보기가 편집 미리보기 자리를 쓴다 — 고친 값이 있으면 먼저 묻는다(I15)
+    if (!(await askDiscard())) return false
+    if (!options.canManage() || busy.value) return false
+    working.value = true
+    alerts.value = []
+    try {
+      if (editing.value !== null) setEditor(null)
+      removing.value = rule
+      syncTarget()
+      const snapshot = await preview.flush()
+      if (removing.value !== rule) return false
+      if (snapshot.state === 'stale') {
+        pushAlert('warning', messages.ruleGone)
+        return false
+      }
+      const reauth = options.reauth === true
+      const message = gateMessage(
+        {
+          kind: 'remove',
+          scope: ruleScopeTitle(rule, messages),
+          cidr: rule.cidr,
+          irreversible: reauth,
+          globalRemoval: removesGlobalAllow(rule.cidr, null),
+          view: snapshot,
+        },
+        messages,
+      )
+      let attempted = false
+      let conflicted = false
+      const send = (ctx: IpWriteContext): Promise<unknown> => {
+        // 🔴 확인 순간에 다시 본다(저장과 같음)
+        if (!options.canManage()) return Promise.resolve(undefined)
+        attempted = true
+        return guardConflict(() => options.remove(rule, { revision: rule.revision }, ctx))
+      }
+      const common = {
+        title: messages.removeTitle,
+        message,
+        confirmLabel: messages.removeConfirm,
+        onConflict: () => {
+          conflicted = true
+        },
+      }
+      // 🔴 재인증이면 그 창 하나가 확인을 겸한다 — 문구에 "되돌릴 수 없습니다"(I13 · useRoleEditor 481)
+      const ok = reauth
+        ? await flow.run({ gate: 'reauth', ...common, action: send })
+        : await flow.run({ gate: 'confirm', reversible: false, ...common, action: () => send({}) })
+      if (!attempted) return false
+      const applied = await load()
+      if (ok) {
+        await options.onDone?.({ action: 'remove', rule })
+        return true
+      }
+      if (conflicted && applied) {
+        const fresh = findRule(rule.ruleNo)
+        pushAlert(
+          'warning',
+          fresh == null
+            ? messages.ruleGone
+            : messages.revisionConflict(ruleScopeTitle(fresh, messages), fresh.cidr),
+        )
+      }
+      return false
+    } finally {
+      // 취소 · 실패 · 성공 어느 쪽이든 미리보기는 현행으로 돌아간다
+      removing.value = null
+      syncTarget()
+      working.value = false
+    }
   }
 
   // ── 바인딩 ────────────────────────────────────────────────────────
