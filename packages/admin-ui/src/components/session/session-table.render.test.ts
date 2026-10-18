@@ -5,7 +5,7 @@ import { h, type Component } from 'vue'
 import { VDataTableServer } from 'vuetify/components'
 import { vuetify } from '../../test/setup.js'
 import SessionTable from './SessionTable.vue'
-import { type SessionTableRow } from './session-table.js'
+import { type SessionLabelView, type SessionTableRow } from './session-table.js'
 import { formatDateTime } from '../../utils/format-date-time.js'
 
 // 정본: ssworks-gise-home apps/admin/test/me-page.test.ts 의 세션 표 규칙(현재 행에 버튼 없음 · 같은 요약 행을
@@ -188,5 +188,60 @@ describe('SessionTable — 빈 목록 · 두 모드', () => {
     w.findComponent(VDataTableServer).vm.$emit('update:page', 2)
     await flushPromises()
     expect(w.emitted('update:page')?.at(-1)).toEqual([2])
+  })
+})
+
+describe('SessionTable — 문구(messages)', () => {
+  it('일부만 덮으면 그 키만 바뀌고 나머지는 기본값이다', async () => {
+    await mountTable({
+      showUser: true,
+      canRevokeUser: true,
+      messages: {
+        userColumn: '운영자',
+        deviceColumn: '브라우저',
+        currentDevice: '지금 기기',
+        revokeButton: '로그아웃시키기',
+      },
+    })
+    expect(headers()).toEqual(['운영자', '브라우저', 'IP', '마지막 활동', '만료', ''])
+    const current = bodyRows()[0]!
+    expect(current.textContent).toContain('지금 기기')
+    expect(current.textContent).toContain('이 기기는 로그아웃으로 끝냅니다.')
+    expect(buttonsByText('로그아웃시키기')).toHaveLength(2)
+    expect(buttonsByText('사용자 전체 끊기')).toHaveLength(3)
+  })
+
+  it('🔴 revokeUserButton 만 바꾸면 버튼 글자와 접근 이름이 함께 바뀐다', async () => {
+    const w = await mountTable({
+      canRevokeUser: true,
+      messages: { revokeUserButton: '운영자 전체 끊기' },
+    })
+    expect(buttonsByText('운영자 전체 끊기')).toHaveLength(3)
+    expect(buttonsByText('사용자 전체 끊기')).toHaveLength(0)
+    buttonByLabel('이(lee) 운영자 전체 끊기')!.click()
+    await flushPromises()
+    expect(w.emitted('revokeUser')).toEqual([[ROWS[2]]])
+  })
+
+  it('접근 이름 함수는 view(기기 · formatDate 를 거친 시각 · showUser · 버튼 문구)를 받는다', async () => {
+    const views: SessionLabelView[] = []
+    await mountTable({
+      showUser: true,
+      sessions: [ROWS[2]!],
+      messages: {
+        revokeButton: '로그아웃',
+        revokeButtonLabel: (r: SessionTableRow, view: SessionLabelView) => {
+          views.push(view)
+          return `${r.userId ?? ''} ${view.button}`
+        },
+      },
+    })
+    expect(buttonByLabel('lee 로그아웃')).not.toBeNull()
+    expect(views.at(-1)).toEqual({
+      device: 'Safari · iOS',
+      lastAccessAt: '2026-10-05 03:00',
+      showUser: true,
+      button: '로그아웃',
+    })
   })
 })

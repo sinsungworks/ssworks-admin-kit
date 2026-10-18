@@ -174,7 +174,11 @@ export {
 // ── 세션 · 비밀번호 ───────────────────────────────────────────────────
 export { copyText, type CopyResult } from './utils/copy-text.js'
 export { default as SessionTable } from './components/session/SessionTable.vue'
-export { type SessionTableRow } from './components/session/session-table.js'
+export {
+  type SessionTableRow,
+  type SessionTableMessages,
+  type SessionLabelView,
+} from './components/session/session-table.js'
 export {
   useSessions,
   type Sessions,
