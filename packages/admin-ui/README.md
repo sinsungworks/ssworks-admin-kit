@@ -879,3 +879,74 @@ publish: ({ kind, body }) => legalApi.publish({ kind, body }), // 기준 판 번
 - CodeMirror 는 개행을 `\n` 으로 정규화한다. CRLF 로 저장된 본문은 첫 입력부터 LF 로 바뀐다.
 - Enter 한 번은 줄바꿈, 빈 줄은 문단 나눔이다(`renderMarkdown` 의 `breaks: true`). 인용(`>`) · 목록은 빈 줄을 넣어야 끝난다 — 편집기 아래 도움말(`messages.editorHint`)이 이것을 알린다.
 - 테스트가 잴 수 없어 사람이 확인하는 것 — 한글 입력(조합 · 끼워 쓰기 · 되돌리기 · 발행까지)과 다크 테마 색(편집기 · 찾기 패널 · 미리보기 · 대화상자). 2026-10-08 Windows 브라우저에서 모두 통과했다. 편집기를 바꾸면 다시 본다.
+
+## 감사 로그
+
+관리자 쓰기 · 인증 사건의 기록을 읽는 화면이다. 읽기 전용이고 내보내기는 없다. 필터는 입력한 뒤 [적용]을 눌러야 조회한다 — 입력 중에 조회하지 않는다. 페이지 제목 · 카드 틀 · 메뉴는 템플릿 몫이다.
+
+### Phase 2 서버를 쓰는 새 서비스
+
+```ts
+// api/audit.ts
+export const auditApi = {
+  list: (params: ServerTableParams<AuditLogFilter>) =>
+    api.get<Paginated<AdminAuditLog>>('/admin/audit-logs', { params }),
+  // 행위자 자동완성 — /users 의 검색어(아이디 · 이름 부분일치). 퇴사자의 지난 행위도 감사 대상이라 상태로 거르지 않는다
+  searchActors: (keyword: string) =>
+    api
+      .get<Paginated<AdminUser>>('/admin/users', {
+        params: { page: 1, itemsPerPage: 20, filter: { keyword } },
+      })
+      .then((r) =>
+        r.items.map((u) => ({
+          userNo: u.userNo,
+          userId: u.userId,
+          userName: u.userName,
+          resigned: u.resignAt != null,
+        })),
+      ),
+}
+```
+
+```ts
+const audit = useAuditLogs({
+  fetch: auditApi.list,
+  catalog: auditCatalog, // 프로젝트 defineAuditCatalog — 서버 audit.catalog 와 같은 객체
+  searchActors: auditApi.searchActors,
+  canSearchActors: () => can(P.USERS_READ), // 거짓이면 번호 칸 — /users 를 부르지 않는다
+  urlSync: true,
+  fieldLabels: { roleName: '역할 이름', permissions: '권한', cidr: 'CIDR', description: '설명' },
+})
+```
+
+```vue
+<CardLayout>
+  <VCardTitle>감사 로그</VCardTitle>
+  <AuditLogViewer v-bind="audit.viewer.value" />
+</CardLayout>
+```
+
+- **동작 필터**: "[묶음] 역할 (org.role.\*)" 은 그 계열 전체, "역할 수정 (org.role.update)" 은 그 동작 하나다. 프로젝트 액션 묶음은 `actionGroups: [{ prefix: 'members.points', label: '포인트' }]` 로 더한다. 걸리는 액션이 둘 이상일 때만 항목이 된다.
+- **바뀐 항목**: 서버 `attachAuditDiff` 의 `before` · `after` 를 표로 보인다. 같은 값은 빼고, 서버가 가린 값(`***`)은 이름만 적는다. 항목 이름은 `fieldLabels` 가 있으면 라벨, 없으면 키 원문이다.
+- **기간**: 날짜 두 칸은 브라우저 시간대 기준이고 끝 날짜의 하루 전체를 포함한다(다음 날 0시 전까지).
+
+### 다른 화면에서 걸러진 감사 기록으로 보내기
+
+`urlSync: true` 면 필터가 주소에 실린다. 키는 `actor` · `action` · `targetType` · `targetRefNo` · `from` · `to`(로컬 `YYYY-MM-DD`)다. 형식이 틀린 키는 없는 것으로 친다.
+
+```ts
+// 사용자 상세 → 그 사람이 한 일
+router.push({ path: '/settings/audit-logs', query: { actor: String(user.userNo) } })
+// 역할 화면 → 그 역할에 일어난 일
+router.push({
+  path: '/settings/audit-logs',
+  query: { targetType: 'role', targetRefNo: String(role.roleNo) },
+})
+// 묶음은 값 끝에 점 — 로그인 실패 · 차단만
+router.push({ path: '/settings/audit-logs', query: { action: 'auth.login.' } })
+```
+
+### 알려진 한계 · 수동 확인
+
+- 행위자 칸에 번호로만 들어온 사람(URL · 셀 버튼)은 목록에 그 사람의 행이 보이기 전까지 `#번호` 로 보인다. 번호로 이름을 찾으려고 따로 부르지 않는다.
+- 테스트가 잴 수 없어 사람이 확인하는 것 — 좁은 폭에서 필터 칸 일곱이 줄바꿈되는지, 자동완성 디바운스(300ms)와 검색 중 표시의 체감.

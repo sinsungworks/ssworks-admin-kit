@@ -237,3 +237,20 @@ export {
   type LegalDetailDialogBindings,
   type LegalDoneEvent,
 } from './composables/useLegalDocuments.js'
+
+// ── 감사 로그 ─────────────────────────────────────────────────────────
+export { default as AuditLogViewer } from './components/audit/AuditLogViewer.vue'
+export {
+  type AuditActorOption,
+  type AuditActionGroup,
+  type AuditLogDraft,
+  type AuditLogFilter,
+  type AuditFilterItem,
+  type AuditLogMessages,
+} from './components/audit/audit-log.js'
+export {
+  useAuditLogs,
+  type UseAuditLogsOptions,
+  type AuditLogs,
+  type AuditLogViewerBindings,
+} from './composables/useAuditLogs.js'

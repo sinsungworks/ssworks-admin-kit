@@ -100,7 +100,7 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
 - **PR 2c 가 넘긴 것(2026-10-14)**
   - 2d: 남의 세션을 끊을 때의 권한 상승 검사(⑪ D1 — `DELETE /sessions/:sessionNo` · `/sessions/user/:userNo`), 사용자 · 역할 슬롯을 `AdminPermissionSlot` · `ADMIN_PERMISSION_SLOTS` 에, 코어 감사 액션 `org.user.*` · `org.role.*` 를 admin-shared `CoreAuditActions` · 라벨에(개수 테스트를 함께 고친다). → **2d-1 에서 닫음**(세션 끊기 검사 · 역할 슬롯 · org.role.* — 사용자 슬롯 · org.user.* 는 2d-2) → **2d-2 에서 닫음**, AuditOptions → AuditDeclaration
   - 2e · 2f: 팀 · 약관 · IP 슬롯과 액션(`org.team.*` · `setting.ipAccess.*`), IP 차단의 `access.blocked` 는 이미 감사 행이 된다. → 팀은 **2e-1 에서 닫음**, 약관은 **2e-2 에서 닫음**(IP 는 **2f-1 에서 닫음**)
-  - 감사 화면(admin-ui 에 없다 — 템플릿 B 가 `adminAuditLogSchema` · `labelOf` 로), 보존 · 청소(B), 가드 거부(401 · 403)는 남지 않는다(⑧ F1).
+  - 감사 화면(admin-ui 에 없다 — 템플릿 B 가 `adminAuditLogSchema` · `labelOf` 로), 보존 · 청소(B), 가드 거부(401 · 403)는 남지 않는다(⑧ F1). → 감사 화면은 **3f 에서 닫음**(2026-10-18 — B 가 아니라 admin-ui A 로: `useAuditLogs` · `AuditLogViewer`)
 - **PR 2d-1 최종 리뷰가 넘긴 것 → 2d-2 스펙에서 정한다(2026-10-14)** → **2d-2 에서 닫음**(스펙 §14 R5 — M1 은 README 복구 절차, 나머지 다섯은 코드)
   - M1: 카탈로그에서 빠진 키 · 새로 함의된 키를 아직 든 역할은 `'*'` 가 아닌 관리자의 지배 판정에서 실패한다(`details.outside` 가 화면에 없는 키를 가리킨다). `current` 를 `catalog.isPermission` 으로 거를지, "`'*'` 관리자가 다시 저장한다" 를 문서로 둘지 정한다.
   - M2: `update` 는 `after` · `item` 을 커밋 뒤에 읽는다(스펙 §5-4). 2d-2 에서는 트랜잭션 안에서 읽는다.
@@ -183,6 +183,9 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
   - 템플릿의 pnpm 12.
   - ~~템플릿 ⓑ 의 잠금 파일(+ 바뀐 `typed-router.d.ts`) amend — 0.5.0 공개 뒤.~~ — amend 함(ⓑ `579c2b6`, `typed-router.d.ts` 는 안 바뀜 · push 는 사람). vue-router 하한은 시험한 5.4.0 으로 올렸다.
   - 이 브랜치에서 찾은 남은 것: 로컬 `changeset version` 드라이런을 못 돌렸다(Version Packages PR 에서 확인) 등 — 검증 기록 §9.
+- **PR #3f 가 넘긴 것(2026-10-18)**
+  - 템플릿 `preset/admin` 에 감사 로그 페이지를 반영한다 — `pages/settings/audit-logs.vue` · `api/audit.ts`(admin-ui README "## 감사 로그" 예시 그대로, `canSearchActors` 는 users 읽기 권한). 템플릿 push 는 사람.
+  - PR #3g(IP 접근 제어 화면) 플랜 — 3f 의 `useRemoteSearch` · `local-date` · 화면 한 벌 패턴을 쓴다.
 
 ## 작업 폴더 밖에 남은 것
 
