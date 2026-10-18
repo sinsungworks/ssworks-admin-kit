@@ -1,28 +1,48 @@
 import { describe, expect, it } from 'vitest'
 import {
   IP_ACCESS_SCHEMA_MESSAGES,
+  type AdminIpPreview,
+  type AdminIpPreviewItem,
   type AdminIpRule,
   type AdminTeamNode,
 } from '@ssworks/admin-shared'
 import {
   DEFAULT_IP_ACCESS_MESSAGES as M,
   IP_RULE_FORM_FIELDS,
+  changedItemLine,
+  changedItemsOf,
+  conflictAlertText,
+  currentIpLine,
   emptyIpRuleForm,
   flattenTeamPaths,
   formScopeTitle,
+  gateImpact,
+  gateMessage,
+  impactLine,
   ipRuleFormProblems,
+  isGlobalAllowCidr,
   isIpRuleFormPreviewable,
+  layerLabel,
+  lockedItemLine,
+  lockedItemsOf,
+  passLine,
+  basisLine,
   previewQueryKey,
   previewQueryOf,
+  previewSummaryLine,
+  removesGlobalAllow,
   ruleScopeSub,
   ruleScopeTitle,
   ruleToForm,
   sameIpRuleForm,
   scopeTypeItems,
+  sessionLine,
+  statusLabel,
   toCreateBody,
   toUpdateBody,
   userOptionTitle,
   withScopeType,
+  type IpPreviewView,
   type IpRuleForm,
 } from './ip-access.js'
 
@@ -283,5 +303,251 @@ describe('대상 · 범위 표기', () => {
       '팀 · 본사 › 상담센터',
     )
     expect(formScopeTitle(form({ scopeType: 'team', scopeRefNo: '3' }), null, M)).toBe('팀 #3')
+  })
+})
+
+const previewItem = (over: Partial<AdminIpPreviewItem> = {}): AdminIpPreviewItem => ({
+  userNo: 7n,
+  userId: 'cs07',
+  userName: '이상담',
+  layerBefore: 'global',
+  layerAfter: 'team',
+  statusBefore: 'passes',
+  statusAfter: 'locked',
+  becomesLocked: true,
+  ruleSetChanged: true,
+  activeSessionCount: 2,
+  blockedSessionCount: 2,
+  unknownIpSessionCount: 0,
+  ...over,
+})
+
+const previewResult = (over: Partial<AdminIpPreview> = {}): AdminIpPreview => ({
+  clientIp: '203.0.113.7',
+  clientPasses: true,
+  summary: {
+    total: 14,
+    newlyLocked: 0,
+    alreadyLocked: 0,
+    unknown: 0,
+    blockedSessions: 0,
+    ruleSetChangedOnly: 0,
+  },
+  items: [],
+  ...over,
+})
+
+const view = (over: Partial<IpPreviewView> = {}): IpPreviewView => ({
+  state: 'ready',
+  op: 'update',
+  result: previewResult(),
+  clientIp: '203.0.113.7',
+  ...over,
+})
+
+describe('층 · 상태 · 카드 줄', () => {
+  it('🔴 층 없음은 "기본 거부"로, 판정 불가는 통과로 읽히지 않게', () => {
+    expect(layerLabel(null, M)).toBe('규칙 없음(기본 거부)')
+    expect(layerLabel('team', M)).toBe('팀 층')
+    expect(statusLabel('locked', M)).toBe('잠김')
+    expect(statusLabel('passes', M)).toBe('통과')
+    expect(statusLabel('unknown', M)).toBe('판정 불가')
+  })
+
+  it('🔴 현재 IP — 모르면 빈 칸이 아니라 문장', () => {
+    expect(currentIpLine(null, M)).toBe('현재 접속 IP 를 아직 확인하지 못했습니다.')
+    expect(currentIpLine('203.0.113.7', M)).toBe('현재 접속 IP: 203.0.113.7')
+  })
+
+  it('🔴 통과 여부는 ready 일 때만 — 지어내지 않는다', () => {
+    expect(passLine(view({ state: 'loading', result: null }), M)).toBeNull()
+    expect(passLine(view({ state: 'failed', result: null }), M)).toBeNull()
+    expect(passLine(view(), M)).toBe('이 변경 뒤에도 지금 접속(203.0.113.7)은 통과합니다.')
+    expect(passLine(view({ result: previewResult({ clientPasses: false }) }), M)).toBe(
+      '이 변경 뒤에는 지금 접속(203.0.113.7)이 통과하지 못합니다 — 서버가 저장을 거부합니다(409).',
+    )
+    expect(passLine(view({ op: null }), M)).toBe('지금 접속(203.0.113.7)은 현행 규칙을 통과합니다.')
+  })
+
+  it('서버가 주소를 못 읽었으면 "알 수 없는 주소"', () => {
+    expect(
+      passLine(view({ result: previewResult({ clientIp: null, clientPasses: false }) }), M),
+    ).toContain('지금 접속(알 수 없는 주소)')
+  })
+
+  it('🔴 기준 줄 — 현행인지 바꾼 뒤인지 늘 적는다', () => {
+    expect(basisLine(null, M)).toBe(M.basisCurrent)
+    expect(basisLine('create', M)).toBe(M.basisCreate)
+    expect(basisLine('update', M)).toBe(M.basisUpdate)
+    expect(basisLine('delete', M)).toBe(M.basisDelete)
+  })
+})
+
+describe('영향 요약 · 사람 줄', () => {
+  const base = previewResult().summary
+
+  it('0명 — 영향 없음 · 🔴 그래도 거부 세션 수를 적는다', () => {
+    expect(previewSummaryLine(base, M)).toBe(
+      '사용자 14명을 평가했습니다. 이 변경으로 새로 잠기는 사용자는 없습니다. 이 규칙이 거부하는 활성 세션은 평가 대상 전원을 합쳐 0개입니다.',
+    )
+  })
+
+  it('판정 불가만 있으면 따로 적는다 — 0 으로 치지 않는다', () => {
+    expect(previewSummaryLine({ ...base, unknown: 2 }, M)).toContain('판정 불가 2명은')
+  })
+
+  it('🔴 새로 잠김 · 이미 잠김 · 판정 불가를 가른다', () => {
+    expect(
+      previewSummaryLine(
+        { ...base, newlyLocked: 2, alreadyLocked: 1, unknown: 1, blockedSessions: 3 },
+        M,
+      ),
+    ).toBe(
+      '사용자 14명을 평가했습니다. 🔴 이 변경으로 2명이 새로 잠깁니다. 변경 전에도 잠겨 있던 1명과 판정 불가 1명은 따로 셉니다. 이 규칙이 거부하는 활성 세션은 평가 대상 전원을 합쳐 3개입니다.',
+    )
+  })
+
+  it('🔴 규칙만 바뀌는 사람 수 — 없으면 "전체 허용 좁히기"가 아무 신호도 안 낸다', () => {
+    expect(previewSummaryLine({ ...base, ruleSetChangedOnly: 3 }, M)).toContain(
+      '적용되는 규칙이 달라지는 사용자가 3명',
+    )
+  })
+
+  it('🔴 세션 줄 세 갈래 — 층이 없으면 주소 모르는 세션도 거부 확정, 있으면 판정 불가', () => {
+    expect(sessionLine(previewItem({ activeSessionCount: 0, blockedSessionCount: 0 }), M)).toBe(
+      '활성 세션 없음',
+    )
+    expect(sessionLine(previewItem(), M)).toBe('활성 세션 2개 중 2개가 거부됩니다')
+    expect(sessionLine(previewItem({ layerAfter: null, unknownIpSessionCount: 1 }), M)).toContain(
+      '주소와 무관하게 거부가 확정',
+    )
+    expect(sessionLine(previewItem({ unknownIpSessionCount: 1 }), M)).toContain(
+      '판정할 수 없습니다',
+    )
+  })
+
+  it('잠기는 사람 줄 — 층 전 → 후 · 세션 · 🔴 본인 표시', () => {
+    expect(lockedItemLine(previewItem(), false, M)).toBe(
+      '이상담(cs07) — 전체 층 → 팀 층 · 활성 세션 2개 중 2개가 거부됩니다',
+    )
+    expect(lockedItemLine(previewItem(), true, M)).toBe(
+      '🔴 이상담(cs07 · 본인) — 전체 층 → 팀 층 · 활성 세션 2개 중 2개가 거부됩니다',
+    )
+  })
+
+  it('규칙만 바뀌는 사람 줄 — 판정 불가면 🔴, 아니면 지금 상태', () => {
+    expect(
+      changedItemLine(previewItem({ becomesLocked: false, statusAfter: 'unknown' }), false, M),
+    ).toBe(
+      '이상담(cs07) — 전체 층 → 팀 층 · 적용되는 규칙이 달라집니다 · 🔴 활성 세션의 접속 주소를 몰라 통과할지 판정할 수 없습니다',
+    )
+    expect(
+      changedItemLine(previewItem({ becomesLocked: false, statusAfter: 'passes' }), false, M),
+    ).toContain('지금은 통과')
+  })
+
+  it('목록 둘 — ready 일 때만, 서버 순서 그대로, 겹치지 않게', () => {
+    const items = [
+      previewItem({ userNo: 1n, becomesLocked: true }),
+      previewItem({ userNo: 2n, becomesLocked: false, ruleSetChanged: true }),
+      previewItem({ userNo: 3n, becomesLocked: false, ruleSetChanged: false }),
+      previewItem({ userNo: 4n, becomesLocked: true }),
+    ]
+    const ready = view({ result: previewResult({ items }) })
+    expect(lockedItemsOf(ready).map((i) => i.userNo)).toEqual([1n, 4n])
+    expect(changedItemsOf(ready).map((i) => i.userNo)).toEqual([2n])
+    expect(lockedItemsOf(view({ state: 'loading', result: null }))).toEqual([])
+  })
+
+  it('③ 자리 문구 — 상태마다, ready 인데 result 가 없어도 던지지 않는다', () => {
+    expect(impactLine(view(), M)).toContain('사용자 14명을 평가했습니다.')
+    expect(impactLine(view({ state: 'loading', result: null }), M)).toBe(M.previewLoading)
+    expect(impactLine(view({ state: 'pending-input', result: null }), M)).toBe(
+      M.previewPendingInput,
+    )
+    expect(impactLine(view({ state: 'forbidden', result: null }), M)).toBe(M.previewForbidden)
+    expect(impactLine(view({ state: 'stale', result: null }), M)).toBe(M.previewStale)
+    expect(impactLine(view({ state: 'failed', result: null }), M)).toBe(M.previewFailed)
+    expect(impactLine(view({ state: 'ready', result: null }), M)).toBe(M.previewFailed)
+  })
+})
+
+describe('전체 허용 · 관문 · 409', () => {
+  it('전체 허용 CIDR 은 둘뿐', () => {
+    expect(isGlobalAllowCidr(' 0.0.0.0/0 ')).toBe(true)
+    expect(isGlobalAllowCidr('::/0')).toBe(true)
+    expect(isGlobalAllowCidr('0.0.0.0/1')).toBe(false)
+  })
+
+  it('🔴 범위가 아니라 CIDR 로 판정 — ㉠ 좁은 전체 규칙 삭제는 경고 아님, ㉡ ::/0 을 좁히는 수정은 경고', () => {
+    expect(removesGlobalAllow('0.0.0.0/0', null)).toBe(true)
+    expect(removesGlobalAllow('::/0', '2001:db8::/32')).toBe(true)
+    expect(removesGlobalAllow('203.0.113.0/24', null)).toBe(false)
+    expect(removesGlobalAllow('0.0.0.0/0', '0.0.0.0/0')).toBe(false)
+    expect(removesGlobalAllow(null, '0.0.0.0/0')).toBe(false)
+  })
+
+  it('관문 영향 한 줄 — ready 면 새로 잠김 수, 아니면 "확인하지 못했다"', () => {
+    expect(
+      gateImpact(
+        view({
+          result: previewResult({ summary: { ...previewResult().summary, newlyLocked: 2 } }),
+        }),
+        M,
+      ),
+    ).toBe('🔴 이 변경으로 2명이 새로 잠깁니다.')
+    expect(gateImpact(view(), M)).toBe(M.gateImpactNone)
+    expect(gateImpact(view({ state: 'failed', result: null }), M)).toBe(M.gateImpactUnknown)
+  })
+
+  it('관문 문구 — 머리말 · 되돌릴 수 없음 · 전체 허용 경고 · 영향 순서', () => {
+    expect(
+      gateMessage(
+        {
+          kind: 'remove',
+          scope: '전체',
+          cidr: '::/0',
+          irreversible: true,
+          globalRemoval: true,
+          view: view(),
+        },
+        M,
+      ),
+    ).toBe(
+      [
+        '전체 범위의 「::/0」 규칙을 지웁니다.',
+        M.irreversible,
+        M.globalAllowRemoval,
+        M.gateImpactNone,
+      ].join(' '),
+    )
+    expect(
+      gateMessage(
+        {
+          kind: 'create',
+          scope: '팀 · 상담센터',
+          cidr: '10.0.0.0/8',
+          irreversible: false,
+          globalRemoval: false,
+          view: view(),
+        },
+        M,
+      ),
+    ).toBe(`팀 · 상담센터 범위의 「10.0.0.0/8」 규칙을 만듭니다. ${M.gateImpactNone}`)
+  })
+
+  it('🔴 409 — 서버 문구 그대로 + 서버가 본 주소, 문구가 비면 고정 안내', () => {
+    expect(
+      conflictAlertText(
+        { message: '이 변경을 저장하면 …', details: { clientIp: '203.0.113.7' } },
+        M,
+      ),
+    ).toBe('이 변경을 저장하면 … 서버가 본 지금 주소: 203.0.113.7')
+    expect(conflictAlertText({ message: '전권자가 남지 않습니다.', details: undefined }, M)).toBe(
+      '전권자가 남지 않습니다.',
+    )
+    expect(conflictAlertText({ message: ' ', details: { clientIp: null } }, M)).toBe(
+      M.conflictWithoutMessage,
+    )
   })
 })

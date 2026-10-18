@@ -4,13 +4,16 @@ import {
   IP_RULE_DESCRIPTION_MAX_LENGTH,
   ipCidrSchema,
   type AdminIpPreview,
+  type AdminIpPreviewItem,
   type AdminIpPreviewQuery,
   type AdminIpRule,
   type AdminIpRuleCreate,
   type AdminIpRuleUpdate,
   type AdminTeamNode,
+  type IpLockoutStatus,
   type IpScopeType,
 } from '@ssworks/admin-shared'
+import type { ApiError } from '../../api/error.js'
 
 // IP 접근 제어 화면의 타입 · 문구 · 순수 함수 — `useIpAccessRules` · `useIpPreview` · `IpAccessManager` 가 함께 쓴다(3g 스펙 C1).
 //
@@ -501,4 +504,194 @@ export function formScopeTitle(
   const label = scopeTypeLabel(form.scopeType, messages)
   if (form.scopeType === 'global') return label
   return targetTitle != null ? `${label} · ${targetTitle}` : `${label} #${form.scopeRefNo.trim()}`
+}
+
+// ── 미리보기 문구 ────────────────────────────────────────────────────
+
+export function layerLabel(layer: IpScopeType | null, messages: IpAccessMessages): string {
+  return layer == null ? messages.layerNone : messages.layer(scopeTypeLabel(layer, messages))
+}
+
+export function statusLabel(status: IpLockoutStatus, messages: IpAccessMessages): string {
+  if (status === 'locked') return messages.statusLocked
+  if (status === 'passes') return messages.statusPasses
+  return messages.statusUnknown
+}
+
+/** ① 현재 접속 IP. 🔴 모르면 빈 칸이 아니라 문장(I2) */
+export function currentIpLine(clientIp: string | null, messages: IpAccessMessages): string {
+  return clientIp == null ? messages.currentIpUnknown : messages.currentIp(clientIp)
+}
+
+/** ② 통과 여부. 🔴 ready 일 때만 — 미리보기가 없으면 통과 여부를 말하지 않는다(I3) */
+export function passLine(view: IpPreviewView, messages: IpAccessMessages): string | null {
+  if (view.state !== 'ready' || view.result == null) return null
+  return messages.passLine(
+    view.result.clientPasses,
+    view.result.clientIp ?? messages.unknownAddress,
+    view.op === null,
+  )
+}
+
+/** 기준 줄. 🔴 안 적으면 현행 스냅샷을 변경 뒤 예측으로 읽는다(I4) */
+export function basisLine(op: IpPreviewOp | null, messages: IpAccessMessages): string {
+  if (op === 'create') return messages.basisCreate
+  if (op === 'update') return messages.basisUpdate
+  if (op === 'delete') return messages.basisDelete
+  return messages.basisCurrent
+}
+
+/** ③ 요약(hangang `previewSummaryLine`). 🔴 새로 잠김 · 이미 잠김 · 판정 불가를 가른다 */
+export function previewSummaryLine(
+  summary: AdminIpPreview['summary'],
+  messages: IpAccessMessages,
+): string {
+  const parts = [messages.summaryEvaluated(summary.total)]
+  if (summary.newlyLocked === 0) {
+    parts.push(messages.summaryNoImpact)
+    if (summary.unknown > 0) parts.push(messages.summaryUnknownOnly(summary.unknown))
+  } else {
+    parts.push(
+      messages.summaryNewlyLocked(summary.newlyLocked, summary.alreadyLocked, summary.unknown),
+    )
+  }
+  // 🔴 잠기는 사람이 0명이어도 거부 세션 수를 적는다 — 가장 흔한 좁히기에서 그 값이 사라진다(hangang)
+  parts.push(messages.summaryBlockedSessions(summary.blockedSessions))
+  // 🔴 이 줄이 없으면 "전체 허용을 사무실 대역으로 좁히기"가 아무 신호도 내지 않는다(hangang)
+  if (summary.ruleSetChangedOnly > 0)
+    parts.push(messages.summaryRuleSetChanged(summary.ruleSetChangedOnly))
+  return parts.join(' ')
+}
+
+/**
+ * 세션 줄. 🔴 층이 있으면 주소 모르는 세션은 판정 불가, 없으면 주소와 무관하게 거부 확정 — 한 문장으로 찍으면
+ * 죽는 세션 수를 조용히 줄여 적는다(hangang `sessionLine`).
+ */
+export function sessionLine(item: AdminIpPreviewItem, messages: IpAccessMessages): string {
+  if (item.activeSessionCount === 0) return messages.sessionsNone
+  const head = messages.sessionsBlocked(item.activeSessionCount, item.blockedSessionCount)
+  if (item.unknownIpSessionCount === 0) return head
+  return item.layerAfter == null
+    ? `${head}${messages.sessionsUnknownDenied(item.unknownIpSessionCount)}`
+    : `${head}${messages.sessionsUnknownUndetermined(item.unknownIpSessionCount)}`
+}
+
+/** 🔴 자기 자신을 "다른 사람"으로 그리지 않는다 — 서버가 고른 목록에 본인이 섞여 온다(I6 · hangang) */
+function whoLine(item: AdminIpPreviewItem, self: boolean, messages: IpAccessMessages): string {
+  return self
+    ? `🔴 ${item.userName}(${item.userId} · ${messages.self})`
+    : `${item.userName}(${item.userId})`
+}
+
+function layersOf(item: AdminIpPreviewItem, messages: IpAccessMessages): string {
+  return `${layerLabel(item.layerBefore, messages)} → ${layerLabel(item.layerAfter, messages)}`
+}
+
+export function lockedItemLine(
+  item: AdminIpPreviewItem,
+  self: boolean,
+  messages: IpAccessMessages,
+): string {
+  return `${whoLine(item, self, messages)} — ${layersOf(item, messages)} · ${sessionLine(item, messages)}`
+}
+
+/** 🔴 "잠긴다"와 같은 강도로 적지 않는다 — 멀쩡한 변경을 되돌리게 된다(hangang) */
+export function changedItemLine(
+  item: AdminIpPreviewItem,
+  self: boolean,
+  messages: IpAccessMessages,
+): string {
+  const risk =
+    item.statusAfter === 'unknown'
+      ? messages.ruleSetChangedUnknown
+      : messages.ruleSetChangedNow(statusLabel(item.statusAfter, messages))
+  return `${whoLine(item, self, messages)} — ${layersOf(item, messages)} · ${messages.ruleSetChanged} · ${risk}`
+}
+
+/** 새로 잠기는 사람. 🔴 서버 순서(위험도 순)를 다시 정렬하지 않는다 */
+export function lockedItemsOf(view: IpPreviewView): AdminIpPreviewItem[] {
+  if (view.state !== 'ready' || view.result == null) return []
+  return view.result.items.filter((item) => item.becomesLocked)
+}
+
+/** 잠기지는 않는데 적용 규칙이 달라지는 사람 — 잠기는 사람과 겹치지 않게 */
+export function changedItemsOf(view: IpPreviewView): AdminIpPreviewItem[] {
+  if (view.state !== 'ready' || view.result == null) return []
+  return view.result.items.filter((item) => item.ruleSetChanged && !item.becomesLocked)
+}
+
+/** ③ 자리 문구. 🔴 state 와 result 를 함께 본다 — 어긋나도 던지지 않는다(hangang) */
+export function impactLine(view: IpPreviewView, messages: IpAccessMessages): string {
+  if (view.state === 'ready' && view.result != null)
+    return previewSummaryLine(view.result.summary, messages)
+  if (view.state === 'loading') return messages.previewLoading
+  if (view.state === 'pending-input') return messages.previewPendingInput
+  if (view.state === 'forbidden') return messages.previewForbidden
+  if (view.state === 'stale') return messages.previewStale
+  return messages.previewFailed
+}
+
+// ── 전체 허용 · 관문 · 409 ───────────────────────────────────────────
+
+/** 전체 허용 CIDR 은 이 둘뿐이다 — 문자열 대조로 충분하다(파싱이 아니다 · hangang) */
+export const GLOBAL_ALLOW_CIDRS: readonly string[] = Object.freeze(['0.0.0.0/0', '::/0'])
+
+export function isGlobalAllowCidr(cidr: string): boolean {
+  const text = cidr.trim()
+  return GLOBAL_ALLOW_CIDRS.some((allow) => allow === text)
+}
+
+/**
+ * 이 변경이 전체 허용 행을 없애는가. before = 손대는 규칙의 지금 CIDR(만들기면 null), after = 바꾼 뒤(삭제면 null).
+ * 🔴 범위가 아니라 CIDR 로 판정한다 — 범위로 재면 ㉠ 좁은 전체 규칙 삭제에 거짓 경고, ㉡ ::/0 을 좁히는 수정에 침묵(I7 · hangang).
+ */
+export function removesGlobalAllow(before: string | null, after: string | null): boolean {
+  if (before == null || !isGlobalAllowCidr(before)) return false
+  return after == null || !isGlobalAllowCidr(after)
+}
+
+/** 관문 창의 영향 한 줄. 🔴 미리보기를 못 받았으면 "0명"이 아니라 "확인하지 못했다"(I12) */
+export function gateImpact(view: IpPreviewView, messages: IpAccessMessages): string {
+  if (view.state !== 'ready' || view.result == null) return messages.gateImpactUnknown
+  const count = view.result.summary.newlyLocked
+  return count > 0 ? messages.gateImpactLocked(count) : messages.gateImpactNone
+}
+
+export interface IpGateText {
+  kind: IpGateKind
+  scope: string
+  cidr: string
+  /** 재인증 창이 삭제 확인을 겸할 때 — 확인 창은 스스로 "되돌릴 수 없습니다"를 그린다 */
+  irreversible: boolean
+  globalRemoval: boolean
+  view: IpPreviewView
+}
+
+/** 관문 문구 = 머리말 + (되돌릴 수 없음) + (전체 허용 경고) + 영향 한 줄 — 결정 지점에 사실을 둔다(I13) */
+export function gateMessage(input: IpGateText, messages: IpAccessMessages): string {
+  const parts = [messages.gateHead(input.kind, input.scope, input.cidr)]
+  if (input.irreversible) parts.push(messages.irreversible)
+  if (input.globalRemoval) parts.push(messages.globalAllowRemoval)
+  parts.push(gateImpact(input.view, messages))
+  return parts.join(' ')
+}
+
+/**
+ * 409 ERR_COMMON_CONFLICT 알림 글자. 🔴 한 코드가 두 뜻(자기 잠금 · 전권자 잔존)을 나른다 — 킷 문구로 바꾸지 않고
+ * 서버 문구를 그대로 쓴다(I17 · hangang). 자기 잠금이면 서버가 실은 details.clientIp 를 덧붙인다.
+ */
+export function conflictAlertText(
+  error: Pick<ApiError, 'message' | 'details'>,
+  messages: IpAccessMessages,
+): string {
+  const text = error.message.trim()
+  const message = text === '' ? messages.conflictWithoutMessage : text
+  const details = error.details
+  const clientIp =
+    typeof details === 'object' && details !== null && 'clientIp' in details
+      ? (details as { clientIp?: unknown }).clientIp
+      : null
+  return typeof clientIp === 'string' && clientIp !== ''
+    ? messages.conflictWithIp(message, clientIp)
+    : message
 }
