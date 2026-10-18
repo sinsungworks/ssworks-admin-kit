@@ -480,12 +480,16 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
         messages,
       )
       let attempted = false
+      let lastSent = false
       let conflicted = false
       const send = (ctx: IpWriteContext): Promise<unknown> => {
         // 🔴 확인 순간에 다시 본다 — 창이 열린 사이 권한이 회수됐으면 보내지 않는다(스펙 §4-3 · 3e D10).
-        //    attempted 가 거짓으로 남아 아래에서 false — 패널 · onDone 을 건드리지 않는다
+        //    요청마다 lastSent 를 새로 세운다 — 재인증 실패로 창이 남은 뒤 권한이 회수되어 다시 확인하면 attempted 는
+        //    이미 참이라, 그것만 보면 보내지 않은 요청을 성공으로 처리한다.
+        lastSent = false
         if (!options.canManage()) return Promise.resolve(undefined)
         attempted = true
+        lastSent = true
         return guardConflict(() =>
           target === 'new'
             ? options.create(toCreateBody(submitted), ctx)
@@ -509,7 +513,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
       if (!attempted) return false
       // ⑤ 🔴 요청이 나갔으면 성공이든 실패든 다시 부른다 — 404 는 "목록이 낡았다", 409 는 "상태가 갈렸다"
       const applied = await load()
-      if (ok) {
+      if (ok && lastSent) {
         // ⑦ 🔴 만들기는 재조회가 반영되지 않아도 닫는다 — 채운 폼을 남기면 같은 규칙을 또 만든다(useRoleEditor R8)
         setEditor(null)
         if (snapshot.state !== 'ready') pushAlert('warning', messages.savedWithoutPreview)
@@ -572,11 +576,14 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
         messages,
       )
       let attempted = false
+      let lastSent = false
       let conflicted = false
       const send = (ctx: IpWriteContext): Promise<unknown> => {
-        // 🔴 확인 순간에 다시 본다(저장과 같음)
+        // 🔴 확인 순간에 다시 본다(저장과 같음) — 요청마다 lastSent 를 새로 세운다(재인증 재시도 때 권한 회수)
+        lastSent = false
         if (!options.canManage()) return Promise.resolve(undefined)
         attempted = true
+        lastSent = true
         return guardConflict(() => options.remove(rule, { revision: rule.revision }, ctx))
       }
       const common = {
@@ -593,7 +600,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
         : await flow.run({ gate: 'confirm', reversible: false, ...common, action: () => send({}) })
       if (!attempted) return false
       const applied = await load()
-      if (ok) {
+      if (ok && lastSent) {
         await options.onDone?.({ action: 'remove', rule })
         return true
       }

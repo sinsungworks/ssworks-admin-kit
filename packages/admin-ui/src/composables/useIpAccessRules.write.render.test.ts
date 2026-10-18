@@ -341,6 +341,33 @@ describe('useIpAccessRules — 저장', () => {
     expect(onDone).not.toHaveBeenCalled()
     expect(ip.editing.value).toBe('new')
   })
+
+  it('🔴 재인증 실패 뒤 권한이 회수되면 다시 확인해도 성공으로 치지 않는다', async () => {
+    let can = true
+    const create = vi
+      .fn(async (): Promise<unknown> => ({}))
+      .mockRejectedValueOnce(
+        new ApiError('비밀번호가 맞지 않습니다.', {
+          status: 401,
+          code: 'ERR_REAUTH_REQUIRED',
+          raw: null,
+        }),
+      )
+    const { onDone, ip } = await setup({ reauth: true, canManage: () => can, create })
+    await ip.openCreate()
+    await typeCidr(ip, '10.0.0.0/8')
+    const saving = ip.save()
+    await flushPromises()
+    ip.manager.value.reauthDialog.onConfirm('wrong')
+    await flushPromises()
+    expect(ip.manager.value.reauthDialog.modelValue).toBe(true)
+    can = false
+    ip.manager.value.reauthDialog.onConfirm('pw')
+    expect(await saving).toBe(false)
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+    expect(ip.editing.value).toBe('new')
+  })
 })
 
 describe('useIpAccessRules — 삭제', () => {
