@@ -5,6 +5,7 @@ import { defineComponent, h, type Component } from 'vue'
 import type { AdminSessionListItem } from '@ssworks/admin-shared'
 import { ApiError } from '../api/error.js'
 import ConfirmDialog from '../components/common/ConfirmDialog.vue'
+import { type SessionLabelView } from '../components/session/session-table.js'
 import SessionTable from '../components/session/SessionTable.vue'
 import { createAdminUi } from '../context/admin-ui.js'
 import { buttonByText, installVisualViewport, vuetify } from '../test/setup.js'
@@ -379,6 +380,94 @@ describe('useSessions — 목록', () => {
     expect(list).not.toHaveBeenCalled()
     await sessions.reload()
     expect(list).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useSessions — 표 문구', () => {
+  const overlay = () => {
+    const node = document.querySelector<HTMLElement>('.v-overlay--active')
+    expect(node, '가드 — 확인 창이 열렸다').not.toBeNull()
+    return node!
+  }
+
+  it('🔴 키 둘이 table 바인딩을 거쳐 열 제목 · 버튼 · 접근 이름이 되고, 확인 창 제목도 따라온다', async () => {
+    await setup(
+      {
+        list: async () => OTHERS,
+        revokeUser: vi.fn(async () => undefined),
+        messages: { userColumn: '운영자', revokeUserButton: '운영자 전체 끊기' },
+      },
+      { showUser: true },
+    )
+    const heads = [...document.querySelectorAll('thead th')].map((th) => th.textContent?.trim())
+    expect(heads[0]).toBe('운영자')
+    await clickLabel('이(lee) 운영자 전체 끊기')
+    expect(overlay().textContent).toContain('운영자 전체 끊기')
+    expect(overlay().textContent).toContain('「이(lee)」의 모든 세션이 즉시 로그아웃됩니다.')
+    expect(buttonByText('모두 끊기', overlay())).toBeTruthy()
+  })
+
+  it('🔴 내 계정의 확인 창 제목도 버튼 문구를 따른다', async () => {
+    await setup({
+      list: async () => MINE,
+      revokeUser: vi.fn(),
+      messages: { revokeUserButton: '운영자 전체 끊기' },
+    })
+    await clickLabel('김(kim) 운영자 전체 끊기')
+    expect(overlay().textContent).toContain('운영자 전체 끊기')
+    expect(overlay().textContent).toContain('이 계정은 지금 로그인한 당신 자신입니다.')
+  })
+
+  it('revokeUser 확인 문구를 직접 주면 그것이 이긴다', async () => {
+    await setup({
+      list: async () => OTHERS,
+      revokeUser: vi.fn(),
+      messages: {
+        revokeUserButton: '운영자 전체 끊기',
+        revokeUser: (r) => ({
+          title: '접속 모두 차단',
+          message: `${r.userName} 님을 내보냅니다.`,
+          confirmLabel: '차단',
+        }),
+      },
+    })
+    await clickLabel('이(lee) 운영자 전체 끊기')
+    expect(overlay().textContent).toContain('접속 모두 차단')
+    expect(overlay().textContent).toContain('이 님을 내보냅니다.')
+    expect(overlay().textContent).not.toContain('운영자 전체 끊기')
+  })
+
+  it('쓰는 쪽 행 타입으로 적은 접근 이름 함수를 받는다(메서드 꼴 — pnpm typecheck 가 잰다)', async () => {
+    await setup(
+      {
+        list: async () => OTHERS,
+        revokeUser: vi.fn(),
+        messages: {
+          revokeUserButtonLabel: (r: Row, view: SessionLabelView) => `${r.userNo} ${view.button}`,
+        },
+      },
+      { showUser: true },
+    )
+    expect(document.querySelector('button[aria-label="2 사용자 전체 끊기"]')).not.toBeNull()
+  })
+
+  it('🔴 v-bind 뒤에 따로 준 :messages 는 바인딩을 통째로 덮는다 — 병합하지 않는다', async () => {
+    await setup(
+      {
+        list: async () => OTHERS,
+        revokeUser: vi.fn(),
+        messages: { userColumn: '운영자', revokeUserButton: '운영자 전체 끊기' },
+      },
+      { showUser: true, messages: { userColumn: '직접' } },
+    )
+    const heads = [...document.querySelectorAll('thead th')].map((th) => th.textContent?.trim())
+    expect(heads[0]).toBe('직접')
+    expect(document.querySelector('button[aria-label="이(lee) 사용자 전체 끊기"]')).not.toBeNull()
+  })
+
+  it('messages 를 안 주면 table.messages 는 빈 객체다', async () => {
+    const sessions = await setup({ list: async () => MINE })
+    expect(sessions.table.value.messages).toEqual({})
   })
 })
 

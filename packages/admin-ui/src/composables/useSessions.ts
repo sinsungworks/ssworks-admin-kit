@@ -1,5 +1,9 @@
 import { computed, ref, shallowRef, type ComputedRef, type Ref } from 'vue'
-import type { SessionTableRow } from '../components/session/session-table.js'
+import {
+  DEFAULT_SESSION_TABLE_MESSAGES,
+  type SessionTableMessages,
+  type SessionTableRow,
+} from '../components/session/session-table.js'
 import { useAdminUi } from '../context/admin-ui.js'
 import { useServerTable, type ServerTable, type ServerTableOptions } from './useServerTable.js'
 import { useWriteFlow, type ConfirmDialogBindings } from './useWriteFlow.js'
@@ -13,6 +17,8 @@ import { useWriteFlow, type ConfirmDialogBindings } from './useWriteFlow.js'
 //  ② 목록이 전량(`list`)이면 직접, 서버 페이징(`fetch`)이면 `useServerTable` 을 감싼다(관리자 전체 목록).
 //  ③ 동작은 어댑터에 준 것만 생긴다(3c 결정 ④-A1). 성공 문구는 `onRevoked` 로 화면에 맡긴다.
 //  ④ gise 의 "403/404/409 만 재조회, 500 은 다이얼로그 유지" 를 버렸다 — 요청이 나갔으면 늘 재조회한다(D6).
+//  ⑤ 표 문구도 `messages` 가 맡아 `table` 바인딩으로 싣는다. "사용자 전체 끊기" 확인 창 제목의 기본값은 표 버튼
+//     문구(`revokeUserButton`)를 따른다 — 버튼만 바꿔도 창 제목이 같은 말이다(3h S4 · ringside 보고 §3).
 
 export interface SessionDialogText {
   title: string
@@ -20,7 +26,8 @@ export interface SessionDialogText {
   confirmLabel: string
 }
 
-export interface SessionMessages<R> {
+/** 확인 창 문구 넷 + 표 문구(`SessionTableMessages`) — 옵션은 `Partial` 이라 일부만 준다 */
+export interface SessionMessages<R> extends SessionTableMessages {
   revoke: SessionDialogText
   revokeOthers: SessionDialogText
   revokeUser: (row: R) => SessionDialogText
@@ -79,6 +86,8 @@ export interface SessionTableBindings<R> {
   canRevokeUser: boolean
   onRevoke: (row: R) => void
   onRevokeUser: (row: R) => void
+  /** 표 문구 — `useSessions({ messages })` 를 그대로 싣는다. 대화상자 키는 표가 쓰지 않는다 */
+  messages: Partial<SessionTableMessages>
 }
 
 export interface Sessions<R> {
@@ -98,28 +107,33 @@ export interface Sessions<R> {
   serverTable: ServerTable<R> | null
 }
 
-const DEFAULT_MESSAGES: SessionMessages<SessionTableRow> = {
-  revoke: {
-    title: '세션 끝내기',
-    message: '그 브라우저는 즉시 로그아웃되고, 다시 쓰려면 다시 로그인해야 합니다.',
-    confirmLabel: '끝내기',
-  },
-  revokeOthers: {
-    title: '다른 세션 모두 끝내기',
-    message: '이 기기를 뺀 모든 세션이 즉시 로그아웃됩니다.',
-    confirmLabel: '모두 끝내기',
-  },
-  revokeUser: (row) => ({
-    title: '사용자 전체 끊기',
-    message: `「${row.userName ?? ''}(${row.userId ?? ''})」의 모든 세션이 즉시 로그아웃됩니다. 그 사람은 다시 로그인해야 합니다.`,
-    confirmLabel: '모두 끊기',
-  }),
-  revokeUserSelf: () => ({
-    title: '사용자 전체 끊기',
-    message:
-      '이 계정은 지금 로그인한 당신 자신입니다. 확인하는 즉시 이 화면에서도 로그아웃되고, 다시 로그인해야 합니다.',
-    confirmLabel: '모두 끊기',
-  }),
+type SessionDialogMessages = Omit<SessionMessages<SessionTableRow>, keyof SessionTableMessages>
+
+/** 확인 창 기본 문구. 🔴 사용자 전체 끊기의 제목은 표 버튼 문구를 받는다 — 버튼만 바꿔도 같은 말이다(3h S4). */
+function defaultDialogs(revokeUserTitle: string): SessionDialogMessages {
+  return {
+    revoke: {
+      title: '세션 끝내기',
+      message: '그 브라우저는 즉시 로그아웃되고, 다시 쓰려면 다시 로그인해야 합니다.',
+      confirmLabel: '끝내기',
+    },
+    revokeOthers: {
+      title: '다른 세션 모두 끝내기',
+      message: '이 기기를 뺀 모든 세션이 즉시 로그아웃됩니다.',
+      confirmLabel: '모두 끝내기',
+    },
+    revokeUser: (row) => ({
+      title: revokeUserTitle,
+      message: `「${row.userName ?? ''}(${row.userId ?? ''})」의 모든 세션이 즉시 로그아웃됩니다. 그 사람은 다시 로그인해야 합니다.`,
+      confirmLabel: '모두 끊기',
+    }),
+    revokeUserSelf: () => ({
+      title: revokeUserTitle,
+      message:
+        '이 계정은 지금 로그인한 당신 자신입니다. 확인하는 즉시 이 화면에서도 로그아웃되고, 다시 로그인해야 합니다.',
+      confirmLabel: '모두 끊기',
+    }),
+  }
 }
 
 /** 응답에 0 이상 정수 `revokedCount` 가 있을 때만 그 값 */
@@ -157,7 +171,15 @@ export function useSessions<R extends SessionTableRow, F extends object = Record
       const userId = ui?.user()?.userId
       return userId != null && row.userId === userId
     })
-  const messages = { ...DEFAULT_MESSAGES, ...options.messages } as SessionMessages<R>
+  const revokeUserTitle =
+    options.messages?.revokeUserButton ?? DEFAULT_SESSION_TABLE_MESSAGES.revokeUserButton
+  const messages = {
+    ...DEFAULT_SESSION_TABLE_MESSAGES,
+    ...defaultDialogs(revokeUserTitle),
+    ...options.messages,
+  } as SessionMessages<R>
+  /** 표 문구는 컴포넌트가 기본값과 병합한다 — 여기서는 받은 것을 그대로 싣는다(S6 · S7) */
+  const tableMessages: Partial<SessionTableMessages> = options.messages ?? {}
   const immediate = options.immediate !== false
 
   // ── 목록 ──────────────────────────────────────────────────────────
@@ -309,6 +331,7 @@ export function useSessions<R extends SessionTableRow, F extends object = Record
       onRevokeUser: (row) => {
         void revokeUserRow(row)
       },
+      messages: tableMessages,
     }
     const server = serverTable
     if (server != null) {
