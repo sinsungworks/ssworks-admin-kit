@@ -17,6 +17,7 @@ import { stableQueryKey, useQuerySyncedFilter } from './useQuerySyncedFilter.js'
 //  - URL 동기화(gise `useRouteQuerySync`)를 `urlSync` 옵션으로 품는다 — 복원이 감시보다 먼저인 순서를
 //    여기서 보장하고, 복원 중에는 1쪽 되돌리기를 건너뛴다(crm `onInbound` 가 생긴 이유).
 //  - 오류 문구 해석은 하지 않는다 — 알림은 `createApiClient` 의 전역 `onError` 몫이다.
+//  - 기본 정렬 열은 헤더로 내림 ↔ 오름을 오간다(3i O2 — ringside 보고 §7). 다른 열은 오름 → 내림 → 기본 그대로.
 
 export interface ServerTableParams<TFilter> {
   page: number
@@ -102,7 +103,10 @@ export function useServerTable<TRow, TFilter extends object = Record<string, nev
   const filters = options.filters ?? (() => ({}) as TFilter)
   const defaultSort = (): AdminTableSort[] => (sort === false ? [] : [{ ...sort.default }])
 
-  /** 🔴 키가 허용 목록 밖이거나 비었으면(같은 헤더 세 번째 클릭) 기본 정렬. 한 열만 본다(hangang). */
+  /**
+   * 🔴 키가 허용 목록 밖이거나 비었으면 기본 정렬. 한 열만 본다(hangang). 기본 열에서 온 빈 정렬은 `settleSort` 가 먼저
+   *    가른다(3i O2).
+   */
   function normalizeSort(value: readonly AdminTableSort[]): AdminTableSort[] {
     if (sort === false) return []
     const head = value[0]
@@ -110,6 +114,23 @@ export function useServerTable<TRow, TFilter extends object = Record<string, nev
       return [{ key: head.key, order: head.order }]
     }
     return defaultSort()
+  }
+
+  /**
+   * 🔴 헤더 순환의 "정렬 없음"(`[]`)이 기본 열에서 왔으면 반대 방향으로 넘긴다(3i O2). Vuetify 순환은 오름 → 내림 → 없음이라
+   *    기본 정렬이 내림이면 첫 클릭이 곧 "없음" 이고, 그것을 기본값으로 되돌리면 기본 열은 오름에 닿지 못한다(ringside
+   *    보고 §7). 이미 기본 정렬일 때 `[]` 를 넣어 되돌리던 코드는 반대 방향이 된다 — 되돌리기는 `[{ ...기본 }]` 이다(README).
+   *    URL 복원은 `[]` 를 넣지 않으므로(`decodeSort` 는 늘 한 항목) 이 규칙을 타지 않는다.
+   */
+  function settleSort(
+    value: readonly AdminTableSort[],
+    previous: readonly AdminTableSort[] | undefined,
+  ): AdminTableSort[] {
+    const head = previous?.[0]
+    if (sort !== false && value.length === 0 && head?.key === sort.default.key) {
+      return [{ key: head.key, order: head.order === 'asc' ? 'desc' : 'asc' }]
+    }
+    return normalizeSort(value)
   }
 
   const page = ref(1)
@@ -192,8 +213,8 @@ export function useServerTable<TRow, TFilter extends object = Record<string, nev
   // ── 정렬 보정 — ref 자체를 되돌려 라벨 · 화살표 · 요청이 한 값을 본다(hangang).
   watch(
     sortBy,
-    (value) => {
-      const normalized = normalizeSort(value)
+    (value, previous) => {
+      const normalized = settleSort(value, previous)
       const same =
         normalized.length === value.length &&
         normalized.every((s, i) => s.key === value[i]?.key && s.order === value[i]?.order)

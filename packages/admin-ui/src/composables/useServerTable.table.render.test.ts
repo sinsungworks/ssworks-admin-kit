@@ -45,7 +45,10 @@ async function setup(
       const { page, itemsPerPage, sortBy, items, total, loading } = table
       return () =>
         h(DataTableBody, {
-          headers: [{ title: 'ID', key: 'userId' }],
+          headers: [
+            { title: 'ID', key: 'userId' },
+            { title: '가입', key: 'joinAt' },
+          ],
           items: items.value,
           itemsLength: total.value,
           loading: loading.value,
@@ -74,6 +77,13 @@ async function setup(
 
 const pagesOf = (fetch: ReturnType<typeof vi.fn>) =>
   fetch.mock.calls.map((call) => (call[0] as ServerTableParams<unknown>).page)
+
+/** 머리 칸 — 글자로 찾는다(data-testid 를 심지 않는다) */
+function header(title: string) {
+  const th = wrapper!.findAll('th').find((cell) => cell.text().includes(title))
+  expect(th, `가드 — 「${title}」 머리 칸이 있다`).toBeTruthy()
+  return th!
+}
 
 describe('useServerTable + DataTableBody (실물 배선)', () => {
   it('S1: 3쪽에서 조회가 실패해도 3쪽에 머문다 — 조회 1번, URL 의 page=3 유지', async () => {
@@ -106,5 +116,36 @@ describe('useServerTable + DataTableBody (실물 배선)', () => {
     expect(table.page.value).toBe(5)
     expect(table.total.value).toBe(137)
     expect(router.currentRoute.value.query.page).toBe('5')
+  })
+
+  it('🔴 S3: 기본 열 헤더는 내림 → 오름 → 내림으로 돈다(3i O2 — 실제 VDataTableServer 순환)', async () => {
+    const { fetch, table } = await setup('/list', async () => ({ items: rows(3), total: 3 }))
+    expect(table.sortBy.value).toEqual([{ key: 'joinAt', order: 'desc' }])
+    await header('가입').trigger('click')
+    await flushPromises()
+    expect(table.sortBy.value).toEqual([{ key: 'joinAt', order: 'asc' }])
+    expect(fetch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sortBy: ['joinAt'], sortOrder: ['asc'] }),
+    )
+    await header('가입').trigger('click')
+    await flushPromises()
+    expect(table.sortBy.value).toEqual([{ key: 'joinAt', order: 'desc' }])
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('S4: 기본 열 순환은 다른 열에 새지 않는다 — 다른 열은 오름 → 내림 → 기본', async () => {
+    const { table } = await setup('/list', async () => ({ items: rows(3), total: 3 }))
+    await header('가입').trigger('click')
+    await flushPromises()
+    expect(table.sortBy.value).toEqual([{ key: 'joinAt', order: 'asc' }])
+    await header('ID').trigger('click')
+    await flushPromises()
+    expect(table.sortBy.value).toEqual([{ key: 'userId', order: 'asc' }])
+    await header('ID').trigger('click')
+    await flushPromises()
+    expect(table.sortBy.value).toEqual([{ key: 'userId', order: 'desc' }])
+    await header('ID').trigger('click')
+    await flushPromises()
+    expect(table.sortBy.value).toEqual([{ key: 'joinAt', order: 'desc' }])
   })
 })

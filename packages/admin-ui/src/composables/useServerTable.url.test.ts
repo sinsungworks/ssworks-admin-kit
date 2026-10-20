@@ -83,6 +83,26 @@ describe('useServerTable — urlSync', () => {
     expect(router.currentRoute.value.query).toEqual({ sort: 'userId:asc', size: '50' })
   })
 
+  it('기본 열 오름은 sort=joinAt:asc 로 싣는다 · 🔴 정렬 없는 URL 로 돌아가면 기본(내림)이다(3i O3)', async () => {
+    const { router, table } = await setup('/list')
+    table().sortBy.value = []
+    await flushPromises()
+    expect(table().sortBy.value).toEqual([{ key: 'joinAt', order: 'asc' }])
+    expect(router.currentRoute.value.query).toEqual({ sort: 'joinAt:asc' })
+    await router.push('/list')
+    await flushPromises()
+    expect(table().sortBy.value).toEqual([{ key: 'joinAt', order: 'desc' }])
+  })
+
+  it('sort=joinAt:asc 를 복원한다 — 첫 조회가 오름', async () => {
+    const { fetch, table } = await setup('/list?sort=joinAt:asc')
+    expect(table().sortBy.value).toEqual([{ key: 'joinAt', order: 'asc' }])
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledWith(
+      expect.objectContaining({ sortBy: ['joinAt'], sortOrder: ['asc'] }),
+    )
+  })
+
   it('필터를 바꾸면 URL 에 싣고 쪽 키는 사라진다(1쪽)', async () => {
     const { router, table, filter } = await setup('/list?page=3')
     filter.value = { q: '김' }

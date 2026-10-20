@@ -172,8 +172,10 @@ describe('useServerTable — 1쪽 되돌리기 · 정렬 보정', () => {
     expect(table().itemsPerPage.value).toBe(20)
   })
 
-  it('🔴 빈 정렬(같은 헤더 세 번째 클릭) · 목록 밖 키는 기본 정렬로 되돌리고 다시 조회하지 않는다', async () => {
+  it('🔴 다른 열에서 온 빈 정렬(그 헤더 세 번째 클릭) · 목록 밖 키는 기본 정렬로', async () => {
     const { fetch, table } = setup()
+    await flushPromises()
+    table().sortBy.value = [{ key: 'userId', order: 'desc' }]
     await flushPromises()
     table().sortBy.value = []
     await flushPromises()
@@ -181,7 +183,35 @@ describe('useServerTable — 1쪽 되돌리기 · 정렬 보정', () => {
     table().sortBy.value = [{ key: 'password', order: 'asc' }]
     await flushPromises()
     expect(table().sortBy.value).toEqual([{ key: 'joinAt', order: 'desc' }])
-    expect(fetch).toHaveBeenCalledTimes(1)
+    // 첫 조회 · userId 내림 · 기본으로 돌아옴 — 목록 밖 키는 지금과 같아 다시 조회하지 않는다
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('🔴 기본 열에서 온 빈 정렬은 반대 방향 — 기본 열은 내림 ↔ 오름(3i O2)', async () => {
+    const { fetch, table } = setup()
+    await flushPromises()
+    table().sortBy.value = []
+    await flushPromises()
+    expect(table().sortBy.value).toEqual([{ key: 'joinAt', order: 'asc' }])
+    expect(fetch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sortBy: ['joinAt'], sortOrder: ['asc'] }),
+    )
+    table().sortBy.value = []
+    await flushPromises()
+    expect(table().sortBy.value).toEqual([{ key: 'joinAt', order: 'desc' }])
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('기본 방향이 오름이어도 기본 열은 두 방향을 오간다', async () => {
+    const { table } = setup({
+      sort: { keys: ['userId', 'joinAt'], default: { key: 'joinAt', order: 'asc' } },
+    })
+    await flushPromises()
+    table().sortBy.value = [{ key: 'joinAt', order: 'desc' }]
+    await flushPromises()
+    table().sortBy.value = []
+    await flushPromises()
+    expect(table().sortBy.value).toEqual([{ key: 'joinAt', order: 'asc' }])
   })
 
   it('sort: false 면 sortBy · sortOrder 를 빈 배열로 보낸다', async () => {
