@@ -16,6 +16,7 @@ export { AdminEnvelopeInterceptor, RawResponse } from './http/envelope.intercept
 export { AdminExceptionFilter } from './http/exception.filter.js'
 export { ZodValidationPipe, ParseBigIntPipe } from './http/pipes.js'
 export { validationError } from './http/validation.js'
+export { ADMIN_SERVER_DEFAULT_MESSAGES, type AdminServerMessages } from './http/messages.js'
 export { LIKE_ESCAPE, escapeLike, likeContains, likePrefix } from './database/like.js'
 
 // 인증(PR 2b)

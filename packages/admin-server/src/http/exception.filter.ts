@@ -9,7 +9,7 @@ import {
 import { CommonErrorCodes, stringifyJSON } from '@ssworks/admin-shared'
 import type { Request, Response } from 'express'
 import type { AdminServerOptions } from '../options.js'
-import { ADMIN_SERVER_OPTIONS } from '../tokens.js'
+import { ADMIN_MESSAGE_OVERRIDES, ADMIN_SERVER_OPTIONS } from '../tokens.js'
 import {
   GENERIC_5XX_MESSAGE,
   resolveErrorResponse,
@@ -17,6 +17,7 @@ import {
   type ResolvedErrorResponse,
 } from './error-response.js'
 import { stringifyForLog, toJsonSafe } from './json-safe.js'
+import { applyMessageOverrides } from './messages.js'
 
 // 정본: ssworks-gise-home apps/api/src/core/filters/business-exception.filter.ts(`@Catch()` 전부 · 소독 경계 · 5xx 마스킹 ·
 //       "반드시 응답" · logSafely · 상태 정규화) + hangang-home business-exception.filter.ts(stringifyJSON 으로 직접 보냄)
@@ -28,6 +29,7 @@ import { stringifyForLog, toJsonSafe } from './json-safe.js'
 //  - Express 층 `http-errors`(본문 초과 413 — Nest 가 그대로 넘긴다)를 그 상태로 받는다. gise 는 500 이었다.
 //  - 헤더가 이미 나갔으면 다시 보내지 않고 응답을 닫는다(스펙 R5).
 //  - 로그는 문자열 하나로 — Nest `Logger.error(message, second)` 는 둘째 문자열이 스택처럼 보이지 않으면 context 로 읽는다.
+//  - 쓰는 쪽 문구 덮기(2g M6 · M7) — 4xx 본문만, 바꾸기가 던지면 원문을 보낸다.
 
 /** Express 5 의 `res.status()` 는 정수가 아니거나 범위 밖이면 던진다(gise). */
 function normalizeStatus(status: number): number {
@@ -67,6 +69,10 @@ export class AdminExceptionFilter implements ExceptionFilter {
 
   constructor(
     @Optional() @Inject(ADMIN_SERVER_OPTIONS) private readonly options?: AdminServerOptions,
+    // 🔴 @Optional — 코어 모듈 밖에서 필터만 쓰는 배선(테스트 · 쓰는 쪽 수동 등록)은 덮기 없이 돈다
+    @Optional()
+    @Inject(ADMIN_MESSAGE_OVERRIDES)
+    private readonly overrides?: ReadonlyMap<string, string>,
   ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
@@ -100,7 +106,27 @@ export class AdminExceptionFilter implements ExceptionFilter {
         },
       }
     }
-    this.send(response, request, normalizeStatus(resolved.status), resolved.body)
+    this.send(response, request, normalizeStatus(resolved.status), this.localize(resolved, request))
+  }
+
+  /**
+   * 쓰는 쪽 문구 덮기(2g M6) — 4xx 본문의 message · details.issues[].message. 🔴 던지면 바꾸지 않은 본문을 보낸다 — 바꾸기
+   * 실패가 4xx 를 500 으로 만들지 않는다(M7, "반드시 응답").
+   */
+  private localize(resolved: ResolvedErrorResponse, request: Request | undefined): ErrorBody {
+    const overrides = this.overrides
+    if (overrides === undefined || overrides.size === 0 || resolved.status >= 500) {
+      return resolved.body
+    }
+    try {
+      return applyMessageOverrides(resolved.body, overrides)
+    } catch (error) {
+      this.logSafely(
+        `${describeRequest(request)} — 문구 덮기 실패(원문을 보낸다)`,
+        describeReason(error),
+      )
+      return resolved.body
+    }
   }
 
   /** 🔴 클라이언트로 나가는 유일한 출구. 본문 전체가 소독 경계를 지난다. */

@@ -16,6 +16,7 @@ import { AdminAuthModule } from './auth/admin-auth.module.js'
 import { createAdminKysely } from './database/kysely.js'
 import { AdminEnvelopeInterceptor } from './http/envelope.interceptor.js'
 import { AdminExceptionFilter } from './http/exception.filter.js'
+import { resolveAdminMessages } from './http/messages.js'
 import type {
   AdminServerAsyncOptions,
   AdminServerOptions,
@@ -23,7 +24,7 @@ import type {
 } from './options.js'
 import { AdminRolesModule } from './roles/roles.module.js'
 import { AdminSessionsModule } from './sessions/sessions.module.js'
-import { ADMIN_SERVER_OPTIONS, KYSELY } from './tokens.js'
+import { ADMIN_MESSAGE_OVERRIDES, ADMIN_SERVER_OPTIONS, KYSELY } from './tokens.js'
 import { AdminUsersModule } from './users/users.module.js'
 import { AdminTeamsModule } from './teams/teams.module.js'
 import { AdminIpAccessModule } from './ip-access/ip-access.module.js'
@@ -31,6 +32,7 @@ import { AdminLegalModule } from './legal/legal.module.js'
 
 // 정본: hangang-home apps/api/src/app.module.ts(전역 필터 · 가드를 DI 로) · gise database.module.ts(onModuleDestroy)
 // 바꾼 점: 패키지 코어 모듈이다 — 기능 모듈은 쓰는 쪽 app.module.ts(B)가 골라 import 한다(Phase 2 결정 ④ R2).
+// 2g: 문구 덮기 표(ADMIN_MESSAGE_OVERRIDES)를 코어 provider 로 — 예외 필터가 주입받는다.
 
 /**
  * 패키지가 아는 기능 모듈 — `routePrefix` 를 붙일 대상. 쓰는 쪽이 import 하지 않은 모듈은 `RouterModule` 이 건너뛴다
@@ -123,6 +125,12 @@ export function buildAdminServerModule(
       {
         provide: KYSELY,
         useFactory: (options: AdminServerOptions) => createAdminKysely(options.db),
+        inject: [ADMIN_SERVER_OPTIONS],
+      },
+      // 🔴 기동 때 검증된다 — 오타 · 충돌이 첫 오류 응답이 아니라 기동에서 드러난다(2g M5). forRootAsync 도 같다
+      {
+        provide: ADMIN_MESSAGE_OVERRIDES,
+        useFactory: (options: AdminServerOptions) => resolveAdminMessages(options.messages),
         inject: [ADMIN_SERVER_OPTIONS],
       },
       { provide: APP_FILTER, useClass: AdminExceptionFilter },

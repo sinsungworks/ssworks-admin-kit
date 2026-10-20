@@ -4,9 +4,11 @@ import { defineErrorCodes } from '@ssworks/admin-shared'
 import { Kysely } from 'kysely'
 import request from 'supertest'
 import { describe, expect, it, vi } from 'vitest'
+import { AdminAuthModule } from './auth/admin-auth.module.js'
 import { AdminServerModule, buildAdminServerModule } from './admin-server.module.js'
 import type { AdminServerOptions } from './options.js'
 import { createHttpApp } from './test-support/http.js'
+import { TEST_JWT_SECRET } from './test-support/auth.js'
 import { ProbeModule } from './test-support/probe.js'
 import { ADMIN_SERVER_OPTIONS, KYSELY } from './tokens.js'
 
@@ -165,5 +167,49 @@ describe('🔴 부팅 검사', () => {
       .compile()
     await expect(ref.init()).resolves.toBeDefined()
     await ref.close()
+  })
+})
+
+describe('messages(2g M5)', () => {
+  it('🔴 forRoot — 덮은 문구가 실제 킷 오류 응답에 나온다(인증 401)', async () => {
+    const { app } = await boot(
+      AdminServerModule.forRoot({
+        db,
+        auth: { jwtSecret: TEST_JWT_SECRET },
+        messages: { auth: { unauthorized: '운영자 로그인이 필요합니다.' } },
+      }),
+      [AdminAuthModule],
+    )
+    try {
+      const res = await request(app.getHttpServer()).get('/admin/auth/me').expect(401)
+      expect(res.body).toMatchObject({
+        success: false,
+        code: 'ERR_COMMON_UNAUTHORIZED',
+        message: '운영자 로그인이 필요합니다.',
+      })
+    } finally {
+      await app.close()
+    }
+  })
+
+  it('🔴 forRoot · forRootAsync — 오타는 기동에서 멈춘다', async () => {
+    await expect(
+      boot(
+        AdminServerModule.forRoot({
+          db,
+          messages: { accounts: { noUsr: 'x' } } as unknown as AdminServerOptions['messages'],
+        }),
+      ),
+    ).rejects.toThrow('모르는 키: accounts.noUsr')
+    await expect(
+      boot(
+        AdminServerModule.forRootAsync({
+          useFactory: () => ({
+            db,
+            messages: { acounts: {} } as unknown as AdminServerOptions['messages'],
+          }),
+        }),
+      ),
+    ).rejects.toThrow('모르는 묶음: acounts')
   })
 })

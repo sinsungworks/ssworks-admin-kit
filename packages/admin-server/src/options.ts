@@ -6,6 +6,7 @@ import type { AdminAuthOptions } from './auth/options.js'
 import type { AdminPermissionMap } from './auth/permission-slots.js'
 import type { AdminClientIpSource } from './auth/request-meta.js'
 import type { AdminDbConnection } from './database/connection.js'
+import type { AdminServerMessages } from './http/messages.js'
 import type { AdminLegalOptions } from './legal/options.js'
 
 export interface AdminServerOptions {
@@ -52,6 +53,12 @@ export interface AdminServerOptions {
    * IP 접근 제어를 우회한다. 세션 행 · 감사 · IP 정책이 같은 값을 본다. 두 값 밖이면 기동에서 멈춘다.
    */
   clientIp?: AdminClientIpSource
+  /**
+   * 서버 오류 문구를 키별로 덮는다(2g M1–M9) — 예: `{ accounts: { noUser: '운영자를 찾을 수 없습니다.' } }`. 키는
+   * `ADMIN_SERVER_DEFAULT_MESSAGES`. 🔴 같은 기본 글자는 함께 바뀐다(`accounts.noUser` = `sessions.noUser`). 오타 · 같은 글자를
+   * 다르게 덮기는 기동에서 멈춘다. 4xx 의 `message` · `details.issues[].message` 만 — 5xx 고정 문구 · 로그 · 감사는 그대로.
+   */
+  messages?: AdminServerMessages
 }
 
 /** 정적 옵션 — `RouterModule` 이 모듈 정의 시점의 값을 요구한다(스펙 F2). */

@@ -13,8 +13,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import type { AdminServerOptions } from '../options.js'
 import { createHttpApp } from '../test-support/http.js'
 import { ProbeModule } from '../test-support/probe.js'
-import { ADMIN_SERVER_OPTIONS } from '../tokens.js'
+import { ADMIN_MESSAGE_OVERRIDES, ADMIN_SERVER_OPTIONS } from '../tokens.js'
 import { AdminEnvelopeInterceptor } from './envelope.interceptor.js'
+import { GENERIC_5XX_MESSAGE } from './error-response.js'
 import { AdminExceptionFilter } from './exception.filter.js'
 
 const projectErrors = defineErrorCodes(
@@ -338,6 +339,88 @@ describe('errorCodes 가 없을 때', () => {
       await request(plain.getHttpServer()).get('/probe/business/ERR_PROJECT_GONE').expect(500)
     } finally {
       await plain.close()
+    }
+  })
+})
+
+describe('문구 덮기(2g M6 · M7)', () => {
+  async function bootWith(overrides: ReadonlyMap<string, string>) {
+    const meta = wiring(options)
+    return createHttpApp({
+      ...meta,
+      providers: [
+        ...(meta.providers ?? []),
+        { provide: ADMIN_MESSAGE_OVERRIDES, useValue: overrides },
+      ],
+    })
+  }
+
+  it('4xx 의 message 를 표로 바꾸고 code · details 는 그대로', async () => {
+    const local = await bootWith(new Map([['업무 오류 ERR_COMMON_NOT_FOUND', '덮인 404 문구']]))
+    try {
+      const res = await request(local.getHttpServer())
+        .get('/probe/business/ERR_COMMON_NOT_FOUND')
+        .expect(404)
+      expect(wire(res.text)).toEqual({
+        success: false,
+        code: 'ERR_COMMON_NOT_FOUND',
+        message: '덮인 404 문구',
+        details: { field: 'x', n: 3n },
+      })
+    } finally {
+      await local.close()
+    }
+  })
+
+  it('400 검증 — issues[].message 도 바꾸고, 표에 없는 문구는 그대로', async () => {
+    const plain = await request(server)
+      .post('/probe/validate')
+      .send({ name: 'a', members: [{ name: '' }] })
+      .expect(400)
+    const plainIssues = validationDetailsSchema.parse(plain.body.details).issues
+    const overrides = new Map([['이름을 입력하세요.', '이름을 꼭 넣으세요.']])
+    const local = await bootWith(overrides)
+    try {
+      const res = await request(local.getHttpServer())
+        .post('/probe/validate')
+        .send({ name: 'a', members: [{ name: '' }] })
+        .expect(400)
+      const issues = validationDetailsSchema.parse(res.body.details).issues
+      expect(issues[1]?.message).toBe('이름을 꼭 넣으세요.')
+      expect(issues[0]?.message).toBe(plainIssues[0]?.message)
+      expect(res.body.message).toBe(overrides.get(plain.body.message) ?? plain.body.message)
+    } finally {
+      await local.close()
+    }
+  })
+
+  it('5xx 는 고정 문구 그대로 — 표에 고정 문구가 있어도', async () => {
+    const local = await bootWith(new Map([[GENERIC_5XX_MESSAGE, '바뀌면 안 된다']]))
+    try {
+      silenceErrors()
+      const res = await request(local.getHttpServer()).get('/probe/string-throw').expect(500)
+      expect(res.body.message).toBe(GENERIC_5XX_MESSAGE)
+    } finally {
+      await local.close()
+    }
+  })
+
+  it('🔴 바꾸기가 던지면 원문 4xx 를 보낸다 — 500 이 되지 않는다(M7)', async () => {
+    class Exploding extends Map<string, string> {
+      get(): string | undefined {
+        throw new Error('boom')
+      }
+    }
+    const local = await bootWith(new Exploding([['x', 'y']]))
+    try {
+      const spy = silenceErrors()
+      const res = await request(local.getHttpServer())
+        .get('/probe/business/ERR_COMMON_NOT_FOUND')
+        .expect(404)
+      expect(res.body.message).toBe('업무 오류 ERR_COMMON_NOT_FOUND')
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('문구 덮기 실패'))
+    } finally {
+      await local.close()
     }
   })
 })

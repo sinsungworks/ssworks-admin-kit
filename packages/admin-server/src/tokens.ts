@@ -57,3 +57,6 @@ export const IP_ACCESS_ENABLED = Symbol('IP_ACCESS_ENABLED')
 
 /** 내부 — 해석된 IP 설정(`ResolvedIpAccessConfig` — reauth · clientIp). `AdminIpAccessModule` 이 코어 옵션으로 만든다(2f-1) */
 export const ADMIN_IP_ACCESS_CONFIG = Symbol('ADMIN_IP_ACCESS_CONFIG')
+
+/** 내부 — 쓰는 쪽 문구 덮기 표(기본 글자 → 덮을 글자). 코어 모듈이 `messages` 옵션으로 기동 때 만든다(2g M5). index 에 내지 않는다 */
+export const ADMIN_MESSAGE_OVERRIDES = Symbol('ADMIN_MESSAGE_OVERRIDES')
