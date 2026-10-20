@@ -212,6 +212,9 @@ describe('useServerTable — 1쪽 되돌리기 · 정렬 보정', () => {
     table().sortBy.value = []
     await flushPromises()
     expect(table().sortBy.value).toEqual([{ key: 'joinAt', order: 'asc' }])
+    table().sortBy.value = []
+    await flushPromises()
+    expect(table().sortBy.value).toEqual([{ key: 'joinAt', order: 'desc' }])
   })
 
   it('sort: false 면 sortBy · sortOrder 를 빈 배열로 보낸다', async () => {

@@ -1110,15 +1110,20 @@ const ip = useIpAccessRules({
 🔴 한 단어를 일괄 치환하는 옵션은 없다 — 한국어 조사(을/를 · 은/는)가 단어의 받침에 따라 바뀐다. 키별로 덮는다.
 
 덮은 결과에 옛 말이 남지 않았는지는 테스트로 잰다 — 킷을 올려 문구가 늘면 잡힌다. 함수 문구는 불러서 잰다.
+IP 문구는 숫자 하나로 불러도 던지지 않는다 — 다른 표(세션 표의 `(row, view)` 꼴 문구)는 키별 인자로 부른다.
 
 ```ts
 import { DEFAULT_IP_ACCESS_MESSAGES } from '@ssworks/admin-ui'
 import { ipMessages } from './ip-messages'
 
+/** 함수 문구는 불러서 글자로 — IP 문구는 숫자 하나로 불러도 던지지 않는다 */
+const textOf = (value: unknown): unknown =>
+  typeof value === 'function' ? String((value as (...args: unknown[]) => unknown)(3)) : value
+
 it('IP 화면 문구에 "사용자" 가 남지 않았다', () => {
   const merged = { ...DEFAULT_IP_ACCESS_MESSAGES, ...ipMessages }
   const left = Object.entries(merged)
-    .map(([key, value]) => [key, typeof value === 'function' ? String(value(3)) : value] as const)
+    .map(([key, value]) => [key, textOf(value)] as const)
     .filter(([, text]) => typeof text === 'string' && text.includes('사용자'))
   expect(left).toEqual([])
 })

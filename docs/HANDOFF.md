@@ -201,6 +201,7 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
     - ③ 세션 표 문구: `useSessions({ …, messages: { userColumn: '운영자', revokeUserButton: '운영자 전체 끊기' } })` — 열 · 버튼 · 접근 이름 · 확인 창 제목이 함께 바뀐다. 표에 `:messages` 를 따로 주지 않는다.
     - ④ 권한 매트릭스: 코드 변경 없음(0.8.0 이면 같은 순번 열이 한 줄). 매트릭스를 `table` · `thead th` 단위로 재는 테스트가 있으면 `tbody` · `th[scope]` 로 고친다.
   - **템플릿 세션 입력**(`kim5257-project-template` `preset/admin` — push 는 사람): 킷 핀 0.5.0 → 0.8.0 · `packages/frontend/vite.config.mts` 의 `plugins` 에 `vuetifyLayerOrder()`(순서 무관) · `pages/settings.vue:26` · `teams.vue:130` 의 `64px` → `var(--v-layout-top, 64px)` · 감사 로그 · IP 접근 제어 페이지(「PR #3f 가 넘긴 것」 · 「PR #3g 가 넘긴 것」) · PermissionMatrix 를 표 단위로 재는 템플릿 테스트 확인.
+  - 사람이 확인할 것: 측정 스크립트에서 재인증 창이 열린 채 해시 경로를 바꾸면 다음 화면의 표 머리 칸이 잡히지 않았다(경로마다 새로 고쳐 비켜 감 — 검증 기록 §4). 열린 재인증 창이 다음 화면을 막는 킷 결함인지는 가리지 않았다.
 - **PR #3i 가 넘긴 것(2026-10-20)** — 입력 `docs/reports/2026-10-20-admin-kit-report.md` · 스펙 `docs/superpowers/specs/2026-10-20-admin-kit-ringside-feedback-2-design.md`
   - 실서버 확인이 넘긴 결함 ①(기본 정렬 열 오름)은 이 PR 에서 닫음. ②(조회 실패 직후 빈 상태)는 그대로.
   - R5 실측(Chrome 155, density compact · hideDetails auto): 세로 폼 오류 문구와 다음 칸 라벨이 간격 없음에서 7px 겹치고 gap 12px 에서 -5px 로 떨어진다 — 검증 기록 `docs/verification/2026-10-20-admin-kit-ringside-feedback-2.md` §3.

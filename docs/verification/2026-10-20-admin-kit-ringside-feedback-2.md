@@ -12,6 +12,7 @@
 
 - tarball: admin-shared 0.8.0 · admin-ui 0.8.0
 - `vue-tsc --noEmit` 통과 · `vite build` 통과(진입점 둘: index · measure) — 새 export 아홉 · `scopes` 타입 사용
+- `ReauthDialog` 의 `prompt?: string` 이 발행 d.ts 에 있다(최종 리뷰 확인 — 스모크 App.vue 는 쓰지 않았다).
 
 ## 3. 실브라우저(Google Chrome 155.0.8059.82, 1600×1000)
 
@@ -26,6 +27,6 @@
 
 ## 4. 남은 것
 
-- 측정 스크립트에서 같은 페이지의 해시 이동(`#/reauth` → `#/table`) 뒤에는 표 헤더를 찾지 못해(재인증 대화상자 뒤 라우트 전환) 각 경로 진입 뒤 `page.reload` 를 더했다. 킷 결함인지는 가리지 않았다 — 필요하면 사람이 재인증 대화상자를 연 채 라우트를 옮겨 본다.
+- 측정 스크립트에서 같은 페이지의 해시 이동(`#/reauth` → `#/table`) 뒤에는 표 헤더를 찾지 못했다 — 원인 미확인, 재인증 대화상자가 열린 채 해시 경로를 바꾼 뒤라는 것만 안다(추정). 각 경로 진입 뒤 `page.reload` 를 더했다. 킷 결함인지는 가리지 않았다 — 필요하면 사람이 재인증 대화상자를 연 채 라우트를 옮겨 본다.
 - 스모크 App.vue 는 새 공개 이름을 이름으로 import 하고 `import * as kit` 로 export 수를 센다(모든 export 를 하나씩 쓰지는 않았다).
 - 2g 가 §5 이후를 더한다.

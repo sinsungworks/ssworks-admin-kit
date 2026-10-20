@@ -97,7 +97,7 @@
       <VCardTitle>{{ title }}</VCardTitle>
       <VCardText>
         <p v-if="message" class="mb-2 text-body-2">{{ message }}</p>
-        <p class="mb-4 text-body-2">{{ prompt }}</p>
+        <p v-if="prompt" class="mb-4 text-body-2">{{ prompt }}</p>
         <VAlert v-if="error" class="mb-4" density="compact" type="error" variant="tonal">
           {{ error }}
         </VAlert>

@@ -21,6 +21,9 @@ describe('기본 문구 export(3i E1–E4)', () => {
     expect(value).toBeTypeOf('object')
     expect(Object.keys(value).length).toBeGreaterThan(0)
     expect(Object.isFrozen(value)).toBe(true)
+    for (const nested of Object.values(value)) {
+      if (typeof nested === 'object' && nested !== null) expect(Object.isFrozen(nested)).toBe(true)
+    }
   })
 
   it('🔴 기본값에 대입하면 던진다(strict) — 킷 기본값이 바뀌지 않는다', () => {

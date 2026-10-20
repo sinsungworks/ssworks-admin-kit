@@ -62,11 +62,16 @@ export interface LegalDocumentEditorMessages {
   conflict: (publishedAt: string | null) => string
   publish: string
   /** 발행이 막힌 이유 — `loading` 은 진행 막대가 대신한다 */
-  blocked: Record<Exclude<LegalPublishBlock, 'loading'>, string>
+  blocked: Readonly<Record<Exclude<LegalPublishBlock, 'loading'>, string>>
   historyTitle: string
   historyFailed: string
   historyEmpty: string
-  headers: { legalDocNo: string; publishedAt: string; publisher: string; contentHash: string }
+  headers: Readonly<{
+    legalDocNo: string
+    publishedAt: string
+    publisher: string
+    contentHash: string
+  }>
   view: string
   viewLabel: (legalDocNo: bigint) => string
   detailTitle: string
@@ -99,22 +104,22 @@ export const DEFAULT_LEGAL_DOCUMENT_EDITOR_MESSAGES: Readonly<LegalDocumentEdito
         ? `다른 관리자가 새 버전을 ${CONFLICT_TAIL}`
         : `다른 관리자가 ${publishedAt}에 새 버전을 ${CONFLICT_TAIL}`,
     publish: '새 버전 발행',
-    blocked: {
+    blocked: Object.freeze({
       readonly: '발행 권한이 없습니다.',
       loadFailed: '현재본을 불러온 뒤 발행할 수 있습니다.',
       empty: '본문을 입력하세요.',
       tooLong: `본문은 ${LEGAL_BODY_MAX_LENGTH.toLocaleString('en-US')}자를 넘을 수 없습니다.`,
       unchanged: '시행 중인 판과 내용이 같습니다.',
-    },
+    }),
     historyTitle: '발행 이력',
     historyFailed: '발행 이력을 불러오지 못했습니다. 아래 목록이 최신이 아닐 수 있습니다.',
     historyEmpty: '발행 이력이 없습니다.',
-    headers: {
+    headers: Object.freeze({
       legalDocNo: '번호',
       publishedAt: '발행일',
       publisher: '발행자',
       contentHash: '해시',
-    },
+    }),
     view: '보기',
     viewLabel: (legalDocNo) => `${legalDocNo}번 판 원문 보기`,
     detailTitle: '판 원문',

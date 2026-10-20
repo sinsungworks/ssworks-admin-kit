@@ -306,11 +306,35 @@ describe('useIpAccessRules — 층 목록 scopes(3i)', () => {
     await ip.openCreate()
     ip.manager.value['onUpdate:form']({ ...ip.form.value, scopeType: 'team', scopeRefNo: '4' })
     expect(ip.form.value.scopeType).toBe('global')
+    expect(ip.form.value).toEqual({
+      scopeType: 'global',
+      scopeRefNo: '',
+      cidr: '',
+      description: '',
+    })
     expect(await ip.closeEditor()).toBe(true)
     await ip.openEdit(TEAM)
     ip.manager.value['onUpdate:form']({ ...ip.form.value, scopeType: 'user' })
     ip.manager.value['onUpdate:form']({ ...ip.form.value, scopeType: 'team' })
     expect(ip.form.value.scopeType).toBe('user')
+  })
+})
+
+describe('useIpAccessRules — scopes 검증(3i)', () => {
+  it('🔴 빈 scopes · 모르는 값은 setup 에서 던진다', () => {
+    const adapters = {
+      list: vi.fn(async () => RULES),
+      preview: vi.fn(async (_query: AdminIpPreviewQuery) => previewResult()),
+      create: vi.fn(async () => ({})),
+      update: vi.fn(async () => ({})),
+      remove: vi.fn(async () => ({})),
+    }
+    expect(() => useIpAccessRules({ ...adapters, canManage: () => true, scopes: [] })).toThrow(
+      /scopes/,
+    )
+    expect(() =>
+      useIpAccessRules({ ...adapters, canManage: () => true, scopes: ['teams' as 'team'] }),
+    ).toThrow(/teams/)
   })
 })
 

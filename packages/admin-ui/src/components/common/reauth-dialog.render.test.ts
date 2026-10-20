@@ -75,6 +75,11 @@ describe('ReauthDialog — 필드 이름은 계약이다', () => {
     ])
   })
 
+  it('빈 prompt 면 안내 문단을 그리지 않는다', async () => {
+    await mountDialog({ message: '설명', prompt: '' })
+    expect(paragraphs()).toEqual(['설명'])
+  })
+
   it('설명이 비면 안내 문단 하나', async () => {
     await mountDialog()
     expect(paragraphs()).toEqual(['현재 비밀번호를 입력하세요.'])
