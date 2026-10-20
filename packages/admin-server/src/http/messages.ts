@@ -39,7 +39,8 @@ export type AdminServerMessages = {
 /**
  * 쓰는 쪽 덮기를 "기본 글자 → 덮을 글자" 표로 편다(2g M3).
  * 🔴 기동에서 멈춘다(문제를 모아 한 번에): 모르는 묶음 · 키(오타), 문자열이 아니거나 trim 해서 빈 값, 같은 기본 글자를 서로 다르게
- *    덮음(M4 — `accounts.noUser` 와 `sessions.noUser` 는 같은 글자다. 같은 값이면 된다). 기본값과 같은 덮기는 표에 넣지 않는다.
+ *    덮음(M4 — `accounts.noUser` 와 `sessions.noUser` 는 같은 글자다. 같은 값이면 된다). 기본값과 같은 덮기는 표에 넣지 않는다
+ *    — 그래도 그 자리의 주장으로 보고 충돌을 잰다(같은 글자의 다른 자리를 다르게 덮으면 멈춘다).
  */
 export function resolveAdminMessages(
   messages: AdminServerMessages | undefined,
@@ -47,8 +48,7 @@ export function resolveAdminMessages(
   const tables = ADMIN_SERVER_DEFAULT_MESSAGES as unknown as Readonly<
     Record<string, Readonly<Record<string, string>>>
   >
-  const overrides = new Map<string, string>()
-  const origin = new Map<string, string>()
+  const claims = new Map<string, { value: string; place: string }>()
   const problems: string[] = []
   for (const [group, entries] of Object.entries(messages ?? {})) {
     const table = Object.hasOwn(tables, group) ? tables[group] : undefined
@@ -72,22 +72,23 @@ export function resolveAdminMessages(
         continue
       }
       const base = table[key] as string
-      if (value === base) continue
-      const earlier = overrides.get(base)
-      if (earlier !== undefined && earlier !== value) {
-        problems.push(
-          `같은 기본 문구를 다르게 덮는다: ${origin.get(base) ?? '?'} · ${place} — 「${base}」`,
-        )
+      // 기본값과 같은 값도 "이 자리는 기본 그대로" 라는 주장이다 — 충돌을 재고, 표에는 마지막에 다른 것만 옮긴다.
+      const earlier = claims.get(base)
+      if (earlier !== undefined && earlier.value !== value) {
+        problems.push(`같은 기본 문구를 다르게 덮는다: ${earlier.place} · ${place} — 「${base}」`)
         continue
       }
-      overrides.set(base, value)
-      if (!origin.has(base)) origin.set(base, place)
+      if (earlier === undefined) claims.set(base, { value, place })
     }
   }
   if (problems.length > 0) {
     throw new Error(
       `AdminServerModule 옵션 messages 를 해석할 수 없다 — ${problems.join(' / ')}. 키는 ADMIN_SERVER_DEFAULT_MESSAGES 에 있다.`,
     )
+  }
+  const overrides = new Map<string, string>()
+  for (const [base, claim] of claims) {
+    if (claim.value !== base) overrides.set(base, claim.value)
   }
   return overrides
 }

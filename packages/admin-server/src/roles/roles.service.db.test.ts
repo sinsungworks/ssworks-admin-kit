@@ -367,6 +367,16 @@ describe('재인증(reauth: true)', () => {
 })
 
 describe('전권 전용 키(2g F3 · F5)', () => {
+  it('🔴 400 이 403 판정보다 먼저다 — 좁은 행위자가 전권 전용 키로 만들어도 400(2g F4)', async () => {
+    const error = await rejection(() =>
+      service.create(
+        { roleName: 'fa-narrow', isDefault: false, permissions: ['setting.ipAccess:write'] },
+        manager,
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
+  })
+
   it('🔴 일반 역할 만들기에 전권 전용 키가 있으면 400 issues permissions · 행이 없다', async () => {
     const error = await rejection(() =>
       service.create(

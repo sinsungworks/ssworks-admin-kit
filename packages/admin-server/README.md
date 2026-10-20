@@ -201,8 +201,10 @@ AdminServerModule.forRootAsync({
 ```
 
 - 4xx 의 `message` 와 `details.issues[].message` 만 바뀐다. 5xx 고정 문구 · 로그 · 감사 행(상태 · 코드만 남는다)은 그대로다.
-- 🔴 문구는 글자로 맞춘다 — 같은 기본 글자를 쓰는 묶음은 함께 바뀐다(`accounts.noUser` = `sessions.noUser`, `accounts.noTeam` = `teams.noTeam`). 같은 글자를 서로 다르게 덮으면 기동에서 멈춘다. 모르는 묶음 · 키(오타) · 빈 문구도 기동에서 멈춘다.
+- 🔴 예외 필터는 앱 전역(`APP_FILTER`)이고 글자로 맞춘다 — 이 앱의 모든 4xx(쓰는 쪽 컨트롤러 · `@Public()` 서비스 API 포함)에서 킷 기본 글자와 같은 문구면 함께 바뀐다. 서비스 쪽 4xx 문구는 킷 기본 글자(`ADMIN_SERVER_DEFAULT_MESSAGES`)와 다르게 쓴다.
+- 🔴 문구는 글자로 맞춘다 — 같은 기본 글자를 쓰는 묶음은 함께 바뀐다(`accounts.noUser` = `sessions.noUser`, `accounts.noTeam` = `teams.noTeam`). 같은 글자를 서로 다르게 덮으면 기동에서 멈춘다. 모르는 묶음 · 키(오타) · 빈 문구도 기동에서 멈춘다. 기본값과 같은 값을 적은 자리도 "기본 그대로" 라는 주장으로 본다 — 기본 표를 통째로 펼쳐 넣고 같은 글자의 다른 자리만 바꾸면 기동에서 멈춘다.
 - 표에 없는 글자(zod 기본 문구 · 본문 초과 413 같은 고정 문구)는 덮지 않는다.
+- IP 접근 제어 모듈을 켜면 로그인 실패 401 은 모두 `auth.loginFailedWithIp` 문구다 — `auth.loginFailed` 와 함께 덮는다.
 - 한 단어를 일괄 치환하는 옵션은 없다 — 한국어 조사(을/를 · 은/는)가 단어의 받침에 따라 바뀐다. 화면 문구는 admin-ui README 「용어 바꾸기」.
 
 ## 코어 스키마와 내 테이블
@@ -661,6 +663,7 @@ imports: [
   AdminServerModule.forRootAsync({
     useFactory: () => ({
       // …
+      permissionCatalog: permissions, // 🔴 역할 모듈과 함께면 definePermissions(…, { fullAccessOnly: ['<ipAccess.manage 키>'] }) 가 필수
       permissions: {
         // …
         'ipAccess.read': 'setting.ipAccess:read',

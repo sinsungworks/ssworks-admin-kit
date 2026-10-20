@@ -563,7 +563,7 @@ const {
   api: rolesApi, // list · create · update · remove · move — 프로젝트 API 어댑터
   permissions: permissions.ALL_PERMISSION_VALUES,
   canWrite: () => check.hasPermission(PERMISSIONS.ORG_ROLES_WRITE),
-  implies: { 'org.users:write': ['org.users:read'], 'org.roles:write': ['org.roles:read'] },
+  implies: permissions.implies, // 서버 정규화와 같은 표
   fullAccessOnly: permissions.fullAccessOnly, // 전권 전용 칸 — 꺼져 있으면 켤 수 없다(켜진 기존 역할은 끌 수 있다)
   reauth: true,
   fields: ['roleName', 'isDefault'], // 폼이 그리는 키 — 이 키의 검증 오류만 처리됨(기본 ['roleName'])

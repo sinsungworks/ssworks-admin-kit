@@ -29,7 +29,19 @@ describe('ADMIN_SERVER_DEFAULT_MESSAGES(2g M1 · M2)', () => {
       ipAccess: IP_ACCESS_MESSAGES,
       ipAccessSchema: IP_ACCESS_SCHEMA_MESSAGES,
     })
-    expect(ADMIN_SERVER_DEFAULT_MESSAGES.accounts).toBe(ACCOUNT_MESSAGES)
+    const tables = {
+      auth: AUTH_MESSAGES,
+      accounts: ACCOUNT_MESSAGES,
+      sessions: SESSION_MESSAGES,
+      audit: AUDIT_MESSAGES,
+      teams: TEAM_MESSAGES,
+      legal: LEGAL_MESSAGES,
+      ipAccess: IP_ACCESS_MESSAGES,
+      ipAccessSchema: IP_ACCESS_SCHEMA_MESSAGES,
+    } as const
+    for (const [group, table] of Object.entries(tables)) {
+      expect(ADMIN_SERVER_DEFAULT_MESSAGES[group as keyof typeof tables]).toBe(table)
+    }
     expect(Object.isFrozen(ADMIN_SERVER_DEFAULT_MESSAGES)).toBe(true)
     for (const table of Object.values(ADMIN_SERVER_DEFAULT_MESSAGES)) {
       expect(Object.isFrozen(table)).toBe(true)
@@ -98,6 +110,15 @@ describe('resolveAdminMessages(2g M3 · M4)', () => {
       resolveAdminMessages({
         accounts: { noUser: '운영자를 찾을 수 없습니다.' },
         sessions: { noUser: '회원을 찾을 수 없습니다.' },
+      }),
+    ).toThrow('같은 기본 문구를 다르게 덮는다: accounts.noUser · sessions.noUser')
+  })
+
+  it('🔴 기본값을 적은 자리도 주장이다 — 같은 글자의 다른 자리를 다르게 덮으면 멈춘다', () => {
+    expect(() =>
+      resolveAdminMessages({
+        accounts: { noUser: ACCOUNT_MESSAGES.noUser },
+        sessions: { noUser: '운영자를 찾을 수 없습니다.' },
       }),
     ).toThrow('같은 기본 문구를 다르게 덮는다: accounts.noUser · sessions.noUser')
   })

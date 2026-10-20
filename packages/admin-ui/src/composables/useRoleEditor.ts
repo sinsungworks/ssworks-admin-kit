@@ -76,6 +76,7 @@ export interface RoleEditorOptions<P extends string = string, R extends AdminRol
   /**
    * 전권 전용 키 — 보통 카탈로그의 `fullAccessOnly`(서버 역할 쓰기와 같은 표). 그 칸은 꺼져 있으면 켤 수 없고, 켜져 있으면 끌 수
    * 있다(업그레이드 전에 그 키를 받은 역할을 정리하는 길). 키는 "전체 권한" 스위치로만 얻는다(2g F8).
+   * 🔴 `implies` 와 같은 카탈로그에서 받는다 — 표시 없는 키가 표시된 키를 함의하지 않는다는 보장(definePermissions 정의 검사)이 그 카탈로그에 있다.
    */
   fullAccessOnly?: readonly P[]
   /** 기본 false. true 면 만들기 · 수정 · 삭제에 재인증 관문. 🔴 이동은 늘 관문 없음. */

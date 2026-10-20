@@ -57,6 +57,7 @@ export interface AdminServerOptions {
    * 서버 오류 문구를 키별로 덮는다(2g M1–M9) — 예: `{ accounts: { noUser: '운영자를 찾을 수 없습니다.' } }`. 키는
    * `ADMIN_SERVER_DEFAULT_MESSAGES`. 🔴 같은 기본 글자는 함께 바뀐다(`accounts.noUser` = `sessions.noUser`). 오타 · 같은 글자를
    * 다르게 덮기는 기동에서 멈춘다. 4xx 의 `message` · `details.issues[].message` 만 — 5xx 고정 문구 · 로그 · 감사는 그대로.
+   * 🔴 앱 전역 필터라 쓰는 쪽 컨트롤러의 4xx 도 같은 글자면 바뀐다 — 서비스 쪽 문구는 킷 기본 글자와 다르게 쓴다.
    */
   messages?: AdminServerMessages
 }
