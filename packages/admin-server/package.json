@@ -1,6 +1,6 @@
 {
   "name": "@ssworks/admin-server",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "관리자 API 공통 NestJS 모듈 — 응답 봉투 · 예외 필터 · 검증 파이프 · DB 연결(TLS · 소켓) · 코어 스키마 · 인증 · 세션 · 감사 · 역할 · 사용자 · 팀 · 약관 · IP 접근 제어.",
   "license": "MIT",
   "type": "module",
