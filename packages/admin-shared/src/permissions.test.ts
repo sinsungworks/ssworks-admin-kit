@@ -316,4 +316,27 @@ describe('definePermissions — fullAccessOnly(2g F1 · F2)', () => {
     })
     expect(cyclic.fullAccessOnly).toEqual(['setting.ipAccess:read', 'setting.ipAccess:write'])
   })
+
+  it('🔴 표시 없는 키가 낀 순환에서도 멈추고 던진다 — impliedBy 의 seen 가드를 지나간다', () => {
+    expect(() =>
+      definePermissions(base, {
+        implies: {
+          'org.users:read': ['setting.ipAccess:write'],
+          'setting.ipAccess:write': ['org.users:read'],
+        },
+        fullAccessOnly: ['setting.ipAccess:write'],
+      }),
+    ).toThrow('표시 없는 키가 전권 전용 키를 함의한다: org.users:read → setting.ipAccess:write')
+  })
+
+  it('표시 없는 키끼리만의 순환은 표시된 키와 무관하면 던지지 않고 멈춘다', () => {
+    const unrelated = definePermissions(base, {
+      implies: {
+        'org.users:read': ['org.users:write'],
+        'org.users:write': ['org.users:read'],
+      },
+      fullAccessOnly: ['setting.ipAccess:write'],
+    })
+    expect(unrelated.fullAccessOnly).toEqual(['setting.ipAccess:write'])
+  })
 })
