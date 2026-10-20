@@ -175,6 +175,7 @@ export {
 export { copyText, type CopyResult } from './utils/copy-text.js'
 export { default as SessionTable } from './components/session/SessionTable.vue'
 export {
+  DEFAULT_SESSION_TABLE_MESSAGES,
   type SessionTableRow,
   type SessionTableMessages,
   type SessionLabelView,
@@ -196,6 +197,7 @@ export { default as PasswordChangeForm } from './components/password/PasswordCha
 export { default as TeamTree } from './components/team/TeamTree.vue'
 export { default as TeamMoveDialog } from './components/team/TeamMoveDialog.vue'
 export {
+  DEFAULT_TEAM_TREE_MESSAGES,
   type TeamAction,
   type TeamEdit,
   type TeamEditTarget,
@@ -205,6 +207,7 @@ export {
 } from './components/team/team-tree.js'
 export {
   useTeamTree,
+  DEFAULT_TEAM_MESSAGES,
   type UseTeamTreeOptions,
   type TeamTreeController,
   type TeamTreeBindings,
@@ -216,6 +219,7 @@ export {
 } from './composables/useTeamTree.js'
 export { default as TeamUserList } from './components/team/TeamUserList.vue'
 export {
+  DEFAULT_TEAM_USER_LIST_MESSAGES,
   type TeamUserRow,
   type TeamUserQuery,
   type TeamUserPage,
@@ -227,6 +231,8 @@ export { default as MarkdownView } from './components/markdown/MarkdownView.vue'
 export { default as MarkdownEditor } from './components/markdown/MarkdownEditor.vue'
 export { default as LegalDocumentEditor } from './components/legal/LegalDocumentEditor.vue'
 export {
+  DEFAULT_LEGAL_MESSAGES,
+  DEFAULT_LEGAL_DOCUMENT_EDITOR_MESSAGES,
   type LegalKindOption,
   type LegalPublishBlock,
   type LegalDialogText,
@@ -245,6 +251,8 @@ export {
 // ── 감사 로그 ─────────────────────────────────────────────────────────
 export { default as AuditLogViewer } from './components/audit/AuditLogViewer.vue'
 export {
+  CORE_AUDIT_ACTION_GROUPS,
+  DEFAULT_AUDIT_LOG_MESSAGES,
   type AuditActorOption,
   type AuditActionGroup,
   type AuditLogDraft,
@@ -262,6 +270,7 @@ export {
 // ── IP 접근 제어 ──────────────────────────────────────────────────────
 export { default as IpAccessManager } from './components/ip-access/IpAccessManager.vue'
 export {
+  DEFAULT_IP_ACCESS_MESSAGES,
   type IpRuleForm,
   type IpPreviewState,
   type IpPreviewView,

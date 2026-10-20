@@ -139,7 +139,8 @@ export interface TeamTreeController {
   startCreate: (parentTeamNo: bigint | null) => void
 }
 
-const DEFAULT_MESSAGES: TeamMessages = {
+/** 기본 문구 — 공개(3i E2). 🔴 얼린다(E3) */
+export const DEFAULT_TEAM_MESSAGES: Readonly<TeamMessages> = Object.freeze<TeamMessages>({
   created: (teamName) => `「${teamName}」을(를) 만들었습니다.`,
   renamed: (teamName) => `팀 이름을 「${teamName}」(으)로 바꿨습니다.`,
   removed: (teamName) => `「${teamName}」을(를) 지웠습니다.`,
@@ -167,7 +168,7 @@ const DEFAULT_MESSAGES: TeamMessages = {
   nameRequired: '팀 이름을 입력하세요.',
   nameTooLong: (max) => `팀 이름은 ${max}자 이하로 정하세요.`,
   saveFailed: '저장하지 못했습니다.',
-}
+})
 
 type Gate = { gate: 'none' } | { gate: 'confirm'; reversible: boolean; text: TeamDialogText }
 
@@ -180,7 +181,7 @@ function teamNoOf(result: unknown): bigint | null {
 /** setup 안에서 부른다. 확인 다이얼로그는 반환된 `confirmDialog` 를 `<ConfirmDialog v-bind>` 로 붙인다. */
 export function useTeamTree(options: UseTeamTreeOptions): TeamTreeController {
   const flow = useWriteFlow()
-  const messages: TeamMessages = { ...DEFAULT_MESSAGES, ...options.messages }
+  const messages: TeamMessages = { ...DEFAULT_TEAM_MESSAGES, ...options.messages }
   const canWrite = (): boolean => options.canWrite?.() ?? true
   const topLevel = options.topLevel ?? false
 

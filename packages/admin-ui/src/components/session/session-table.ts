@@ -5,6 +5,7 @@ import type { AdminSession, AdminSessionListItem } from '@ssworks/admin-shared'
 // 정본: ssworks-gise-home apps/admin/src/types/session.ts
 // 바꾼 점: 행 모양을 admin-shared 세션 스키마에서 파생한다 — 관리자 목록 행이면 사용자 필드가 있다.
 //          3h — 표 문구 타입 · 기본값(`messages` 부분 덮어쓰기, C2 · ringside 보고 §3).
+//          3i — 기본값을 공개 · 얼림(E1 · E3).
 
 /** 내 세션 행(`AdminSession`) 또는 관리자 목록 행(`AdminSessionListItem`) */
 export type SessionTableRow = AdminSession &
@@ -44,21 +45,24 @@ export interface SessionTableMessages {
 }
 
 /**
- * 기본 문구 — `index.ts` 로 내보내지 않는다(C2). 3h 전에 `SessionTable` 에 박혀 있던 글자 그대로다.
- * `useSessions` 가 확인 창 제목의 기본값으로 `revokeUserButton` 을 읽는다.
+ * 기본 문구 — 공개다(3i E1 — 3f/3g C2 · 3h S6 을 뒤집음: 앱이 덮을 키를 고르고 테스트에서 비교한다). 3h 전에
+ * `SessionTable` 에 박혀 있던 글자 그대로다. `useSessions` 가 확인 창 제목의 기본값으로 `revokeUserButton` 을 읽는다.
+ * 🔴 얼린다 — 앱 한 곳의 대입이 모든 화면의 기본값을 바꾸지 않게(E3).
  */
-export const DEFAULT_SESSION_TABLE_MESSAGES: SessionTableMessages = {
-  userColumn: '사용자',
-  deviceColumn: '기기',
-  ipColumn: 'IP',
-  loginAtColumn: '로그인',
-  lastAccessAtColumn: '마지막 활동',
-  expireAtColumn: '만료',
-  currentDevice: '이 기기',
-  currentDeviceNote: '이 기기는 로그아웃으로 끝냅니다.',
-  revokeButton: '끝내기',
-  revokeButtonLabel: (row, view) =>
-    `${view.showUser && row.userName ? `${row.userName} · ` : ''}${view.device} 세션 끝내기 (마지막 활동 ${view.lastAccessAt})`,
-  revokeUserButton: '사용자 전체 끊기',
-  revokeUserButtonLabel: (row, view) => `${row.userName ?? ''}(${row.userId ?? ''}) ${view.button}`,
-}
+export const DEFAULT_SESSION_TABLE_MESSAGES: Readonly<SessionTableMessages> =
+  Object.freeze<SessionTableMessages>({
+    userColumn: '사용자',
+    deviceColumn: '기기',
+    ipColumn: 'IP',
+    loginAtColumn: '로그인',
+    lastAccessAtColumn: '마지막 활동',
+    expireAtColumn: '만료',
+    currentDevice: '이 기기',
+    currentDeviceNote: '이 기기는 로그아웃으로 끝냅니다.',
+    revokeButton: '끝내기',
+    revokeButtonLabel: (row, view) =>
+      `${view.showUser && row.userName ? `${row.userName} · ` : ''}${view.device} 세션 끝내기 (마지막 활동 ${view.lastAccessAt})`,
+    revokeUserButton: '사용자 전체 끊기',
+    revokeUserButtonLabel: (row, view) =>
+      `${row.userName ?? ''}(${row.userId ?? ''}) ${view.button}`,
+  })

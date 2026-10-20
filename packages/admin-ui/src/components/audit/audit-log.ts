@@ -316,15 +316,18 @@ export function targetText(
 
 // ── 필터 항목 ────────────────────────────────────────────────────────
 
-export const CORE_AUDIT_ACTION_GROUPS: readonly AuditActionGroup[] = Object.freeze([
-  { prefix: 'auth', label: '인증' },
-  { prefix: 'auth.login', label: '로그인' },
-  { prefix: 'session', label: '세션' },
-  { prefix: 'org.role', label: '역할' },
-  { prefix: 'org.user', label: '사용자' },
-  { prefix: 'org.team', label: '팀' },
-  { prefix: 'setting', label: '설정' },
-])
+/** 코어 동작 묶음 — 공개(3i E4). 🔴 배열과 항목을 모두 얼린다 — `mergeActionGroups` 는 복사해서 덮는다 */
+export const CORE_AUDIT_ACTION_GROUPS: readonly Readonly<AuditActionGroup>[] = Object.freeze(
+  [
+    { prefix: 'auth', label: '인증' },
+    { prefix: 'auth.login', label: '로그인' },
+    { prefix: 'session', label: '세션' },
+    { prefix: 'org.role', label: '역할' },
+    { prefix: 'org.user', label: '사용자' },
+    { prefix: 'org.team', label: '팀' },
+    { prefix: 'setting', label: '설정' },
+  ].map((group) => Object.freeze(group)),
+)
 
 /** 코어 묶음 뒤에 프로젝트 묶음을 더한다. prefix 가 같으면 라벨만 덮는다. 끝 점은 떼고 받는다 */
 export function mergeActionGroups(extra: readonly AuditActionGroup[] = []): AuditActionGroup[] {

@@ -1,4 +1,5 @@
 // TeamTree 의 타입 · 기본 문구 — 컴포넌트와 `useTeamTree` 가 같이 쓴다.
+// 3i — 기본 문구를 공개 · 얼림(E1 · E3).
 
 /** 노드별 허용 판정의 동작 — `canAct(node, action)` */
 export type TeamAction = 'addChild' | 'rename' | 'remove' | 'move'
@@ -43,25 +44,27 @@ export interface TeamTreeMessages {
   cancel: string
 }
 
-export const DEFAULT_TEAM_TREE_MESSAGES: TeamTreeMessages = {
-  treeLabel: '팀 트리',
-  searchLabel: '팀 검색',
-  empty: '팀이 없습니다.',
-  noResult: '검색 결과가 없습니다.',
-  loadFailed: '팀을 불러오지 못했습니다.',
-  retry: '다시 시도',
-  up: (teamName) => `「${teamName}」 위로`,
-  down: (teamName) => `「${teamName}」 아래로`,
-  menu: (teamName) => `「${teamName}」 메뉴`,
-  toggle: (teamName, open) => `「${teamName}」 ${open ? '접기' : '펼치기'}`,
-  addChild: '하위 팀 추가',
-  rename: '이름 바꾸기',
-  reparent: '옮기기',
-  remove: '삭제',
-  nameInput: '팀 이름',
-  save: '저장',
-  cancel: '취소',
-}
+/** 기본 문구 — 공개(3i E1). 🔴 얼린다(E3) — 앱이 펼쳐 일부만 덮는다 */
+export const DEFAULT_TEAM_TREE_MESSAGES: Readonly<TeamTreeMessages> =
+  Object.freeze<TeamTreeMessages>({
+    treeLabel: '팀 트리',
+    searchLabel: '팀 검색',
+    empty: '팀이 없습니다.',
+    noResult: '검색 결과가 없습니다.',
+    loadFailed: '팀을 불러오지 못했습니다.',
+    retry: '다시 시도',
+    up: (teamName) => `「${teamName}」 위로`,
+    down: (teamName) => `「${teamName}」 아래로`,
+    menu: (teamName) => `「${teamName}」 메뉴`,
+    toggle: (teamName, open) => `「${teamName}」 ${open ? '접기' : '펼치기'}`,
+    addChild: '하위 팀 추가',
+    rename: '이름 바꾸기',
+    reparent: '옮기기',
+    remove: '삭제',
+    nameInput: '팀 이름',
+    save: '저장',
+    cancel: '취소',
+  })
 
 /** he-tree 의 화면 낭독기 안내(기본 영문)를 한국어로. Alt+화살표 이동은 막으니 이동 안내는 넣지 않는다. */
 export const HE_TREE_I18N = {
