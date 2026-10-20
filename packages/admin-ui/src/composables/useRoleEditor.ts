@@ -34,6 +34,7 @@ import {
 //     `message` 그대로 알린다. 성공 문구는 `save()` 등이 true 를 돌려주면 화면이 띄운다.
 //  ⑥ `total` 잘림 안내를 버렸다 — 어댑터가 전량을 준다.
 //  ⑦ 자기 직책 저장 뒤 `/me` 재조회 · 이동을 `onSelfRoleSaved` 훅으로.
+//  - fullAccessOnly(2g F8): 전권 전용 칸은 켜져 있을 때만 고를 수 있다.
 
 export interface RoleWriteContext {
   /** `reauth: true` 일 때만 있다. 본문 · 헤더 중 어디에 실을지는 어댑터가 정한다. */
@@ -72,6 +73,11 @@ export interface RoleEditorOptions<P extends string = string, R extends AdminRol
   canWrite: () => boolean
   /** `{ 'org.users:write': ['org.users:read'] }`. 연쇄를 펼친다. 끄는 방향은 여기서 유도한다. */
   implies?: Partial<Record<P, readonly P[]>>
+  /**
+   * 전권 전용 키 — 보통 카탈로그의 `fullAccessOnly`(서버 역할 쓰기와 같은 표). 그 칸은 꺼져 있으면 켤 수 없고, 켜져 있으면 끌 수
+   * 있다(업그레이드 전에 그 키를 받은 역할을 정리하는 길). 키는 "전체 권한" 스위치로만 얻는다(2g F8).
+   */
+  fullAccessOnly?: readonly P[]
   /** 기본 false. true 면 만들기 · 수정 · 삭제에 재인증 관문. 🔴 이동은 늘 관문 없음. */
   reauth?: boolean
   /** 기본 `useAdminUi().user()?.permissions ?? []`. */
@@ -169,6 +175,7 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
   /** 🔴 매트릭스와 폼이 쓰는 카탈로그 — `'*'` 를 뺀다. 전체 권한은 행이 아니라 `form.isAll` 스위치다. */
   const catalog: readonly string[] = options.permissions.filter((key) => key !== ALL_PERMISSION)
   const implies: ImpliesMap = options.implies ?? {}
+  const fullAccessOnly: ReadonlySet<string> = new Set(options.fullAccessOnly ?? [])
   const flow = useWriteFlow()
 
   // 기본값을 쓸 때만 컨텍스트를 찾는다 — 두 옵션을 다 주면 플러그인 없이도 쓸 수 있다.
@@ -274,6 +281,8 @@ export function useRoleEditor<P extends string, R extends AdminRole = AdminRole>
 
   /** 🔴 켜면 함께 켜질 키까지 행위자가 가져야 한다 — 아니면 서버의 권한 상승 검사에 걸린다(gise). */
   function canPick(permission: string): boolean {
+    // 🔴 전권 전용 키는 지금 켜져 있을 때만(2g F8) — 서버가 일반 역할의 그 키를 400 으로 막는다. 끄는 길은 남긴다.
+    if (fullAccessOnly.has(permission) && !form.value.permissions.includes(permission)) return false
     return coversPermissions(actor(), [permission, ...impliedClosure(implies, permission)])
   }
 

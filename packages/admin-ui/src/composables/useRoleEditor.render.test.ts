@@ -211,6 +211,37 @@ describe('useRoleEditor — 전체 권한 · 매트릭스', () => {
   })
 })
 
+describe('useRoleEditor — 전권 전용 fullAccessOnly(2g F8)', () => {
+  it('🔴 표시된 칸은 꺼져 있으면 켤 수 없다 — 행위자가 * 여도 · 바인딩을 직접 불러도', async () => {
+    const { editor } = await mountRoleEditor({ fullAccessOnly: ['log:read'] })
+    editor.select(editor.roles.value[1]!)
+    await flushPromises()
+    expect(cell('log:read')?.disabled).toBe(true)
+    expect(cell('org.users:delete')?.disabled).toBe(false)
+    editor.matrix.value['onUpdate:modelValue']([...editor.form.value.permissions, 'log:read'])
+    expect(editor.form.value.permissions).not.toContain('log:read')
+  })
+
+  it('🔴 켜진 기존 역할은 끌 수 있고, 끈 뒤에는 다시 켤 수 없다', async () => {
+    const { editor } = await mountRoleEditor({ fullAccessOnly: ['log:read'] })
+    editor.select(editor.roles.value[2]!)
+    await flushPromises()
+    expect(cell('log:read')?.disabled).toBe(false)
+    await clickCell('log:read')
+    expect(editor.form.value.permissions).toEqual([])
+    expect(cell('log:read')?.disabled).toBe(true)
+    editor.matrix.value['onUpdate:modelValue'](['log:read'])
+    expect(editor.form.value.permissions).toEqual([])
+  })
+
+  it('옵션이 없으면 지금과 같다', async () => {
+    const { editor } = await mountRoleEditor()
+    editor.select(editor.roles.value[1]!)
+    await flushPromises()
+    expect(cell('log:read')?.disabled).toBe(false)
+  })
+})
+
 describe('useRoleEditor — 판정', () => {
   it('🔴 자기 직책 판정은 원본 기준 — 폼에서 이름을 고쳐도 남는다', async () => {
     const { editor, me } = await mountRoleEditor()
