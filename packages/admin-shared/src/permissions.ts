@@ -28,6 +28,7 @@ import { z } from 'zod'
  * ```
  *
  * 역할 정규화의 함의 표는 `definePermissions(catalog, { implies })` — 서버(`normalize`)와 화면이 같은 표를 쓴다(2d).
+ * 2g: fullAccessOnly — 전체 권한 역할만 가질 수 있는 키(서버 역할 쓰기 · useRoleEditor 가 같은 표를 쓴다).
  */
 
 /** 전체 권한. 최고 관리자 역할에만 부여한다. */
@@ -103,6 +104,12 @@ export interface DefinePermissionsOptions<E extends string = never, P extends st
    *    화면의 손 사본이 따로 있었다(갈리면 "읽기는 껐는데 편집은 켜진" 집합을 서버가 되살린다).
    */
   implies?: Partial<Record<P, readonly P[]>>
+  /**
+   * 전체 권한(`'*'`) 역할만 가질 수 있는 키(2g F1). 서버 역할 쓰기가 400 으로 막고 admin-ui `useRoleEditor({ fullAccessOnly })` 가
+   * 칸을 잠근다 — 서버 · 화면이 이 표 하나를 쓴다(`implies` 와 같은 자리). 예: IP 접근 제어 관리 키.
+   * 정의할 때 던진다: 카탈로그 밖 · `'*'` · 표시 없는 키의 함의 닫힘에 표시된 키(그 키를 켜면 400 이 나는 칸이 생긴다).
+   */
+  fullAccessOnly?: readonly P[]
 }
 
 export interface PermissionCatalog<T extends Record<string, string>, E extends string = never> {
@@ -130,6 +137,8 @@ export interface PermissionCatalog<T extends Record<string, string>, E extends s
   createCheck(granted: () => readonly string[]): PermissionCheck<T[keyof T] | E>
   /** 검증된 함의 표(얼린 사본). 없으면 `{}`. admin-ui `useRoleEditor({ implies })` 에 그대로 넘긴다 */
   readonly implies: Readonly<Partial<Record<T[keyof T] | E, readonly (T[keyof T] | E)[]>>>
+  /** 검증된 전권 전용 키(얼림 · 카탈로그 순서). 없으면 `[]`. admin-ui `useRoleEditor({ fullAccessOnly })` 에 그대로 넘긴다 */
+  readonly fullAccessOnly: readonly (T[keyof T] | E)[]
   /**
    * 역할 권한 정규화(3b §9 · hangang `permissions.normalize.ts`). `'*'` 가 있으면 정확히 `['*']` → 아니면 함의 닫힘 →
    * 카탈로그 순서(`ALL_PERMISSION_VALUES`) · 중복 제거. 카탈로그 밖 키는 버린다(서버는 본문 검증이 먼저 막는다).
@@ -189,6 +198,11 @@ export function definePermissions<const T extends Record<string, string>, E exte
   }
 
   const implies = freezeImplies(options.implies ?? {}, permissionSet)
+  const fullAccessOnly = freezeFullAccessOnly(
+    options.fullAccessOnly ?? [],
+    ALL_PERMISSION_VALUES,
+    implies,
+  )
 
   function normalize(list: readonly string[]): P[] {
     if (list.includes(ALL_PERMISSION)) return [ALL_PERMISSION as P]
@@ -215,6 +229,7 @@ export function definePermissions<const T extends Record<string, string>, E exte
     coversPermissions,
     createCheck: (granted) => createPermissionCheck<T[keyof T] | E>(granted),
     implies: implies as PermissionCatalog<T, E>['implies'],
+    fullAccessOnly: fullAccessOnly as PermissionCatalog<T, E>['fullAccessOnly'],
     normalize,
   }
 }
@@ -242,4 +257,46 @@ function freezeImplies(
   if (problems.length > 0) throw new Error(`definePermissions: ${problems.join(' / ')}`)
   // 🔴 Object.fromEntries 는 자기 속성으로 만든다 — `__proto__` 같은 키도 대입이 아니라 데이터다.
   return Object.freeze(Object.fromEntries(entries))
+}
+
+/** 함의 닫힘(자신 제외) — `normalize` 와 같은 펼치기. 순환에서 멈춘다 */
+function impliedBy(key: string, implies: Readonly<Record<string, readonly string[]>>): string[] {
+  const seen = new Set<string>()
+  const pending = [...(Object.hasOwn(implies, key) ? (implies[key] ?? []) : [])]
+  while (pending.length > 0) {
+    const next = pending.pop() as string
+    if (seen.has(next)) continue
+    seen.add(next)
+    if (Object.hasOwn(implies, next)) pending.push(...(implies[next] ?? []))
+  }
+  seen.delete(key)
+  return [...seen]
+}
+
+/**
+ * 전권 전용 목록을 검증해 카탈로그 순서로 얼린다(2g F1 · F2). 문제를 모아 한 번에 던진다(`freezeImplies` 와 같은 틀).
+ * 🔴 표시 없는 키의 함의 닫힘에 표시된 키가 있으면 던진다 — 그 키를 켜는 순간 서버가 400 을 내는 칸이 생긴다.
+ */
+function freezeFullAccessOnly(
+  list: readonly string[],
+  ordered: readonly string[],
+  implies: Readonly<Record<string, readonly string[]>>,
+): readonly string[] {
+  const problems: string[] = []
+  const known = new Set(ordered)
+  for (const key of new Set(list)) {
+    if (key === ALL_PERMISSION || !known.has(key)) {
+      problems.push(`전권 전용 키가 카탈로그 밖이다: ${key}`)
+    }
+  }
+  const marked = new Set(list)
+  for (const key of ordered) {
+    if (key === ALL_PERMISSION || marked.has(key)) continue
+    const leaked = impliedBy(key, implies).filter((value) => marked.has(value))
+    if (leaked.length > 0) {
+      problems.push(`표시 없는 키가 전권 전용 키를 함의한다: ${key} → ${leaked.join(', ')}`)
+    }
+  }
+  if (problems.length > 0) throw new Error(`definePermissions: ${problems.join(' / ')}`)
+  return Object.freeze(ordered.filter((key) => key !== ALL_PERMISSION && marked.has(key)))
 }

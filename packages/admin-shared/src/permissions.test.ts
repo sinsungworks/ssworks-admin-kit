@@ -255,3 +255,65 @@ describe('definePermissions — implies · normalize(2d 스펙 ① C1)', () => {
     )
   })
 })
+
+describe('definePermissions — fullAccessOnly(2g F1 · F2)', () => {
+  const base = {
+    IP_READ: 'setting.ipAccess:read',
+    IP_WRITE: 'setting.ipAccess:write',
+    USERS_READ: 'org.users:read',
+    USERS_WRITE: 'org.users:write',
+  } as const
+
+  it('기본은 빈 배열 · 얼림', () => {
+    const plain = definePermissions(base)
+    expect(plain.fullAccessOnly).toEqual([])
+    expect(Object.isFrozen(plain.fullAccessOnly)).toBe(true)
+  })
+
+  it('카탈로그 순서 · 중복 없이 얼린다 — 표시된 키가 일반 키를 함의하는 것은 된다', () => {
+    const marked = definePermissions(base, {
+      implies: { 'setting.ipAccess:write': ['setting.ipAccess:read'] },
+      fullAccessOnly: ['org.users:write', 'setting.ipAccess:write', 'org.users:write'],
+    })
+    expect(marked.fullAccessOnly).toEqual(['setting.ipAccess:write', 'org.users:write'])
+    expect(Object.isFrozen(marked.fullAccessOnly)).toBe(true)
+  })
+
+  it("🔴 카탈로그 밖 키 · '*' 는 정의할 때 던진다", () => {
+    expect(() => definePermissions(base, { fullAccessOnly: ['x:write'] as never })).toThrow(
+      '전권 전용 키가 카탈로그 밖이다: x:write',
+    )
+    expect(() => definePermissions(base, { fullAccessOnly: ['*'] as never })).toThrow(
+      '전권 전용 키가 카탈로그 밖이다: *',
+    )
+  })
+
+  it('🔴 표시 없는 키의 함의 닫힘에 표시된 키가 있으면 던진다 — 직접 · 연쇄', () => {
+    expect(() =>
+      definePermissions(base, {
+        implies: { 'org.users:write': ['setting.ipAccess:write'] },
+        fullAccessOnly: ['setting.ipAccess:write'],
+      }),
+    ).toThrow('표시 없는 키가 전권 전용 키를 함의한다: org.users:write → setting.ipAccess:write')
+    expect(() =>
+      definePermissions(base, {
+        implies: {
+          'org.users:write': ['org.users:read'],
+          'org.users:read': ['setting.ipAccess:write'],
+        },
+        fullAccessOnly: ['setting.ipAccess:write'],
+      }),
+    ).toThrow('표시 없는 키가 전권 전용 키를 함의한다: org.users:read → setting.ipAccess:write')
+  })
+
+  it('순환 함의에서도 멈춘다 — 표시된 키끼리의 순환은 된다', () => {
+    const cyclic = definePermissions(base, {
+      implies: {
+        'setting.ipAccess:write': ['setting.ipAccess:read'],
+        'setting.ipAccess:read': ['setting.ipAccess:write'],
+      },
+      fullAccessOnly: ['setting.ipAccess:read', 'setting.ipAccess:write'],
+    })
+    expect(cyclic.fullAccessOnly).toEqual(['setting.ipAccess:read', 'setting.ipAccess:write'])
+  })
+})
