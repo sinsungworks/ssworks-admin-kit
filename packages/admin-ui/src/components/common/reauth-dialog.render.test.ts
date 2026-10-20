@@ -20,7 +20,13 @@ afterEach(() => {
 })
 
 async function mountDialog(
-  props: { modelValue?: boolean; message?: string; submitting?: boolean; error?: string } = {},
+  props: {
+    modelValue?: boolean
+    message?: string
+    prompt?: string
+    submitting?: boolean
+    error?: string
+  } = {},
 ): Promise<VueWrapper> {
   wrapper = mount(ReauthDialog, {
     props: { modelValue: true, ...props },
@@ -33,6 +39,11 @@ async function mountDialog(
 
 function passwordInput(): HTMLInputElement | null {
   return document.body.querySelector('input[name="currentPassword"]')
+}
+
+/** 카드 본문의 문단 글자 — 설명 · 안내가 다른 문단인지 잰다 */
+function paragraphs(): (string | undefined)[] {
+  return [...document.body.querySelectorAll('.v-card-text p')].map((p) => p.textContent?.trim())
 }
 
 /** `.value` 대입만으로는 `v-model` 이 안 먹는다 — `input` 이벤트를 손으로 낸다. */
@@ -56,10 +67,28 @@ describe('ReauthDialog — 필드 이름은 계약이다', () => {
     expect(passwordInput()).toBeNull()
   })
 
-  it('무엇을 하려는지와 다음 행동을 함께 적는다', async () => {
-    await mountDialog({ message: '스토리지 설정을 저장합니다.' })
-    expect(document.body.textContent).toContain('스토리지 설정을 저장합니다.')
-    expect(document.body.textContent).toContain('현재 비밀번호를 입력하세요.')
+  it('🔴 설명과 안내는 다른 문단이다 — 설명이 마침표 없이 끝나도 문장이 붙지 않는다(3i A2)', async () => {
+    await mountDialog({ message: '「글쓰기 금지」 7일 — 사유: 도배' })
+    expect(paragraphs()).toEqual([
+      '「글쓰기 금지」 7일 — 사유: 도배',
+      '현재 비밀번호를 입력하세요.',
+    ])
+  })
+
+  it('설명이 비면 안내 문단 하나', async () => {
+    await mountDialog()
+    expect(paragraphs()).toEqual(['현재 비밀번호를 입력하세요.'])
+  })
+
+  it('prompt 로 안내를 바꾼다(3i A1)', async () => {
+    await mountDialog({
+      message: '스토리지 설정을 저장합니다.',
+      prompt: '운영자 본인의 현재 비밀번호를 입력하세요.',
+    })
+    expect(paragraphs()).toEqual([
+      '스토리지 설정을 저장합니다.',
+      '운영자 본인의 현재 비밀번호를 입력하세요.',
+    ])
   })
 })
 

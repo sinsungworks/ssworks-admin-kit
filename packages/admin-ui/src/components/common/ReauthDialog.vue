@@ -1,5 +1,7 @@
 <script setup lang="ts">
   // 정본: hangang-home apps/admin/src/components/common/ReauthDialog.vue
+  // 바꾼 점(3i A1 · A2): 설명과 안내를 다른 문단으로 · 안내는 `prompt` — 설명이 마침표 없이 끝나면(운영자가 쓴 사유)
+  //   한 문단으로 붙어 문장 경계가 사라졌다(ringside 보고 §6).
   //
   // 민감 쓰기(사용자 생성·비밀번호 초기화·IP 규칙 변경 …) 앞에 관리자 **본인**의 현재 비밀번호를
   // 다시 받는 대화상자. 서버는 본문의 `currentPassword` 로 재인증한다(`ERR_REAUTH_REQUIRED`).
@@ -35,8 +37,10 @@
 
   const props = withDefaults(
     defineProps<{
-      /** 무엇을 하려는지 한 문장. 뒤에 「현재 비밀번호를 입력하세요.」가 붙는다. */
+      /** 무엇을 하려는지 한 문장. 안내(`prompt`)와 다른 문단에 그린다. 비면 안내만. */
       message?: string
+      /** 설명 아래 문단의 안내. 기본 「현재 비밀번호를 입력하세요.」 */
+      prompt?: string
       title?: string
       /** 부모가 요청을 보내는 중인가. 🔴 `:loading` 만으로는 클릭이 안 막힌다. */
       submitting?: boolean
@@ -48,6 +52,7 @@
     }>(),
     {
       message: '',
+      prompt: '현재 비밀번호를 입력하세요.',
       title: '비밀번호 확인',
       submitting: false,
       error: '',
@@ -91,7 +96,8 @@
     <VCard>
       <VCardTitle>{{ title }}</VCardTitle>
       <VCardText>
-        <p class="mb-4 text-body-2">{{ message }} 현재 비밀번호를 입력하세요.</p>
+        <p v-if="message" class="mb-2 text-body-2">{{ message }}</p>
+        <p class="mb-4 text-body-2">{{ prompt }}</p>
         <VAlert v-if="error" class="mb-4" density="compact" type="error" variant="tonal">
           {{ error }}
         </VAlert>
