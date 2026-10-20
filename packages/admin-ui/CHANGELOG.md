@@ -1,5 +1,27 @@
 # @ssworks/admin-ui
 
+## 0.9.0
+
+### Minor Changes
+
+- 68c4343: ringside 둘째 보고 반영(PR 2g — `docs/superpowers/specs/2026-10-20-admin-kit-ringside-feedback-2-design.md`).
+
+  - admin-shared: `definePermissions(…, { fullAccessOnly })` · 카탈로그 `fullAccessOnly` — 전체 권한(`'*'`) 역할만 가질 수 있는 키. 표시 없는 키가 표시된 키를 함의하면 정의할 때 던진다.
+  - admin-server:
+    - 역할 만들기 · 권한 수정에 전권 전용 키가 있고 `'*'` 가 아니면 400 `ERR_COMMON_VALIDATION`(`issues[{ path: ['permissions'] }]`). 이름 · 기본 표시만 고치는 수정 · 사용자 배정은 보지 않는다 — 업그레이드 전에 그 키를 받은 역할은 효력이 그대로다(README 「역할 · 권한」 정리 절차).
+    - 🔴 IP 접근 제어(`AdminIpAccessModule`)를 켠 앱은 카탈로그에 `fullAccessOnly: [<ipAccess.manage 키>]` 를 더해야 `AdminRolesModule` 이 기동한다. 그 키를 다른 슬롯이나 앱 기능의 권한으로도 쓰고 있었다면 그것까지 전권 전용이 된다 — IP 관리 전용 키로 나눈다.
+    - 🔴 peer `@ssworks/admin-shared` 하한 0.9.0(`>=0.9.0 <1.0.0`) — 카탈로그 모양 검사가 `fullAccessOnly` 를 요구한다.
+    - `AdminServerModule` 옵션 `messages` — 서버 오류 문구를 키별로 덮는다(키는 `ADMIN_SERVER_DEFAULT_MESSAGES`, 타입 `AdminServerMessages`). 같은 기본 글자는 함께 바뀌고, 오타 · 같은 글자를 다르게 덮기는 기동에서 멈춘다. 5xx 고정 문구 · 로그 · 감사는 그대로.
+  - admin-ui: `useRoleEditor({ fullAccessOnly })` — 표시된 칸은 꺼져 있으면 켤 수 없다(켜진 기존 역할은 끌 수 있다). 보통 `catalog.fullAccessOnly` 를 넘긴다.
+
+- c4b49d5: ringside 둘째 보고 반영(PR #3i — `docs/superpowers/specs/2026-10-20-admin-kit-ringside-feedback-2-design.md`).
+
+  - `useIpAccessRules({ scopes })` — 층 목록. 팀 모듈(`AdminTeamsModule`)을 켜지 않은 앱은 `scopes: ['user', 'global']` 을 준다(안 주면 "팀" 층이 남고 저장은 늘 400). 표시 순서는 늘 사용자 → 팀 → 전체.
+  - 기본 문구를 공개한다 — `DEFAULT_SESSION_TABLE_MESSAGES` · `DEFAULT_IP_ACCESS_MESSAGES` · `DEFAULT_AUDIT_LOG_MESSAGES` · `DEFAULT_TEAM_TREE_MESSAGES` · `DEFAULT_TEAM_USER_LIST_MESSAGES` · `DEFAULT_TEAM_MESSAGES` · `DEFAULT_LEGAL_MESSAGES` · `DEFAULT_LEGAL_DOCUMENT_EDITOR_MESSAGES` · `CORE_AUDIT_ACTION_GROUPS`. 모두 얼려 있다 — 대입하면 던진다. 덮으려면 펼쳐서 `messages` 로 넘긴다.
+  - `ReauthDialog` — 설명(`message`)과 안내를 다른 문단으로 그리고, 안내는 `prompt` prop 으로 바꾼다(기본 「현재 비밀번호를 입력하세요.」). 🔴 두 문구를 한 문단 글자로 재던 앱 테스트는 문단별로 고친다.
+  - 🔴 `useServerTable` — 기본 정렬 열은 헤더로 내림 ↔ 오름을 오간다(그 전에는 기본 열이 오름에 닿지 못했다). 동작 변경: 이미 기본 정렬일 때 `sortBy.value = []` 로 되돌리던 코드는 반대 방향이 된다 — `sortBy.value = [{ ...기본 }]` 으로 바꾼다.
+  - README: 세로 폼은 칸 사이 `gap: 12px`(프리셋 `hideDetails: 'auto'`) · 「용어 바꾸기」.
+
 ## 0.8.0
 
 ### Minor Changes
