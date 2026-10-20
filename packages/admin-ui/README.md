@@ -564,6 +564,7 @@ const {
   permissions: permissions.ALL_PERMISSION_VALUES,
   canWrite: () => check.hasPermission(PERMISSIONS.ORG_ROLES_WRITE),
   implies: { 'org.users:write': ['org.users:read'], 'org.roles:write': ['org.roles:read'] },
+  fullAccessOnly: permissions.fullAccessOnly, // 전권 전용 칸 — 꺼져 있으면 켤 수 없다(켜진 기존 역할은 끌 수 있다)
   reauth: true,
   fields: ['roleName', 'isDefault'], // 폼이 그리는 키 — 이 키의 검증 오류만 처리됨(기본 ['roleName'])
   onSelfRoleSaved: async () => {
@@ -1106,6 +1107,7 @@ const ip = useIpAccessRules({
 | 세션 표 · 확인 창 | `useSessions({ messages: { userColumn, revokeUserButton } })` — 「관리자 전체 목록」                                                                             |
 | IP 화면           | `useIpAccessRules({ messages })` — "사용자" 가 든 키는 `DEFAULT_IP_ACCESS_MESSAGES` 에서 찾는다(함수 문구 포함)                                                  |
 | 감사 로그         | 라벨은 admin-shared `defineAuditCatalog({ labels, targetLabels })`, 동작 묶음은 같은 prefix 로 덮는다(`actionGroups: [{ prefix: 'org.user', label: '운영자' }]`) |
+| 서버 오류 문구    | admin-server `AdminServerModule` 옵션 `messages` — admin-server README 「오류 문구 바꾸기」                                                                      |
 
 🔴 한 단어를 일괄 치환하는 옵션은 없다 — 한국어 조사(을/를 · 은/는)가 단어의 받침에 따라 바뀐다. 키별로 덮는다.
 

@@ -177,6 +177,34 @@ export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 - `runQuery` · `runWriteTransaction` 안에서는 `BusinessError` 가 아닌 오류 — Nest `HttpException`(`NotFoundException` 등) 포함 — 가 모두 가려진 500 `INTERNAL` 이 된다. 쿼리 · 트랜잭션 안에서는 `BusinessError` 를 던진다.
 - 쿼리는 extended 파서다(`filter[key]=…` 가 객체). 값 검증은 zod 로.
 
+### 오류 문구 바꾸기
+
+서버 오류 문구(사용자를 찾을 수 없음 · 인증이 필요함 …)를 앱 용어로 덮는다. 키는 `ADMIN_SERVER_DEFAULT_MESSAGES` 에 있다(묶음 `auth` · `accounts` · `sessions` · `audit` · `teams` · `legal` · `ipAccess` · `ipAccessSchema`).
+
+```ts
+AdminServerModule.forRootAsync({
+  useFactory: () => ({
+    …,
+    messages: {
+      accounts: {
+        noUser: '운영자를 찾을 수 없습니다.',
+        alreadyResigned: '이미 퇴사 처리된 운영자입니다.',
+        notResigned: '재직 중인 운영자는 퇴사일을 정정할 수 없습니다.',
+        notResignedForRehire: '재직 중인 운영자는 재입사 처리할 수 없습니다.',
+      },
+      sessions: { noUser: '운영자를 찾을 수 없습니다.' },
+      ipAccess: { noScopeUser: '대상 운영자를 찾을 수 없습니다.' },
+      ipAccessSchema: { scopeRefRequired: '팀 · 운영자 규칙은 대상을 골라야 합니다.' },
+    },
+  }),
+})
+```
+
+- 4xx 의 `message` 와 `details.issues[].message` 만 바뀐다. 5xx 고정 문구 · 로그 · 감사 행(상태 · 코드만 남는다)은 그대로다.
+- 🔴 문구는 글자로 맞춘다 — 같은 기본 글자를 쓰는 묶음은 함께 바뀐다(`accounts.noUser` = `sessions.noUser`, `accounts.noTeam` = `teams.noTeam`). 같은 글자를 서로 다르게 덮으면 기동에서 멈춘다. 모르는 묶음 · 키(오타) · 빈 문구도 기동에서 멈춘다.
+- 표에 없는 글자(zod 기본 문구 · 본문 초과 413 같은 고정 문구)는 덮지 않는다.
+- 한 단어를 일괄 치환하는 옵션은 없다 — 한국어 조사(을/를 · 은/는)가 단어의 받침에 따라 바뀐다. 화면 문구는 admin-ui README 「용어 바꾸기」.
+
 ## 코어 스키마와 내 테이블
 
 ```ts
@@ -373,7 +401,11 @@ export const permissions = definePermissions(
     ROLES_READ: 'org.roles:read',
     ROLES_WRITE: 'org.roles:write',
   },
-  { implies: { 'org.users:write': ['org.users:read'], 'org.roles:write': ['org.roles:read'] } },
+  {
+    implies: { 'org.users:write': ['org.users:read'], 'org.roles:write': ['org.roles:read'] },
+    // 전체 권한('*') 역할만 가질 수 있는 키 — IP 접근 제어를 켜면 ipAccess.manage 의 키가 여기 있어야 뜬다
+    fullAccessOnly: [],
+  },
 )
 ```
 
@@ -415,6 +447,7 @@ useRoleEditor({
   api: roleApi,
   permissions: permissions.ALL_PERMISSION_VALUES,
   implies: permissions.implies, // 🔴 서버 정규화와 같은 표
+  fullAccessOnly: permissions.fullAccessOnly, // 🔴 서버 역할 쓰기와 같은 표
   reauth: false, // 서버 reauth 와 같게
   canWrite: () => check.hasPermission('org.roles:write'),
 })
@@ -422,6 +455,7 @@ useRoleEditor({
 
 - **정규화**: `'*'` 가 섞이면 `['*']` 하나, 아니면 함의를 펼쳐 카탈로그 순서로 저장한다. 카탈로그 밖 키는 400 `issues[{ path: ['permissions', i] }]`. 목록은 저장된 그대로 낸다 — 카탈로그에서 지운 옛 키는 화면이 버리고 다음 저장에서 빠진다.
 - **권한 상승**: 행위자가 대상을 "덮어야" 한다(`coversPermissions`). 역할 만들기는 새 권한, 수정은 `permissions` 를 보낼 때만 현재 · 새 권한 둘 다, 삭제는 현재 권한. 남의 세션 끊기는 그 사람의 역할. 거부는 403 `details.outside`(덮지 못한 키). 🔴 `permissions` 없이 이름 · 기본 여부만 고치는 수정은 넓은 역할에도 열려 있다(3b `useRoleEditor` 가 그렇게 보낸다).
+- **전권 전용 키**: 카탈로그 `fullAccessOnly` 의 키는 `'*'` 역할만 갖는다 — 일반 역할의 만들기 · 권한 수정에 그 키가 있으면 400 `issues[{ path: ['permissions'] }]`(「전체 권한 역할만 가질 수 있는 권한이 들어 있습니다.」). 이름 · 기본 표시만 고치는 수정과 사용자 배정은 보지 않는다. 업그레이드 전에 그 키를 받은 일반 역할은 효력이 그대로다 — 찾아서 뺀다: `SELECT role_no, role_name FROM roles WHERE JSON_CONTAINS(permissions, '"<키>"')`(admin-ui 역할 화면에서는 그 칸이 켜진 채 끌 수만 있다). 🔴 IP 접근 제어(`AdminIpAccessModule`)를 켠 앱은 `ipAccess.manage` 의 키를 여기 넣어야 `AdminRolesModule` 이 뜬다.
 - **전권자 잔존**: 전체 권한(`'*'`) 재직자를 0 으로 만드는 역할 수정 · 삭제는 409 다. 동시 요청은 `guard_locks` 의 센티넬 행이 줄 세운다(장 `0009_guard_locks` — 모든 앱에 필수). 시드로 첫 전체 권한 계정을 만들기 전에는 0 이라 막히지 않는다.
 - **동시 쓰기**: 역할 만들기 · 이동 · 기본 켜기는 순서 · 기본 표시 인덱스(장 `0001_roles`)로 그 행만 잠근다 — 다른 역할을 쓰는 사용자 쓰기와 엇갈리지 않는다. 두 관리자가 같은 순간에 역할을 만들거나, 만들기가 순서 맨 끝 역할의 삭제 · 이동 · 기본 켜기와 겹치면 드물게 한쪽이 409 `ERR_COMMON_CONFLICT` 다(순서 값은 겹치지 않는다) — 다시 보내면 된다. 역할 권한 수정 · 삭제는 그 역할의 이동과 겹쳐도 기다렸다가 끝난다(MariaDB 11.6.2+ 의 `innodb_snapshot_isolation` ON 에서도). 겹치는 구간을 옮기는 이동 둘, 또는 기본 역할을 쓰는 계정의 역할 변경과 다른 역할의 기본 켜기가 드물게 교착(1213)하면 409 `ERR_COMMON_CONFLICT`("다시 시도해 주세요")다 — 다시 보내면 된다(전권자 잔존은 그대로 지켜진다).
 - **revision**: 수정 · 삭제 본문에 필수, 다르면 409 `ERR_COMMON_REVISION_CONFLICT`. 이동은 revision 을 받지도 올리지도 않는다(순서는 내용이 아니다).
@@ -673,7 +707,7 @@ export { up, down } from '@ssworks/admin-server/migrations/0012_ip_access_rules'
   DELETE FROM ip_access_rules WHERE scope_type = 'team' AND scope_ref_no = 3;
   ```
 
-- **주의**: `ipAccess.manage` 는 사실상 전권급 슬롯이다 — 좁은 보유자도 마지막 도달 가능 전권자를 뺀 전권자를 가두고 일반 관리자를 모두 잠글 수 있다(2f-1 스펙 §9-2 s1 의 의도). 전체 권한 관리자에게만 준다. `AdminIpAccessModule` 이 `ADMIN_ACCESS_POLICY` 를 제공하므로 쓰는 쪽 자체 정책과 함께 쓰지 않는다. 미리보기 `op=update` 는 부분 패치가 아니라 **바뀐 뒤 규칙 전체**(`scopeType` · `scopeRefNo` · `cidr`)와 대상 `ruleNo` 를 받는다.
+- **주의**: `ipAccess.manage` 는 사실상 전권급 슬롯이다 — 좁은 보유자도 마지막 도달 가능 전권자를 뺀 전권자를 가두고 일반 관리자를 모두 잠글 수 있다(2f-1 스펙 §9-2 s1 의 의도). 🔴 그래서 카탈로그에 전권 전용으로 표시한다 — `definePermissions(…, { fullAccessOnly: ['<ipAccess.manage 키>'] })`. 표시가 없으면 `AdminRolesModule` 이 기동에서 멈추고, 일반 역할에 그 키를 넣는 역할 쓰기는 400 이다(역할 모듈이 없는 앱은 킷 안에 역할 쓰기 길이 없어 보지 않는다). `AdminIpAccessModule` 이 `ADMIN_ACCESS_POLICY` 를 제공하므로 쓰는 쪽 자체 정책과 함께 쓰지 않는다. 미리보기 `op=update` 는 부분 패치가 아니라 **바뀐 뒤 규칙 전체**(`scopeType` · `scopeRefNo` · `cidr`)와 대상 `ruleNo` 를 받는다.
 - **쓰기 보호**: 수정 · 삭제는 `revision`(409 `ERR_COMMON_REVISION_CONFLICT`). `reauth: true` 면 본문 `currentPassword`. 가리키는 팀 · 사용자가 없으면 400 `issues[scopeRefNo]`. 전체 규칙에 대상을 두거나 팀 · 사용자 규칙에 대상을 빼면 400 `issues[scopeRefNo]`.
 - **팀 삭제**는 그 팀(하위 팀 포함)을 가리키는 규칙이 있으면 409 `ERR_TEAM_HAS_IP_RULES` — 규칙을 먼저 지운다.
 - **동시 쓰기**: IP 쓰기는 `guard_locks` 행 `superAdminSurvival` 에서 역할 · 사용자의 잔존 쓰기와 함께 하나씩 돈다 — 두 관리자가 각자 통과하는 변경을 동시에 넣어도 뒤의 쪽이 자기 잠금 409 로 걸린다. 드문 잠금 충돌은 409 `ERR_COMMON_CONFLICT`("다시 시도해 주세요") — 다시 보내면 된다.
