@@ -27,6 +27,7 @@ import type { ApiError } from '../../api/error.js'
 //  - 대상을 번호로 치던 칸을 후보 고르기로(④ T1) — 경로 항목(`flattenTeamPaths`) · 사용자 항목 글자.
 //  - 세션 끊기 제안 문구 전부를 버렸다(⑥ S2 — 킷 서버는 매 요청 IP 를 본다).
 //  - 문구는 `messages` 부분 덮어쓰기로 바꾼다(C2).
+//  - 층 목록(3i S1 — ringside 보고 §1): 팀 모듈 없는 앱이 사용자 · 전체만 고른다. 표시 순서는 늘 평가 순서.
 
 export interface IpUserOption {
   userNo: bigint
@@ -336,18 +337,49 @@ const UNSIGNED_DIGITS = /^[0-9]{1,20}$/
 /** 🔴 가까운 층부터 — 그 순서가 곧 평가 순서다(hangang) */
 export const IP_SCOPE_ORDER: readonly IpScopeType[] = Object.freeze(['user', 'team', 'global'])
 
+/**
+ * `useIpAccessRules({ scopes })` 를 평가 순서로 편다(3i S1). 넘긴 순서는 따르지 않고 중복은 한 번이다.
+ * 🔴 빈 목록 · 모르는 값은 던진다 — 층을 고를 수 없는 화면은 설정 실수다.
+ */
+export function resolveIpScopes(
+  scopes: readonly IpScopeType[] = IP_SCOPE_ORDER,
+): readonly IpScopeType[] {
+  const unknown = scopes.filter((scope) => !IP_SCOPE_ORDER.includes(scope))
+  if (scopes.length === 0 || unknown.length > 0) {
+    throw new Error(
+      `useIpAccessRules 의 scopes 는 'user' · 'team' · 'global' 중 하나 이상이다: [${scopes.map(String).join(', ')}]`,
+    )
+  }
+  return Object.freeze(IP_SCOPE_ORDER.filter((scope) => scopes.includes(scope)))
+}
+
+/** 새 규칙 폼의 층 — 전체가 있으면 전체(지금까지와 같다), 없으면 가장 가까운 층(3i S3) */
+export function defaultIpScope(scopes: readonly IpScopeType[]): IpScopeType {
+  return scopes.includes('global') ? 'global' : (scopes[0] ?? 'global')
+}
+
 export function scopeTypeLabel(scopeType: IpScopeType, messages: IpAccessMessages): string {
   if (scopeType === 'user') return messages.scopeUser
   if (scopeType === 'team') return messages.scopeTeam
   return messages.scopeGlobal
 }
 
-export function scopeTypeItems(messages: IpAccessMessages): IpSelectItem[] {
-  return IP_SCOPE_ORDER.map((value) => ({ value, title: scopeTypeLabel(value, messages) }))
+/**
+ * 층 선택지 — 평가 순서. `current` 가 `scopes` 밖이면(편집을 연 기존 규칙) 그 층도 제 순번 자리에 둔다. 폼이 다른 층으로
+ * 바뀌면 사라진다(3i S2).
+ */
+export function scopeTypeItems(
+  messages: IpAccessMessages,
+  scopes: readonly IpScopeType[] = IP_SCOPE_ORDER,
+  current?: IpScopeType,
+): IpSelectItem[] {
+  return IP_SCOPE_ORDER.filter((value) => scopes.includes(value) || value === current).map(
+    (value) => ({ value, title: scopeTypeLabel(value, messages) }),
+  )
 }
 
-export function emptyIpRuleForm(): IpRuleForm {
-  return { scopeType: 'global', scopeRefNo: '', cidr: '', description: '' }
+export function emptyIpRuleForm(scopeType: IpScopeType = 'global'): IpRuleForm {
+  return { scopeType, scopeRefNo: '', cidr: '', description: '' }
 }
 
 export function ruleToForm(

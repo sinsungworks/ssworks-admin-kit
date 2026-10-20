@@ -5,6 +5,7 @@ import {
   type AdminIpPreviewItem,
   type AdminIpRule,
   type AdminTeamNode,
+  type IpScopeType,
 } from '@ssworks/admin-shared'
 import {
   DEFAULT_IP_ACCESS_MESSAGES as M,
@@ -13,6 +14,7 @@ import {
   changedItemsOf,
   conflictAlertText,
   currentIpLine,
+  defaultIpScope,
   emptyIpRuleForm,
   flattenTeamPaths,
   formScopeTitle,
@@ -31,6 +33,7 @@ import {
   previewQueryOf,
   previewSummaryLine,
   removesGlobalAllow,
+  resolveIpScopes,
   ruleScopeSub,
   ruleScopeTitle,
   ruleToForm,
@@ -81,6 +84,37 @@ describe('범위 · 폼', () => {
       cidr: '',
       description: '',
     })
+  })
+
+  it('층 목록 — 평가 순서로 펴고 중복은 한 번 · 빈 목록 · 모르는 값은 던진다(3i S1)', () => {
+    expect(resolveIpScopes()).toEqual(['user', 'team', 'global'])
+    expect(resolveIpScopes(['global', 'user', 'global'])).toEqual(['user', 'global'])
+    expect(Object.isFrozen(resolveIpScopes(['user']))).toBe(true)
+    expect(() => resolveIpScopes([])).toThrow(/scopes/)
+    expect(() => resolveIpScopes(['user', 'teams' as IpScopeType])).toThrow(/teams/)
+  })
+
+  it('새 폼의 층 — 전체가 있으면 전체, 없으면 가장 가까운 층(3i S3)', () => {
+    expect(defaultIpScope(['user', 'team', 'global'])).toBe('global')
+    expect(defaultIpScope(['user', 'team'])).toBe('user')
+    expect(defaultIpScope(['team'])).toBe('team')
+    expect(emptyIpRuleForm('user')).toEqual({
+      scopeType: 'user',
+      scopeRefNo: '',
+      cidr: '',
+      description: '',
+    })
+  })
+
+  it('층 선택지 — 목록 밖의 지금 층은 제 순번 자리에 남는다(3i S2)', () => {
+    const values = (items: { value: string }[]) => items.map((item) => item.value)
+    expect(values(scopeTypeItems(M, ['user', 'global']))).toEqual(['user', 'global'])
+    expect(values(scopeTypeItems(M, ['user', 'global'], 'team'))).toEqual([
+      'user',
+      'team',
+      'global',
+    ])
+    expect(values(scopeTypeItems(M, ['user', 'global'], 'global'))).toEqual(['user', 'global'])
   })
 
   it('규칙 → 폼 — 번호는 문자열, null 은 빈 칸', () => {

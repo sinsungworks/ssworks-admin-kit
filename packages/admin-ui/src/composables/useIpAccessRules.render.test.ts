@@ -269,6 +269,51 @@ describe('useIpAccessRules — 편집 패널', () => {
   })
 })
 
+describe('useIpAccessRules — 층 목록 scopes(3i)', () => {
+  const values = (items: readonly { value: string }[]) => items.map((item) => item.value)
+
+  it('기본은 층 셋', async () => {
+    const { ip } = await setup()
+    expect(values(ip.manager.value.scopeItems)).toEqual(['user', 'team', 'global'])
+  })
+
+  it('🔴 팀 없는 앱 — 사용자 · 전체만, 넘긴 순서와 무관하게 평가 순서', async () => {
+    const { ip } = await setup({ scopes: ['global', 'user'] })
+    await ip.openCreate()
+    expect(values(ip.manager.value.scopeItems)).toEqual(['user', 'global'])
+    expect(ip.form.value.scopeType).toBe('global')
+  })
+
+  it('전체가 빠지면 새 규칙은 가장 가까운 층 · 연 순간 고친 값이 없다', async () => {
+    const { ip } = await setup({ scopes: ['user', 'team'] })
+    await ip.openCreate()
+    expect(ip.form.value).toEqual({ scopeType: 'user', scopeRefNo: '', cidr: '', description: '' })
+    expect(await ip.closeEditor()).toBe(true)
+    expect(ip.manager.value.discardDialog.modelValue).toBe(false)
+  })
+
+  it('목록 밖 층의 기존 규칙 — 열면 그 층이 선택지에 있고, 다른 층으로 바꾸면 사라진다', async () => {
+    const { ip } = await setup({ scopes: ['user', 'global'] })
+    await ip.openEdit(TEAM)
+    expect(values(ip.manager.value.scopeItems)).toEqual(['user', 'team', 'global'])
+    ip.manager.value['onUpdate:form']({ ...ip.form.value, scopeType: 'user' })
+    expect(ip.form.value.scopeType).toBe('user')
+    expect(values(ip.manager.value.scopeItems)).toEqual(['user', 'global'])
+  })
+
+  it('🔴 목록 밖 층으로는 바꾸지 않는다 — 다시 팀으로 돌아갈 수 없다(3i S4)', async () => {
+    const { ip } = await setup({ scopes: ['user', 'global'] })
+    await ip.openCreate()
+    ip.manager.value['onUpdate:form']({ ...ip.form.value, scopeType: 'team', scopeRefNo: '4' })
+    expect(ip.form.value.scopeType).toBe('global')
+    expect(await ip.closeEditor()).toBe(true)
+    await ip.openEdit(TEAM)
+    ip.manager.value['onUpdate:form']({ ...ip.form.value, scopeType: 'user' })
+    ip.manager.value['onUpdate:form']({ ...ip.form.value, scopeType: 'team' })
+    expect(ip.form.value.scopeType).toBe('user')
+  })
+})
+
 describe('useIpAccessRules — 대상 후보', () => {
   const tree: AdminTeamNode[] = [
     {

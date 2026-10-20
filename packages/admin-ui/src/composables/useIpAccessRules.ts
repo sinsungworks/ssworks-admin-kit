@@ -18,6 +18,7 @@ import type {
   AdminIpRuleRemove,
   AdminIpRuleUpdate,
   AdminTeamNode,
+  IpScopeType,
 } from '@ssworks/admin-shared'
 import { ApiError, toApiError } from '../api/error.js'
 import {
@@ -25,6 +26,7 @@ import {
   IP_RULE_FORM_FIELDS,
   changedItemsOf,
   conflictAlertText,
+  defaultIpScope,
   emptyIpRuleForm,
   flattenTeamPaths,
   formScopeTitle,
@@ -32,6 +34,7 @@ import {
   ipRuleFormProblems,
   lockedItemsOf,
   removesGlobalAllow,
+  resolveIpScopes,
   ruleScopeTitle,
   ruleToForm,
   sameIpRuleForm,
@@ -66,6 +69,7 @@ import {
 //  ② 대상을 번호로 치던 칸을 후보 고르기로(④ T1) — 권한 게터가 거짓이면 부르지 않고 번호 칸(C9).
 //  ③ 세션 끊기 제안이 없다(⑥ S2). revision 충돌 · 409 자기 잠금 처리가 새로 생겼다(hangang 에 없음).
 //  ④ 고친 값 버리기 창을 바인딩으로 낸다 — 킷 `useConfirm` 은 플러그인이 없으면 던진다(I21).
+//  - 층 목록 scopes(3i — ringside 보고 §1). 목록 밖 층의 기존 규칙은 고치는 동안만 선택지에 남는다(S2 · S4).
 //
 // 🔴 편집 · 삭제 · 열기는 `busy`(쓰기 진행 중) 동안 막힌다 — 그래서 재조회 중에 다른 규칙을 여는 경합이 생기지 않는다(I24).
 
@@ -96,6 +100,11 @@ export interface UseIpAccessRulesOptions<R extends AdminIpRule = AdminIpRule> {
   /** 기본 item.userId === useAdminUi().user()?.userId — 컨텍스트가 없으면 본인 표시만 빠진다 */
   isSelf?: (item: AdminIpPreviewItem) => boolean
   onDone?: (event: IpRuleDoneEvent<R>) => void | Promise<void>
+  /**
+   * 기본 ['user', 'team', 'global']. 표시 순서는 늘 사용자 → 팀 → 전체(평가 순서). 팀 모듈(AdminTeamsModule)을 켜지 않은 앱은
+   * ['user', 'global'] — 안 주면 "팀" 층이 남고 저장은 늘 400 이다. 🔴 빈 목록 · 모르는 값은 setup 에서 던진다.
+   */
+  scopes?: readonly IpScopeType[]
   messages?: Partial<IpAccessMessages>
   /** 기본 true */
   immediate?: boolean
@@ -171,7 +180,9 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   options: UseIpAccessRulesOptions<R>,
 ): IpAccessRules<R> {
   const messages: IpAccessMessages = { ...DEFAULT_IP_ACCESS_MESSAGES, ...options.messages }
-  const scopeItems = scopeTypeItems(messages)
+  // 🔴 setup 첫머리에서 던진다 — 층을 고를 수 없는 화면은 설정 실수다(3i S1)
+  const scopes = resolveIpScopes(options.scopes)
+  const newScope = defaultIpScope(scopes)
   const flow = useWriteFlow()
   // 기본값을 쓸 때만 컨텍스트를 찾는다 — 플러그인이 없으면 본인 표시만 빠진다(I6)
   const ui = options.isSelf == null ? useOptionalAdminUi() : null
@@ -226,9 +237,9 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   // ── 편집 상태 · 미리보기 ───────────────────────────────────────────
 
   const editing: ShallowRef<R | 'new' | null> = shallowRef<R | 'new' | null>(null)
-  const form = ref<IpRuleForm>(emptyIpRuleForm())
+  const form = ref<IpRuleForm>(emptyIpRuleForm(newScope))
   /** 연 순간의 폼 — 고친 값 판정의 기준(I21) */
-  let baseline: IpRuleForm = emptyIpRuleForm()
+  let baseline: IpRuleForm = emptyIpRuleForm(newScope)
   const clientErrors = shallowRef<Record<string, string[]>>({})
   const removing = shallowRef<R | null>(null)
   const working = ref(false)
@@ -369,7 +380,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
 
   function setEditor(next: R | 'new' | null): void {
     editing.value = next
-    form.value = next === null || next === 'new' ? emptyIpRuleForm() : ruleToForm(next)
+    form.value = next === null || next === 'new' ? emptyIpRuleForm(newScope) : ruleToForm(next)
     baseline = { ...form.value }
     clientErrors.value = {}
     flow.clearFieldErrors()
@@ -405,6 +416,9 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
 
   function updateForm(next: IpRuleForm): void {
     if (editing.value === null || busy.value) return
+    // 🔴 목록 밖 층으로 바꾸는 갱신은 통째로 버린다(3i S4) — 선택지에 없는 층이 들어와도 상태가 갈리지 않게. 지금 층(목록 밖
+    //    기존 규칙)에 머무는 갱신은 된다.
+    if (next.scopeType !== form.value.scopeType && !scopes.includes(next.scopeType)) return
     // 🔴 범위를 바꾸면 대상을 비운다(I19) — 팀 번호가 사용자 번호로, 본 적 없는 번호가 남지 않게
     form.value = withScopeType({ ...next, scopeType: form.value.scopeType }, next.scopeType)
     clientErrors.value = {}
@@ -651,7 +665,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     'onUpdate:form': updateForm,
     fieldErrors: { ...flow.fieldErrors.value, ...clientErrors.value },
     onCidrBlur: cidrBlur,
-    scopeItems,
+    scopeItems: scopeTypeItems(messages, scopes, form.value.scopeType),
     teamMode: canTeams() ? 'select' : 'number',
     teamItems: teamItemList.value,
     teamsLoading: teamsLoading.value,

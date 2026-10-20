@@ -7,6 +7,7 @@ import type { AdminIpPreview, AdminIpPreviewQuery, AdminIpRule } from '@ssworks/
 import {
   useIpAccessRules,
   type IpAccessManagerBindings,
+  type UseIpAccessRulesOptions,
 } from '../../composables/useIpAccessRules.js'
 import { buttonByText, installVisualViewport, vuetify } from '../../test/setup.js'
 import IpAccessManager from './IpAccessManager.vue'
@@ -268,7 +269,7 @@ describe('IpAccessManager — 편집 패널', () => {
 })
 
 describe('흐름 + 화면 — useIpAccessRules 와 함께', () => {
-  async function mountFlow(reauth: boolean) {
+  async function mountFlow(reauth: boolean, extra: Partial<UseIpAccessRulesOptions> = {}) {
     const adapters = {
       list: vi.fn(async (): Promise<readonly AdminIpRule[]> => RULES),
       preview: vi.fn(async (_query: AdminIpPreviewQuery) => result()),
@@ -279,7 +280,7 @@ describe('흐름 + 화면 — useIpAccessRules 와 함께', () => {
     wrapper = mount(
       defineComponent({
         setup() {
-          const ip = useIpAccessRules({ ...adapters, canManage: () => true, reauth })
+          const ip = useIpAccessRules({ ...adapters, canManage: () => true, reauth, ...extra })
           return () => h(IpAccessManager as Component, { ...ip.manager.value })
         },
       }),
@@ -361,5 +362,18 @@ describe('흐름 + 화면 — useIpAccessRules 와 함께', () => {
     )
     expect(adapters.remove).not.toHaveBeenCalled()
     expect(document.querySelector('.ip-rule-editor')).toBeNull()
+  })
+
+  it('🔴 scopes: [user, global] — 층 select 에 팀이 없다(3i S1)', async () => {
+    await mountFlow(false, { scopes: ['user', 'global'] })
+    buttonByText(M.createButton)!.click()
+    await flushPromises()
+    const scope = wrapper!
+      .findAllComponents(VSelect)
+      .find((c) => c.props('label') === M.scopeLabel)!
+    expect((scope.props('items') as { value: string }[]).map((i) => i.value)).toEqual([
+      'user',
+      'global',
+    ])
   })
 })
