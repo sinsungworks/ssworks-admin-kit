@@ -365,3 +365,54 @@ describe('재인증(reauth: true)', () => {
     expect(silent.calls).toEqual([])
   })
 })
+
+describe('전권 전용 키(2g F3 · F5)', () => {
+  it('🔴 일반 역할 만들기에 전권 전용 키가 있으면 400 issues permissions · 행이 없다', async () => {
+    const error = await rejection(() =>
+      service.create(
+        { roleName: 'fa-create', isDefault: false, permissions: ['setting.ipAccess:write'] },
+        root,
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
+    expect(error.details).toEqual({
+      issues: [{ path: ['permissions'], code: 'custom', message: ACCOUNT_MESSAGES.fullAccessOnly }],
+    })
+    const row = await t.db
+      .selectFrom('roles')
+      .select('roleNo')
+      .where('roleName', '=', 'fa-create')
+      .executeTakeFirst()
+    expect(row).toBeUndefined()
+  })
+
+  it("'*' 와 함께 보내면 ['*'] 로 만든다", async () => {
+    const created = await service.create(
+      { roleName: 'fa-star', isDefault: false, permissions: ['*', 'setting.ipAccess:write'] },
+      root,
+    )
+    expect(created.after.permissions).toEqual(['*'])
+  })
+
+  it('🔴 업그레이드 전 역할 — 이름만 고치기 · 키를 빼는 수정은 되고, 키를 남긴 권한 수정은 400 · 그대로', async () => {
+    const legacy = await seedRole(t.db, {
+      roleName: 'fa-legacy',
+      permissions: ['setting.ipAccess:read', 'setting.ipAccess:write'],
+    })
+    await expect(
+      service.update(legacy, { revision: 0, roleName: 'fa-legacy2' }, root),
+    ).resolves.toMatchObject({ item: { roleName: 'fa-legacy2', revision: 1 } })
+    const error = await rejection(() =>
+      service.update(
+        legacy,
+        { revision: 1, permissions: ['setting.ipAccess:write', 'org.users:read'] },
+        root,
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
+    expect((await stored(legacy)).revision).toBe(1)
+    await expect(
+      service.update(legacy, { revision: 1, permissions: ['setting.ipAccess:read'] }, root),
+    ).resolves.toMatchObject({ item: { permissions: ['setting.ipAccess:read'], revision: 2 } })
+  })
+})

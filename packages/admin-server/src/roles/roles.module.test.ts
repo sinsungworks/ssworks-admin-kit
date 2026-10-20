@@ -1,9 +1,11 @@
 import type { ModuleMetadata } from '@nestjs/common'
+import { definePermissions } from '@ssworks/admin-shared'
 import request from 'supertest'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AdminServerModule } from '../admin-server.module.js'
 import { AdminAuditModule } from '../audit/audit.module.js'
 import { AdminAuthModule } from '../auth/admin-auth.module.js'
+import { AdminIpAccessModule } from '../ip-access/ip-access.module.js'
 import type { AdminServerOptions } from '../options.js'
 import { TEST_CATALOG } from '../test-support/accounts.js'
 import { TEST_JWT_SECRET } from '../test-support/auth.js'
@@ -86,5 +88,33 @@ describe('AdminRolesModule 배선', () => {
         permissions: { ...PERMISSIONS, 'auditLogs.read': 'setting.auditLog:read' },
       }),
     ).resolves.toBeDefined()
+  })
+
+  const IP_PERMISSIONS = {
+    ...PERMISSIONS,
+    'ipAccess.read': 'setting.ipAccess:read',
+    'ipAccess.manage': 'setting.ipAccess:write',
+  }
+
+  it('🔴 IP 모듈을 켰는데 ipAccess.manage 키가 전권 전용이 아니면 멈춘다(2g F6)', async () => {
+    const unmarked = definePermissions({
+      ROLES_READ: 'org.roles:read',
+      ROLES_WRITE: 'org.roles:write',
+      IP_READ: 'setting.ipAccess:read',
+      IP_WRITE: 'setting.ipAccess:write',
+    })
+    await expect(
+      boot([AdminAuthModule, AdminRolesModule, AdminIpAccessModule], {
+        permissions: IP_PERMISSIONS,
+        permissionCatalog: unmarked,
+      }),
+    ).rejects.toThrow("fullAccessOnly: ['setting.ipAccess:write']")
+  })
+
+  it('표시가 있으면 IP 모듈과 함께 뜬다(TEST_CATALOG)', async () => {
+    const app = await boot([AdminAuthModule, AdminRolesModule, AdminIpAccessModule], {
+      permissions: IP_PERMISSIONS,
+    })
+    expect(app).toBeDefined()
   })
 })

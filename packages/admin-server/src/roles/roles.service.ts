@@ -4,6 +4,7 @@ import type { Kysely, Transaction } from 'kysely'
 import { actorOf, judgeAccountCommand } from '../accounts/account-command.js'
 import { isDuplicateOf } from '../accounts/duplicate.js'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
+import { assertFullAccessOnly } from '../accounts/full-access.js'
 import type { ResolvedAccountsConfig } from '../accounts/options.js'
 import { permissionsOrEmpty } from '../accounts/permissions-column.js'
 import { reauthenticate } from '../accounts/reauth.js'
@@ -29,6 +30,7 @@ import { planRoleMove } from './move.js'
 //  - 기본 역할은 하나 — 만들기에서도 끈다(axion 은 수정에서만 껐다, ⑫ D1). 끈 역할 번호를 돌려준다 — 감사 meta
 //    clearedDefaults(§14 R5-3).
 //  - 이름 중복은 제약 이름으로 가려 400 roleName 필드 오류(B1 — hangang 은 사전 검사였고 경합 때 일반 코드로 샜다).
+//  - 전권 전용 키는 '*' 역할만(2g F3) — 만들기 · 권한 수정이 정규화 뒤 assertFullAccessOnly.
 //  - 수정의 응답 item · 감사 after 는 같은 트랜잭션에서 읽는다(§14 R5-2 — 커밋 뒤에 읽으면 그 사이 남의 쓰기가 섞였다).
 //  - 잔존으로 감싼 수정 · 삭제는 잠금 단계(역할 · 다른 기본 역할 잠금 · 판정 · revision) 뒤에 셈한다(2d-3 스펙 ① A · C3) —
 //    역할 이동이 그 사이 역할 행을 바꿔도 ON 에서 1020 이 아니다.
@@ -132,6 +134,8 @@ export class AdminRolesService {
   ): Promise<{ roleNo: bigint; after: RoleAuditView; clearedDefaults: bigint[] }> {
     await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const next = this.config.catalog.normalize(body.permissions)
+    // 🔴 본문만 보는 검사 — 트랜잭션 · 403 판정 앞(2g F4)
+    assertFullAccessOnly(this.config.catalog, next)
     judgeAccountCommand(actorOf(principal), { kind: 'role.create', next })
     // 만들기는 잔존을 늘리기만 한다 — 센티넬을 잡지 않는다(§5-3).
     const created = await this.guardRoleName(() =>
@@ -184,6 +188,8 @@ export class AdminRolesService {
     await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const next =
       body.permissions === undefined ? undefined : this.config.catalog.normalize(body.permissions)
+    // 🔴 권한을 바꾸는 수정만 — 이름 · 기본 표시만 고치는 수정은 업그레이드 전 역할도 지난다(2g F4 · F5, 결정 ④)
+    if (next !== undefined) assertFullAccessOnly(this.config.catalog, next)
     const actor = actorOf(principal)
     return this.guardRoleName(() =>
       runWriteTransaction(this.db, async (trx) => {

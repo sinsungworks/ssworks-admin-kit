@@ -33,6 +33,9 @@ export const TEST_CATALOG = definePermissions(
       'setting.legal:publish': ['setting.legal:read'],
       'setting.ipAccess:write': ['setting.ipAccess:read'],
     },
+    // 🔴 bootAdminApp 이 역할 · IP 모듈을 함께 띄운다 — 표시가 없으면 실 DB HTTP 테스트가 모두 기동에서 멈춘다(2g F6).
+    // IP 테스트의 좁은 보유자는 seedRole 로 DB 에 직접 넣으므로 쓰기 검사를 타지 않는다.
+    fullAccessOnly: ['setting.ipAccess:write'],
   },
 )
 

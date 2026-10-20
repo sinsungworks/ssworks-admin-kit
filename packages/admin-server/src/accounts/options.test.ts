@@ -64,6 +64,13 @@ describe('resolveAccountsConfig', () => {
       resolveAccountsConfig({ permissionCatalog: catalog, reauth: 'yes' as never }, 'M'),
     ).toThrow('reauth 는 true · false 여야 한다.')
   })
+
+  it('🔴 fullAccessOnly 가 없는 카탈로그(admin-shared 0.9.0 전)는 모양이 다르다고 멈춘다(2g F7)', () => {
+    const { fullAccessOnly: _old, ...older } = catalog
+    expect(() =>
+      resolveAccountsConfig({ permissionCatalog: older as never }, 'AdminRolesModule'),
+    ).toThrow('fullAccessOnly')
+  })
 })
 
 describe('resolveUsersConfig', () => {

@@ -21,6 +21,7 @@ export const ACCOUNT_MESSAGES = Object.freeze({
   periodCorrupted:
     '근무 이력이 손상되어(활성 구간 중복) 처리할 수 없습니다. 관리자에게 문의하세요.',
   unknownPermission: '알 수 없는 권한입니다.',
+  fullAccessOnly: '전체 권한 역할만 가질 수 있는 권한이 들어 있습니다.',
   duplicateRoleName: '이미 있는 역할 이름입니다.',
   currentPasswordRequired: '현재 비밀번호를 입력하세요.',
   selfAccount: '내 계정에는 이 작업을 할 수 없습니다. 다른 관리자에게 요청하세요.',

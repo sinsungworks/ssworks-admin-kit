@@ -3,6 +3,7 @@ import type { AdminServerOptions } from '../options.js'
 import { resolveTimeZone } from './calendar.js'
 
 // 정본: 없음 — 2d 스펙 ① C1 · ⑦ R1 · B4 · B12. 역할 · 사용자 모듈이 함께 읽는 코어 옵션의 해석. 사용자 모듈은 기준 시간대(⑤ TZ1 · B15)를 더한다.
+// 2g: 카탈로그 모양에 fullAccessOnly(F7) — admin-server peer 하한 0.9.0.
 
 /**
  * 서버가 쓰는 카탈로그의 부분(2d 스펙 B4). admin-shared `definePermissions()` 결과가 그대로 들어간다(§14 R1-1).
@@ -10,7 +11,7 @@ import { resolveTimeZone } from './calendar.js'
  */
 export type AdminPermissionCatalog = Pick<
   PermissionCatalog<Record<string, string>, string>,
-  'ALL_PERMISSION_VALUES' | 'isPermission' | 'implies' | 'normalize'
+  'ALL_PERMISSION_VALUES' | 'isPermission' | 'implies' | 'normalize' | 'fullAccessOnly'
 >
 
 export interface ResolvedAccountsConfig {
@@ -35,7 +36,7 @@ export function resolveAccountsConfig(
   }
   if (!isCatalog(catalog)) {
     throw new Error(
-      `${moduleName} 의 permissionCatalog 모양이 다르다 — admin-shared definePermissions() 결과인지, admin-shared 가 implies · normalize 를 내는 판인지(설치가 둘이 아닌지) 확인한다.`,
+      `${moduleName} 의 permissionCatalog 모양이 다르다 — admin-shared definePermissions() 결과인지, admin-shared 가 implies · normalize · fullAccessOnly 를 내는 판(0.9.0 이상)인지(설치가 둘이 아닌지) 확인한다.`,
     )
   }
   if (options.reauth !== undefined && typeof options.reauth !== 'boolean') {
@@ -73,6 +74,7 @@ function isCatalog(value: unknown): value is AdminPermissionCatalog {
     typeof candidate.isPermission === 'function' &&
     typeof candidate.normalize === 'function' &&
     typeof candidate.implies === 'object' &&
-    candidate.implies !== null
+    candidate.implies !== null &&
+    Array.isArray(candidate.fullAccessOnly)
   )
 }
