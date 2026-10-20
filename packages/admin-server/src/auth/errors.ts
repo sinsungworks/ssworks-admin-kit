@@ -1,6 +1,7 @@
 // 인증 오류 문구 — 서비스 · 가드 · 테스트가 이 표 하나를 본다(스펙 §5 · §14 R6). 코드 · 상태는 admin-shared 코어 표.
+// 2g: 얼린다 — ADMIN_SERVER_DEFAULT_MESSAGES 로 공개된다(http/messages.ts).
 
-export const AUTH_MESSAGES = {
+export const AUTH_MESSAGES = Object.freeze({
   unauthorized: '인증이 필요합니다.',
   loginFailed: '아이디 또는 비밀번호가 올바르지 않거나, 로그인 실패가 반복되어 잠시 잠겼습니다.',
   /** IP 정책이 주입됐을 때 로그인 401 전부의 문구(2f-2a 스펙 A5) — 한 배포 안에서 실패 문구가 하나라 오라클이 없다 */
@@ -25,4 +26,4 @@ export const AUTH_MESSAGES = {
   currentPasswordMismatch: '현재 비밀번호가 올바르지 않습니다.',
   reauthFailed: '비밀번호가 올바르지 않습니다.',
   passwordConflict: '동시 요청이 충돌했습니다. 다시 시도해 주세요.',
-} as const
+} as const)
