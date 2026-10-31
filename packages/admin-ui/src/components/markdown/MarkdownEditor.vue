@@ -194,9 +194,19 @@
   }
 
   interface Tool {
+    /** 도구 단추의 문구 키 — 모드 · 도구 막대 이름 · 링크 대화상자 문구는 아니다 */
     key: Exclude<
       keyof MarkdownEditorMessages,
-      'modeWysiwyg' | 'modeSource' | 'modeToggle' | 'toolbar' | `link${string}`
+      | 'modeWysiwyg'
+      | 'modeSource'
+      | 'modeToggle'
+      | 'toolbar'
+      | 'linkTitle'
+      | 'linkHref'
+      | 'linkApply'
+      | 'linkRemove'
+      | 'linkCancel'
+      | 'linkInvalid'
     >
     icon: string
     active: boolean

@@ -588,7 +588,9 @@ describe('Image 입력 규칙 — 켜 둔다(결정 ②): `![alt](src)` 를 치�
     // Image 의 규칙은 앞이 줄머리나 공백이어야 맞는다(`(?:^|\s)`)
     editor.commands.insertContent(` ![x](${IMG}`)
     const { from } = editor.state.selection
-    const handled = editor.view.someProp('handleTextInput', (f) => f(editor.view, from, from, ')'))
+    const handled = editor.view.someProp('handleTextInput', (f) =>
+      f(editor.view, from, from, ')', () => editor.view.state.tr.insertText(')', from, from)),
+    )
     expect(handled, '가드 — 입력 규칙이 받았다').toBe(true)
     editor.state.doc.check()
     let images = 0

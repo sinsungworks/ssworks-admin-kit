@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
+import type { Editor } from '@tiptap/vue-3'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { EditorView } from 'codemirror'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h, type Component } from 'vue'
 import type { AdminLegalDocument, AdminLegalHistoryItem } from '@ssworks/admin-shared'
 import type { ConfirmDialogBindings } from '../../composables/useWriteFlow.js'
 import { buttonByText, installVisualViewport, vuetify } from '../../test/setup.js'
 import { formatDateTime } from '../../utils/format-date-time.js'
+import MarkdownEditor from '../markdown/MarkdownEditor.vue'
 import LegalDocumentEditor from './LegalDocumentEditor.vue'
 
 // 바인딩을 손으로 넘겨 화면만 잰다. 흐름과 함께 도는 시나리오는 composables/useLegalDocuments.render.test.ts(Task 7).
@@ -128,7 +129,7 @@ const tableRows = () => [...document.querySelectorAll('.legal-document-editor__h
 const cells = (tr: Element) =>
   [...tr.querySelectorAll('td')].map((td) => td.textContent?.trim() ?? '')
 const content = (label: string) =>
-  document.querySelector<HTMLElement>(`.cm-content[aria-label="${label}"]`)
+  document.querySelector<HTMLElement>(`.ProseMirror[aria-label="${label}"]`)
 
 describe('LegalDocumentEditor — 탭', () => {
   it('종류 라벨을 탭으로 그리고 kind 가 선택이다', () => {
@@ -214,14 +215,17 @@ describe('LegalDocumentEditor — 편집기 · 미리보기', () => {
     expect(content('이용약관 본문')?.getAttribute('aria-readonly')).toBe('true')
   })
 
-  it('입력하면 update:modelValue', () => {
+  it('입력하면 update:modelValue — 포커스를 잃을 때(디바운스 flush)', () => {
     const w = mountEditor()
-    const view = EditorView.findFromDOM(content('이용약관 본문')!)!
-    view.dispatch({
-      changes: { from: view.state.doc.length, insert: '본문' },
-      userEvent: 'input.type',
-    })
-    expect(w.emitted('update:modelValue')).toEqual([['# 제1조\n본문']])
+    const editor = (w.findComponent(MarkdownEditor).vm as unknown as { editor: Editor }).editor
+    editor
+      .chain()
+      .setTextSelection(editor.state.doc.content.size - 1)
+      .splitBlock()
+      .insertContent('본문')
+      .run()
+    editor.view.dom.dispatchEvent(new FocusEvent('blur'))
+    expect(w.emitted('update:modelValue')).toEqual([['# 제1조\n\n본문']])
   })
 
   it('미리보기가 초안을 그리고, 비면 안내한다', async () => {
@@ -235,7 +239,7 @@ describe('LegalDocumentEditor — 편집기 · 미리보기', () => {
   it('편집기 아래에 작성 도움말(줄바꿈 · 문단 · 인용 끝내기)이 보이고, messages 로 바꿀 수 있다', async () => {
     const w = mountEditor()
     expect(w.find('.legal-document-editor__guide').text()).toBe(
-      'Enter 한 번은 줄바꿈, 빈 줄은 문단 나눔입니다. 인용(>)과 목록은 빈 줄을 넣어야 끝납니다.',
+      'Enter 는 새 문단, Shift+Enter 는 줄바꿈입니다. Markdown 원문을 직접 고치려면 「원문」으로 바꾸세요.',
     )
     await w.setProps({ messages: { editorHint: '사내 작성 규칙을 따르세요.' } })
     expect(w.find('.legal-document-editor__guide').text()).toBe('사내 작성 규칙을 따르세요.')

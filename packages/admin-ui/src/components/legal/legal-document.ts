@@ -49,7 +49,7 @@ export const DEFAULT_LEGAL_MESSAGES: Readonly<LegalMessages> = Object.freeze<Leg
 export interface LegalDocumentEditorMessages {
   kindTabs: string
   editorLabel: (kindLabel: string) => string
-  /** 편집기 아래 작성 도움말 — 줄바꿈 · 문단 · 인용 끝내기(마크다운 규칙을 모르는 관리자용, 3e §12 R7) */
+  /** 편집기 아래 작성 도움말 — Enter 문단 · Shift+Enter 줄바꿈 · 원문 탭(3e §12 R7 → 3j W16 WYSIWYG) */
   editorHint: string
   preview: string
   previewEmpty: string
@@ -89,7 +89,7 @@ export const DEFAULT_LEGAL_DOCUMENT_EDITOR_MESSAGES: Readonly<LegalDocumentEdito
     kindTabs: '문서 종류',
     editorLabel: (kindLabel) => `${kindLabel} 본문`,
     editorHint:
-      'Enter 한 번은 줄바꿈, 빈 줄은 문단 나눔입니다. 인용(>)과 목록은 빈 줄을 넣어야 끝납니다.',
+      'Enter 는 새 문단, Shift+Enter 는 줄바꿈입니다. Markdown 원문을 직접 고치려면 「원문」으로 바꾸세요.',
     preview: '미리보기',
     previewEmpty: '미리 볼 내용이 없습니다.',
     currentChip: '시행 중',
