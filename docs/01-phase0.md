@@ -214,6 +214,8 @@ admin-ui ringside 둘째 보고 반영 PR #3i(2026-10-20) 완료 — `useIpAcces
 
 전권 전용 · 서버 문구 PR 2g(2026-10-20) 완료 — admin-shared `definePermissions(…, { fullAccessOnly })` · admin-server 일반 역할 쓰기 400 · IP 모듈을 켠 앱의 `ipAccess.manage` 표시 기동 검사 · peer 하한 0.9.0 · `AdminServerModule` 옵션 `messages`(서버 오류 문구 키별 덮기 — 예외 필터 한 곳) · admin-ui `useRoleEditor({ fullAccessOnly })`(스펙 `docs/superpowers/specs/2026-10-20-admin-kit-ringside-feedback-2-design.md` · 플랜 `docs/superpowers/plans/2026-10-20-admin-kit-full-access-messages.md`).
 
+admin-ui `MarkdownEditor` WYSIWYG PR #3j(2026-11-01) 완료 — TipTap 3 + `@tiptap/markdown`(ProseMirror · marked) + 「원문」 전환, 공개 API(props 넷 · Markdown v-model) 그대로, 충실도 어댑터 열(ringside p1d 코드 이식) · 오라클 넷 · emit 디바운스 200ms · CodeMirror peer 둘 → TipTap peer 열둘(정확 판 3.32.0) + marked + @floating-ui/dom(스펙 `docs/superpowers/specs/2026-11-01-admin-ui-wysiwyg-editor-design.md` · 플랜 `docs/superpowers/plans/2026-11-01-admin-ui-wysiwyg-editor.md` · 검증 `docs/verification/2026-11-01-admin-ui-wysiwyg-editor.md`). 입력은 ringside 기능 요청(`docs/reports/2026-10-31-admin-kit-report-wysiwyg-editor.md`). 템플릿 `preset/admin` 의존 · 핀은 함께 고쳤다(push 는 사람).
+
 다음: Phase 4 — ringside 로 실전 검증 후 A 패키지 1.0 태깅(`docs/00-admin-common-review.md` §4, HANDOFF "다음 플랜"). Node 26 은 26 LTS(10/27) 뒤 별도.
 
 미확인(추출본에 없어 확정 보류): axion `utils/route-permission.ts`·`post-auth-redirect.ts`, gise `api/error.ts`·`AccountSessionsDialog.vue`, crm `utils/queryCodec.ts`·`components/user/*`·`core/pipe/zod-validation-pipe.ts`·`core/filter/exception.filter.ts`, hangang `api/ip-access.api.ts`·`storage.api.ts`. 이들은 A 배정한 `useQuerySyncedFilter`·`useFieldErrors`의 최종 확정에만 영향. → **2026-10-03 원본 확인으로 해소** — crm `queryCodec.ts`·`useQuerySyncedFilter.ts`, gise `useRouteQuerySync.ts`·`useFieldErrors.ts` 를 읽고 위 결정에 반영했다.

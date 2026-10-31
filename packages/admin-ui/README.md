@@ -109,19 +109,20 @@ export const usePermission = createUsePermission<Permission>(
 
 ## Peer 의존
 
-| 패키지                  | 필수 | 용도                                                                                                                         |
-| ----------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `@ssworks/admin-shared` | 예   | `>=0.4.0 <1.0.0` — 감사 카탈로그 · 오류 코드 · 스키마. 세 패키지를 같은 번호로 설치한다                                      |
-| `vue`                   | 예   |                                                                                                                              |
-| `vuetify`               | 예   |                                                                                                                              |
-| `vue-router`            | 예   | 셸·가드·메뉴가 라우트 `meta` 를 읽는다 — Pinia 4 와 함께면 vue-router 5.2 이상(그 아래 5.x 는 optional peer `pinia ^3` 경고) |
-| `pinia`                 | 예   | `createAppStore` — **4.x**. Pinia 4 의 필수 peer `@vue/devtools-api` 8 을 함께 설치한다                                      |
-| `axios`                 | 예   | `createApiClient`                                                                                                            |
-| `@he-tree/vue`          | 예   | `TeamTree`(팀 트리 · 드래그)                                                                                                 |
-| `codemirror`            | 예   | `MarkdownEditor` · `LegalDocumentEditor`(약관 편집기)                                                                        |
-| `@codemirror/state`     | 예   | 같음 — `codemirror` 가 쓰는 것과 같은 인스턴스여야 한다                                                                      |
+| 패키지                                                                                                                                                                                                                                                                                                    | 필수 | 용도                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@ssworks/admin-shared`                                                                                                                                                                                                                                                                                   | 예   | `>=0.4.0 <1.0.0` — 감사 카탈로그 · 오류 코드 · 스키마. 세 패키지를 같은 번호로 설치한다                                                           |
+| `vue`                                                                                                                                                                                                                                                                                                     | 예   |                                                                                                                                                   |
+| `vuetify`                                                                                                                                                                                                                                                                                                 | 예   |                                                                                                                                                   |
+| `vue-router`                                                                                                                                                                                                                                                                                              | 예   | 셸·가드·메뉴가 라우트 `meta` 를 읽는다 — Pinia 4 와 함께면 vue-router 5.2 이상(그 아래 5.x 는 optional peer `pinia ^3` 경고)                      |
+| `pinia`                                                                                                                                                                                                                                                                                                   | 예   | `createAppStore` — **4.x**. Pinia 4 의 필수 peer `@vue/devtools-api` 8 을 함께 설치한다                                                           |
+| `axios`                                                                                                                                                                                                                                                                                                   | 예   | `createApiClient`                                                                                                                                 |
+| `@he-tree/vue`                                                                                                                                                                                                                                                                                            | 예   | `TeamTree`(팀 트리 · 드래그)                                                                                                                      |
+| `@tiptap/core` · `@tiptap/pm` · `@tiptap/vue-3` · `@tiptap/starter-kit` · `@tiptap/markdown` · `@tiptap/extension-image` · `@tiptap/extension-code` · `@tiptap/extension-paragraph` · `@tiptap/extension-document` · `@tiptap/extension-code-block` · `@tiptap/extension-list` · `@tiptap/extension-text` | 예   | `MarkdownEditor` · `LegalDocumentEditor`(약관 편집기). 🔴 **정확 판 `3.32.0`** — TipTap 은 패키지끼리 정확 판 peer 라 열둘을 같은 판으로 설치한다 |
+| `marked`                                                                                                                                                                                                                                                                                                  | 예   | `^17.0.6` — `@tiptap/markdown` 의 의존이기도 하다. 편집기가 `Tokenizer` 를 상속해 렌더(markdown-it)와 토큰을 맞춘다                               |
+| `@floating-ui/dom`                                                                                                                                                                                                                                                                                        | 예   | `^1.0.0` — `@tiptap/vue-3` 의 필수 peer                                                                                                           |
 
-🔴 `pinia`·`axios`·`@he-tree/vue`·`codemirror`·`@codemirror/state` 도 **필수**다. 엔트리가 하나(`dist/index.js`)라 두 패키지를 최상단에서 import 한다 — `safeRedirect` 하나만 써도 번들러가 `axios` 를 해석하지 못하면 빌드가 깨진다. 서브패스 export 로 가르지 않는 대가다. 예외는 `@ssworks/admin-ui/vite` 하나다 — 브라우저 엔트리가 아니라 `vite.config` 가 읽는 빌드 설정용이다. he-tree CSS 는 import 하지 않아도 된다 — `TeamTree` 가 필요한 규칙을 `style.css` 에 담는다. CodeMirror 테마 패키지(`@codemirror/theme-one-dark`)는 필요 없다 — 편집기 색은 Vuetify 테마를 따른다.
+🔴 `pinia`·`axios`·`@he-tree/vue`·`@tiptap/*`·`marked`·`@floating-ui/dom` 도 **필수**다. 엔트리가 하나(`dist/index.js`)라 그 패키지들을 최상단에서 import 한다 — `safeRedirect` 하나만 써도 번들러가 `axios` 를 해석하지 못하면 빌드가 깨진다. 서브패스 export 로 가르지 않는 대가다. 예외는 `@ssworks/admin-ui/vite` 하나다 — 브라우저 엔트리가 아니라 `vite.config` 가 읽는 빌드 설정용이다. he-tree CSS 는 import 하지 않아도 된다 — `TeamTree` 가 필요한 규칙을 `style.css` 에 담는다. TipTap 의 CSS 주입(`injectCSS`)은 쓰지 않는다 — 편집기 색은 Vuetify 테마를 따르고 필요한 규칙은 `style.css` 에 있다.
 
 pnpm 10 이상은 의존 패키지의 설치 스크립트를 막는다. he-tree 의 하위 의존 `vue-demi` 의 postinstall 이 걸려 pnpm 12 는 `pnpm install` 이 `ERR_PNPM_IGNORED_BUILDS` 로 멈춘다. 소비자 앱의 `pnpm-workspace.yaml` 에 `allowBuilds:` / `vue-demi: false` 를 두면 된다 — Vue 3 에서는 그 스크립트가 할 일이 없다:
 
@@ -168,7 +169,7 @@ allowBuilds:
 | `useTeamTree` · `UseTeamTreeOptions` · `TeamTreeController` · `TeamTreeBindings` · `TeamMoveDialogBindings` · `TeamMessages` · `TeamDialogText` · `TeamDoneEvent` · `TeamDoneAction` · `DEFAULT_TEAM_MESSAGES`                                                                                                      | 팀 트리 headless — 조회 경합 · 쓰기 넷(만들기 · 이름 · 삭제 · 이동) · 드래그 확인과 원위치 · 입력칸 오류는 그 자리에                                                                                                    |
 | `TeamUserList` · `TeamUserRow` · `TeamUserQuery` · `TeamUserPage` · `TeamUserListMessages` · `DEFAULT_TEAM_USER_LIST_MESSAGES`                                                                                                                                                                                      | 팀 화면 2열 인원 목록 — `load` 어댑터 · ID 검색 · 하위 팀 포함 · 스크롤하면 다음 쪽                                                                                                                                     |
 | `MarkdownView`                                                                                                                                                                                                                                                                                                      | 마크다운 본문 보기 — `renderMarkdown` 결과를 그리는 킷 유일의 `v-html`. `linkTarget="_blank"` 면 본문 링크를 새 탭으로. `#empty` 슬롯                                                                                   |
-| `MarkdownEditor`                                                                                                                                                                                                                                                                                                    | CodeMirror 6 편집기 `v-model`. `readonly`(편집만 막음 — 포커스 · 선택 · 찾기는 됨) · `label`(aria) · `height`. 색은 Vuetify 테마                                                                                        |
+| `MarkdownEditor` · `MarkdownEditorMode` · `MarkdownEditorMessages` · `DEFAULT_MARKDOWN_EDITOR_MESSAGES`                                                                                                                                                                                                             | WYSIWYG(TipTap) + 「원문」 전환 편집기 `v-model`(Markdown 문자열). `readonly` · `label`(aria) · `height` · `defaultMode` · `messages`, `editor` expose. 아래 「마크다운 편집기」                                        |
 | `useLegalDocuments` · `UseLegalDocumentsOptions` · `LegalDocumentsController` · `LegalDocumentEditorBindings` · `LegalDetailDialogBindings` · `LegalDoneEvent` · `LegalKindOption` · `LegalPublishBlock` · `LegalMessages` · `LegalDialogText` · `DEFAULT_LEGAL_MESSAGES`                                           | 약관 흐름 headless — 종류 전환(초안 확인) · 현재본 · 이력 · 원문 · 발행(확인 → 저장 → revision 충돌)                                                                                                                    |
 | `LegalDocumentEditor` · `LegalDocumentEditorMessages` · `DEFAULT_LEGAL_DOCUMENT_EDITOR_MESSAGES`                                                                                                                                                                                                                    | 약관 화면 한 벌 — 탭 · 시행 정보 · 편집기 \| 미리보기 · 발행 · 이력 · 대화상자 셋. `v-bind="legal.editor.value"`                                                                                                        |
 | `AuditLogViewer` · `useAuditLogs` · `UseAuditLogsOptions` · `AuditLogs` · `AuditLogViewerBindings` · `AuditActorOption` · `AuditActionGroup` · `AuditLogDraft` · `AuditLogFilter` · `AuditFilterItem` · `AuditLogMessages` · `DEFAULT_AUDIT_LOG_MESSAGES` · `CORE_AUDIT_ACTION_GROUPS`                              | 감사 로그 조회(「감사 로그」)                                                                                                                                                                                           |
@@ -886,6 +887,28 @@ const teams = useTeamTree({
 })
 ```
 
+## 마크다운 편집기
+
+`MarkdownEditor` 는 보이는 대로 쓰는(WYSIWYG) 편집기다. 엔진은 TipTap 3 + `@tiptap/markdown`, 값(`v-model`)은 언제나 Markdown 문자열이라 서버 · 렌더(`renderMarkdown`) · `LegalDocumentEditor` 는 그대로다. 편집기에 보이는 것이 `renderMarkdown` 결과와 같아지게 편집기 쪽을 맞췄다(충실도 어댑터 — `src/components/markdown/editor-markdown.ts` 머리 주석).
+
+```vue
+<MarkdownEditor v-model="body" label="운영 원칙" height="360px" />
+<MarkdownEditor v-model="body" default-mode="source" :messages="{ modeSource: 'Markdown' }" />
+```
+
+- **두 모드** — 도구 막대 오른쪽 「서식 | 원문」. 원문은 평문 textarea(같은 값 · 변환 없음)다. 옛 원고를 그대로 붙여 넣거나 표기를 정확히 다듬을 때, 한글 입력이 말썽일 때 쓴다. `defaultMode: 'source'` 로 원문부터 열 수 있다.
+- **도구 막대** — 굵게 · 기울임 · 취소선 | 제목 2 · 3 | 인용 · 글머리 · 번호 | 링크 · 구분선 | 되돌리기 · 다시 실행. 제목 1 과 코드 단추는 없다(문서 제목은 페이지 몫 · 코드는 입력 규칙으로). 문구는 `messages`(기본값 `DEFAULT_MARKDOWN_EDITOR_MESSAGES`).
+- **키** — Enter 는 새 문단, Shift+Enter 는 줄바꿈(`  \n`). 입력 규칙: `**굵게**` · `*기울임*` · `# ` · `- ` · `1. ` · `> ` · `` `코드` `` · ` ``` ` · `---` · `![alt](주소)`(앞이 공백이어야 한다). 목록 안 Tab 은 들여쓰기다.
+- **링크** — 글자를 고른 뒤 링크 단추 → 대화상자(브라우저 `prompt` 없음). 스킴이 없으면 `https://` 를 붙이고 공백 · 괄호는 퍼센트 인코딩한다. `javascript:` 같은 주소는 거부한다.
+- **그림** — 업로드 UI 는 없다. `![alt](주소)` 를 치거나 붙여 넣은 HTML 의 `<img>` 가 그림 노드가 된다. 킷은 그림 주소를 거르지 않는다(거르기는 앱 몫 — 렌더 쪽에서).
+- 🔴 **emit 은 입력 뒤 200ms 안에**(디바운스) — 큰 본문에서 입력마다 전체를 직렬화하지 않기 위해서다. 포커스를 잃으면 · 원문으로 바꾸면 · `readonly` 가 켜지면 · 언마운트하면 바로 나간다. 입력 직후 값을 재는 앱 테스트는 편집 영역(`.ProseMirror`)에 `blur` 를 보낸 뒤 잰다. 원문 textarea 는 즉시 emit.
+- 🔴 **표기가 바뀐다** — 한 글자만 고쳐도 본문 전체가 다시 직렬화된다. 인라인 기호 `\*` `\_` `\[` `\~` · 줄머리 `1\.` `\-` `\#` · `<` `>` `&` → `&lt;` `&gt;` `&amp;` · 줄 하나 바꿈 → `  \n` · 목록 들여쓰기 2칸 · 빈 문단 → `&nbsp;` · 끝 개행 없음. **렌더는 같다**(왕복 테스트가 지킨다). 약관처럼 원문이 그대로 보관되는 곳에서는 "표기만 다른 새 판"이 생길 수 있다 — 표기를 지키며 고치려면 「원문」에서 고친다. 건드리지 않은 본문은 emit 되지 않아 그대로다.
+- **붙여넣기** — HTML 은 서식으로, 평문은 줄마다 문단으로 들어온다. 평문으로 붙여넣은 **Markdown 원문은 Markdown 으로 읽히지 않는다**(`1.` · `-` · `#` 로 시작하는 줄은 글자로 지킨다) — 원문 탭에 붙여 넣는다.
+- **큰 본문** — 5만 자(문단 125개)에서 키당 수백 ms 였던 직렬화가 디바운스로 키 경로에서 빠진다. 수십만 자는 원문 탭을 권한다.
+- **알려진 차이**(렌더가 같거나 보이는 모양만 다르다 — 어댑터 테스트가 기대 출력으로 고정): 이름 있는 엔티티(`&copy;`)는 글자 · 할 일 목록 `- [ ]` 는 보통 목록 · 느슨한 목록은 촘촘하게 · 기호가 섞인 이웃 목록은 `-` 하나 · 목록 안 빈 줄은 편집기에만 · 문서 끝 빈 문단은 렌더하지 않음 · 맨 `www.` 주소는 링크가 된다(렌더가 바뀌는 드문 경우) · 표는 편집기에 파이프 글자로 보이고 렌더는 표 · 붙여넣은 HTML 의 `data:` 그림은 들어오지 않는다 · 링크 걸린 그림은 링크를 잃는다 · 글자 문단 속 그림은 따로 선 블록이 된다.
+- **`editor`**(`defineExpose`) — TipTap `Editor` 인스턴스(마운트 뒤). 테스트 · 고급 소비자의 탈출구이고, 안정성 약속은 props · emit 까지다 — TipTap 판을 올리면 바뀔 수 있다.
+- 테스트가 잴 수 없어 사람이 확인하는 것 — 한글 입력(데스크톱 · Android Chrome · iOS Safari), 붙여넣기(스크린숏 · Word · 한글 문서), 도구 단추 클릭 뒤 포커스, 되돌리기 범위, 다크 테마 색.
+
 ## 약관
 
 이용약관 · 개인정보처리방침 같은 법적 문서의 편집 · 발행 · 이력 화면. 발행은 append-only 라 되돌릴 수 없다 — 확인을 거치고, 다른 관리자가 그사이 발행했으면 서버가 revision 충돌로 거절한다(내 초안은 남는다). 페이지 제목 · 카드 틀 · 메뉴는 템플릿 몫이다.
@@ -961,9 +984,9 @@ publish: ({ kind, body }) => legalApi.publish({ kind, body }), // 기준 판 번
 ### 알려진 한계 · 수동 확인
 
 - 미리보기는 입력마다 다시 렌더한다. 실제 약관 크기(수십 KB)에서는 문제가 없고, 상한(100만 자) 근처에서는 느려질 수 있다.
-- CodeMirror 는 개행을 `\n` 으로 정규화한다. CRLF 로 저장된 본문은 첫 입력부터 LF 로 바뀐다.
-- Enter 한 번은 줄바꿈, 빈 줄은 문단 나눔이다(`renderMarkdown` 의 `breaks: true`). 인용(`>`) · 목록은 빈 줄을 넣어야 끝난다 — 편집기 아래 도움말(`messages.editorHint`)이 이것을 알린다.
-- 테스트가 잴 수 없어 사람이 확인하는 것 — 한글 입력(조합 · 끼워 쓰기 · 되돌리기 · 발행까지)과 다크 테마 색(편집기 · 찾기 패널 · 미리보기 · 대화상자). 2026-10-08 Windows 브라우저에서 모두 통과했다. 편집기를 바꾸면 다시 본다.
+- 편집기(TipTap · marked)는 개행을 `\n` 으로 정규화한다. CRLF 로 저장된 본문은 첫 입력부터 LF 로 바뀐다.
+- 서식 모드에서 Enter 는 새 문단, Shift+Enter 는 줄바꿈이다. 원문 모드는 Markdown 그대로(`renderMarkdown` 의 `breaks: true` — Enter 한 번이 줄바꿈, 빈 줄이 문단). 편집기 아래 도움말(`messages.editorHint`)이 이것을 알린다. 한 글자만 고쳐도 본문 전체의 Markdown 표기가 다시 쓰인다 — 「마크다운 편집기」.
+- 테스트가 잴 수 없어 사람이 확인하는 것 — 한글 입력(조합 · 끼워 쓰기 · 되돌리기 · 발행까지)과 다크 테마 색(편집기 · 미리보기 · 대화상자). CodeMirror 판은 2026-10-08 Windows 브라우저에서 통과했고, TipTap 판(0.10.0)은 사람 확인이 남아 있다(HANDOFF 「PR #3j 가 넘긴 것」).
 
 ## 감사 로그
 
