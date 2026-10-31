@@ -152,8 +152,10 @@ function isEmptyParagraph(node: JSONContent | undefined): boolean {
   return node?.type === 'paragraph' && (node.content?.length ?? 0) === 0
 }
 
+/** U+00A0 — 글자 그대로 적으면 eslint no-irregular-whitespace 에 걸려 코드로 만든다 */
+const NBSP = String.fromCharCode(160)
 /** 원문이 빈 문단 표지뿐인 문단 — 앞뒤 공백 · 줄바꿈이 붙어 와도(중첩 번호 목록 토크나이저가 한 칸 어긋나게 넘긴다) */
-const EMPTY_PARAGRAPH_SOURCE = /^[ \t\n]*(?:&nbsp;| )[ \t\n]*$/
+const EMPTY_PARAGRAPH_SOURCE = new RegExp(`^[ \\t\\n]*(?:&nbsp;|${NBSP})[ \\t\\n]*$`)
 /** 첫 줄 들여쓰기 표지(escapeLineStart) — 이 문단의 첫 줄 공백은 글자다 */
 const INDENT_MARKER_SOURCE = /^[ \t\n]*(?:&#32;|&#9;)/
 const LINE_START_BLANKS = /^[ \t]+/

@@ -75,6 +75,8 @@ const KEPT_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = {
   ol: ['start'],
 }
 const VOID_TAGS = new Set(['br', 'hr', 'img'])
+/** 공백 · U+00A0(글자 그대로 적으면 eslint no-irregular-whitespace) 묶음 */
+const BLANKS = new RegExp(`[\\s${String.fromCharCode(160)}]+`, 'g')
 
 function escapeText(text: string): string {
   return text
@@ -98,7 +100,7 @@ function canonical(parent: ParentNode): string {
   let out = ''
   for (const child of parent.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
-      out += escapeText((child.textContent ?? '').replace(/[\s ]+/g, ' '))
+      out += escapeText((child.textContent ?? '').replace(BLANKS, ' '))
       continue
     }
     if (!(child instanceof Element)) continue

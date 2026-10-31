@@ -20,7 +20,8 @@ import {
 
 // 어댑터 · 왕복 픽스처(스펙 §6-1). 정본: ssworks-ringside apps/web/app/utils/editor-markdown.test.ts(p1d 2026-10-31) — 미디어 전용
 // (isMediaImageSrc · MediaImage · insertMediaImage · openableLinkHref)은 빼고, 킷 고유(그림 보존 · 입력 규칙 · 함정 고정)를 더했다.
-// 어댑터를 하나씩 끄면 빨개지는 건수(구현 뒤 실측): ⑥ 줄머리 이스케이프 __ · ⑨ 관용 읽기 __ · ⑩ 읽기 정규화 __.
+// 어댑터를 하나씩 끄면 빨개지는 건수(2026-11-01 실측, 189건 중): ⑥ 줄머리 이스케이프 28 · ⑨ 문단 관용 읽기 5 · ⑩ 읽기 정규화 22.
+// TipTap 을 올릴 때 다시 재면 어댑터를 걷어도 되는지 알 수 있다.
 
 const md = createMarkdownHarness(mountHost())
 afterAll(() => md.destroy())
