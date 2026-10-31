@@ -443,7 +443,11 @@ describe('읽기 정규화 — 글자와 한 문단에 든 그림은 따로 선 
     ['제목 붙은 그림 뒤 글', `![](${IMG} "t") 뒤`, `![](${IMG} "t")\n\n뒤`],
     ['연속 그림', `![](${IMG})\n![](${IMG})`, `![](${IMG})\n\n![](${IMG})`],
     ['글머리 항목 — 저장한 우리 출력', `- 경기 장면\n  ![](${IMG})`, `- 경기 장면\n  ![](${IMG})`],
-    ['번호 항목 — 저장한 우리 출력', `1. 경기 장면\n   ![](${IMG})`, `1. 경기 장면\n   ![](${IMG})`],
+    [
+      '번호 항목 — 저장한 우리 출력',
+      `1. 경기 장면\n   ![](${IMG})`,
+      `1. 경기 장면\n   ![](${IMG})`,
+    ],
     ['그림으로 시작하는 글머리 항목 — 그림을 표지 줄에', `- ![](${IMG})`, `- ![](${IMG})`],
   ])('%s', (_label, source, once) => {
     const passes = stableOver(source)
@@ -706,9 +710,7 @@ describe('라운드트립 — 알려진 차이(기대 출력 명시 — 스펙 �
     const once = md.roundTrip('- a\n* b')
     expect(md.html()).toBe('<ul><li><p>a</p></li></ul><ul><li><p>b</p></li></ul>')
     expect(once).toBe('- a\n\n- b')
-    expect(renderMarkdown(once)).toBe(
-      '<ul>\n<li>\n<p>a</p>\n</li>\n<li>\n<p>b</p>\n</li>\n</ul>\n',
-    )
+    expect(renderMarkdown(once)).toBe('<ul>\n<li>\n<p>a</p>\n</li>\n<li>\n<p>b</p>\n</li>\n</ul>\n')
   })
 
   it('K10 줄바꿈을 가로지르는 굵게는 줄마다 나뉜다 — 보이는 모양은 같다', () => {

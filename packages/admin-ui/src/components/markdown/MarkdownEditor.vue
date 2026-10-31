@@ -232,18 +232,58 @@
   /** 도구 묶음 정의(W10) — 편집기가 없어도 단추는 그려진다(잠김). 상태는 `tools` 가 `tick` 마다 다시 셈한다 */
   const TOOL_GROUPS: readonly (readonly ToolSpec[])[] = [
     [
-      { key: 'bold', icon: 'mdi-format-bold', command: (c) => c.toggleBold(), active: (e) => e.isActive('bold') },
-      { key: 'italic', icon: 'mdi-format-italic', command: (c) => c.toggleItalic(), active: (e) => e.isActive('italic') },
-      { key: 'strike', icon: 'mdi-format-strikethrough-variant', command: (c) => c.toggleStrike(), active: (e) => e.isActive('strike') },
+      {
+        key: 'bold',
+        icon: 'mdi-format-bold',
+        command: (c) => c.toggleBold(),
+        active: (e) => e.isActive('bold'),
+      },
+      {
+        key: 'italic',
+        icon: 'mdi-format-italic',
+        command: (c) => c.toggleItalic(),
+        active: (e) => e.isActive('italic'),
+      },
+      {
+        key: 'strike',
+        icon: 'mdi-format-strikethrough-variant',
+        command: (c) => c.toggleStrike(),
+        active: (e) => e.isActive('strike'),
+      },
     ],
     [
-      { key: 'heading2', icon: 'mdi-format-header-2', command: (c) => c.toggleHeading({ level: 2 }), active: (e) => e.isActive('heading', { level: 2 }) },
-      { key: 'heading3', icon: 'mdi-format-header-3', command: (c) => c.toggleHeading({ level: 3 }), active: (e) => e.isActive('heading', { level: 3 }) },
+      {
+        key: 'heading2',
+        icon: 'mdi-format-header-2',
+        command: (c) => c.toggleHeading({ level: 2 }),
+        active: (e) => e.isActive('heading', { level: 2 }),
+      },
+      {
+        key: 'heading3',
+        icon: 'mdi-format-header-3',
+        command: (c) => c.toggleHeading({ level: 3 }),
+        active: (e) => e.isActive('heading', { level: 3 }),
+      },
     ],
     [
-      { key: 'blockquote', icon: 'mdi-format-quote-close', command: (c) => c.toggleBlockquote(), active: (e) => e.isActive('blockquote') },
-      { key: 'bulletList', icon: 'mdi-format-list-bulleted', command: (c) => c.toggleBulletList(), active: (e) => e.isActive('bulletList') },
-      { key: 'orderedList', icon: 'mdi-format-list-numbered', command: (c) => c.toggleOrderedList(), active: (e) => e.isActive('orderedList') },
+      {
+        key: 'blockquote',
+        icon: 'mdi-format-quote-close',
+        command: (c) => c.toggleBlockquote(),
+        active: (e) => e.isActive('blockquote'),
+      },
+      {
+        key: 'bulletList',
+        icon: 'mdi-format-list-bulleted',
+        command: (c) => c.toggleBulletList(),
+        active: (e) => e.isActive('bulletList'),
+      },
+      {
+        key: 'orderedList',
+        icon: 'mdi-format-list-numbered',
+        command: (c) => c.toggleOrderedList(),
+        active: (e) => e.isActive('orderedList'),
+      },
     ],
     [
       {
