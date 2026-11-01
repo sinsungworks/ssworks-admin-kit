@@ -110,6 +110,24 @@ describe('resolveUploadsConfig(스펙 U7 · U14 · S6)', () => {
     )
   })
 
+  it('정책이 객체가 아님 · 모르는 정책 키 · sweep 이 숫자 · 용도 값이 객체가 아님 — 각각 문제 한 줄', () => {
+    expect(messageOf(() => resolve({ storage, policy: 'x' }))).toContain(
+      'uploads.policy 는 객체여야 한다',
+    )
+    expect(messageOf(() => resolve({ storage, policy: { foo: 1 } }))).toContain(
+      'uploads.policy 에 모르는 키: foo',
+    )
+    expect(messageOf(() => resolve({ storage, sweep: 5 }))).toContain(
+      'uploads.sweep 는 false 또는 { intervalMinutes } 여야 한다',
+    )
+    expect(messageOf(() => resolve({ storage, purposes: { notice: 'x' } }))).toContain(
+      'uploads.purposes.notice — { slot } 또는 { permissions } 객체여야 한다',
+    )
+    expect(messageOf(() => resolve({ storage, purposes: 'x' }))).toContain(
+      'uploads.purposes 는 { 용도: { slot | permissions } } 객체여야 한다',
+    )
+  })
+
   it('mediaPath — 루트 · 접두사 여럿 · 끝 슬래시 · 비어 있음', () => {
     expect(resolve({ storage, mediaPath: '/media' }).mediaPath).toBe('/media')
     expect(resolve({ storage, mediaPath: '/api/v1/media' }).mediaPath).toBe('/api/v1/media')

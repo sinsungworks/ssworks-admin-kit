@@ -25,7 +25,7 @@ export interface AdminUploadPurposeOptions {
 export interface AdminUploadsOptions {
   /** 객체 저장소 — `createFileSystemStorage` · `createS3ObjectStorage`(`@ssworks/admin-server/storage/s3`) */
   storage: AdminObjectStorage
-  /** 본문에 적는 공개 경로. 기본 '/api/media'. 🔴 '/media' 로 끝나야 한다 — 앞은 앱 전역 접두사 */
+  /** 본문에 적는 공개 경로. 기본 '/api/media'. 🔴 '/media' 로 끝나야 한다 — 앞은 앱 전역 접두사. 조각은 영숫자 · '_' · '-' 만(점 없음) */
   mediaPath?: string
   /** 앱 용도 → 권한. `legal` 은 AdminLegalModule 이 자동 등록한다(적으면 기동에서 멈춤) */
   purposes?: Record<string, AdminUploadPurposeOptions>
