@@ -12,8 +12,8 @@ import {
 } from './audit.js'
 
 describe('코어 카탈로그', () => {
-  it('🔴 액션 33 · 대상 6 · 라벨이 하나씩 — 개수는 이 테스트가 고정한다(산문의 개수는 낡는다)', () => {
-    expect(Object.values(CoreAuditActions)).toHaveLength(33)
+  it('🔴 액션 35 · 대상 7 · 라벨이 하나씩 — 개수는 이 테스트가 고정한다(산문의 개수는 낡는다)', () => {
+    expect(Object.values(CoreAuditActions)).toHaveLength(35)
     expect(Object.values(CoreAuditTargets)).toEqual([
       'user',
       'session',
@@ -21,6 +21,7 @@ describe('코어 카탈로그', () => {
       'team',
       'legalDocument',
       'ipAccessRule',
+      'upload',
     ])
     expect(Object.keys(CORE_AUDIT_ACTION_LABELS).sort()).toEqual(
       [...Object.values(CoreAuditActions)].sort(),
@@ -31,6 +32,7 @@ describe('코어 카탈로그', () => {
       'role',
       'session',
       'team',
+      'upload',
       'user',
     ])
   })
@@ -119,7 +121,7 @@ describe('defineAuditCatalog', () => {
   it('코어 + 프로젝트를 합치고 코어 라벨을 덮어쓴다', () => {
     expect(catalog.AuditActions.BOARD_POST_CREATE).toBe('board.post.create')
     expect(catalog.AuditActions.AUTH_LOGOUT).toBe('auth.logout')
-    expect(catalog.ACTION_VALUES).toHaveLength(34)
+    expect(catalog.ACTION_VALUES).toHaveLength(36)
     expect(catalog.TARGET_VALUES).toEqual([
       'user',
       'session',
@@ -127,6 +129,7 @@ describe('defineAuditCatalog', () => {
       'team',
       'legalDocument',
       'ipAccessRule',
+      'upload',
       'post',
     ])
     expect(catalog.labelOf('board.post.create')).toBe('게시글 작성')

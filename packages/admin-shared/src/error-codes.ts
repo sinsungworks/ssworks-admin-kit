@@ -81,6 +81,20 @@ export const CommonErrorCodes = {
   ERR_TEAM_MOVE_CYCLE: 'ERR_TEAM_MOVE_CYCLE',
   /** IP 규칙이 가리키는 팀(하위 팀 포함)이라 지울 수 없다 — `details.ruleCount`(규칙 수). 규칙을 먼저 지운다(2f-1) */
   ERR_TEAM_HAS_IP_RULES: 'ERR_TEAM_HAS_IP_RULES',
+
+  // ── 업로드(편집기 이미지 — 스펙 2026-11-01-admin-kit-image-uploads) ─────────────────────
+  /** Content-Type · 매직 바이트가 JPEG · PNG · WebP · GIF 밖, 또는 Content-Encoding 이 붙은 본문 */
+  ERR_UPLOAD_UNSUPPORTED_TYPE: 'ERR_UPLOAD_UNSUPPORTED_TYPE',
+  /** 원본 또는 재인코딩 결과가 장당 상한을 넘는다 — `details.maxBytes` */
+  ERR_UPLOAD_TOO_LARGE: 'ERR_UPLOAD_TOO_LARGE',
+  /** 머리를 못 읽음 · 픽셀 · 프레임 초과 · 디코드 실패 · 시간 초과 — `details.reason` */
+  ERR_UPLOAD_INVALID_IMAGE: 'ERR_UPLOAD_INVALID_IMAGE',
+  /** 사람당 미첨부 상한 · 본문당 장수 초과 — `details.limit` */
+  ERR_UPLOAD_LIMIT: 'ERR_UPLOAD_LIMIT',
+  /** 없음 · 남의 것 · 첨부됨 · 지움 표시 · 용도 불일치 — 🔴 사유를 가르지 않는다(열거 방어) */
+  ERR_UPLOAD_NOT_FOUND: 'ERR_UPLOAD_NOT_FOUND',
+  /** 저장소 꺼짐 · 오류 · 재인코딩 대기 초과 */
+  ERR_UPLOAD_UNAVAILABLE: 'ERR_UPLOAD_UNAVAILABLE',
 } as const
 
 export type CommonErrorCode = (typeof CommonErrorCodes)[keyof typeof CommonErrorCodes]
@@ -131,6 +145,13 @@ export const COMMON_ERROR_STATUS: Record<CommonErrorCode, number> = {
   [CommonErrorCodes.ERR_TEAM_HAS_MEMBERS]: 409,
   [CommonErrorCodes.ERR_TEAM_MOVE_CYCLE]: 400,
   [CommonErrorCodes.ERR_TEAM_HAS_IP_RULES]: 409,
+
+  [CommonErrorCodes.ERR_UPLOAD_UNSUPPORTED_TYPE]: 415,
+  [CommonErrorCodes.ERR_UPLOAD_TOO_LARGE]: 413,
+  [CommonErrorCodes.ERR_UPLOAD_INVALID_IMAGE]: 400,
+  [CommonErrorCodes.ERR_UPLOAD_LIMIT]: 409,
+  [CommonErrorCodes.ERR_UPLOAD_NOT_FOUND]: 404,
+  [CommonErrorCodes.ERR_UPLOAD_UNAVAILABLE]: 503,
 }
 
 export interface ErrorCodeTable<T extends Record<string, string>> {
