@@ -1,7 +1,7 @@
 import type { ColumnType, Generated } from 'kysely'
 
-// 정본: ssworks-ringside packages/db(uploads 표 타입) — 장 0013 과 같은 열.
-// 바꾼 점: camelCase 계약 · uploadedByUserNo nullable(FK SET NULL).
+// 정본: ssworks-ringside packages/db(uploads 표 타입) — 장 0013_admin_uploads 와 같은 열.
+// 바꾼 점: 표 이름 admin_uploads(키 adminUploads — 앱의 uploads 와 겹치지 않게) · camelCase 계약 · uploadedByUserNo nullable(FK SET NULL).
 
 export interface AdminUploadsTable {
   uploadNo: Generated<bigint>

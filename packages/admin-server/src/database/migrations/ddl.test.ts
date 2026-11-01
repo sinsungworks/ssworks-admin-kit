@@ -14,7 +14,7 @@ import * as guardLocks from './0009_guard_locks.js'
 import * as teamTreeLock from './0010_team_tree_lock.js'
 import * as legalDocuments from './0011_legal_documents.js'
 import * as ipAccessRules from './0012_ip_access_rules.js'
-import * as uploads from './0013_uploads.js'
+import * as adminUploads from './0013_admin_uploads.js'
 
 // 🔴 마이그레이션 DDL 을 소스 문자열이 아니라 **컴파일된 SQL** 로 잰다(hangang migrations-ddl.test.ts).
 //    `sql` 템플릿 안의 식별자는 CamelCasePlugin 이 바꾸지 않는다 — hangang 037 이 그 자리에서 실제 DB 적용 때 죽었다.
@@ -35,7 +35,7 @@ const CHAPTERS: [string, Chapter][] = [
   ['0010_team_tree_lock', teamTreeLock],
   ['0011_legal_documents', legalDocuments],
   ['0012_ip_access_rules', ipAccessRules],
-  ['0013_uploads', uploads],
+  ['0013_admin_uploads', adminUploads],
 ]
 
 async function capture(run: (db: Kysely<unknown>) => Promise<void>): Promise<string[]> {
@@ -245,11 +245,11 @@ describe('0012_ip_access_rules', () => {
   })
 })
 
-describe('0013_uploads', () => {
+describe('0013_admin_uploads', () => {
   it('표 · 인덱스 셋 · UNIQUE · FK SET NULL — 열 이름은 snake_case', async () => {
-    const statements = await capture((db) => uploads.up(db))
+    const statements = await capture((db) => adminUploads.up(db))
     const [table, ...rest] = statements
-    expect(table).toMatch(/^create table `uploads`/)
+    expect(table).toMatch(/^create table `admin_uploads`/)
     expect(table).toContain('`upload_no` bigint unsigned primary key auto_increment')
     expect(table).toContain('`storage_key` varchar(128) collate ascii_bin not null')
     expect(table).toContain('`purpose` varchar(32) collate ascii_bin not null')
@@ -258,19 +258,19 @@ describe('0013_uploads', () => {
     expect(table).toContain('`attached_at` datetime')
     expect(table).toContain('`deleted_at` datetime')
     expect(table).toContain('`created_at` timestamp default CURRENT_TIMESTAMP not null')
-    expect(table).toContain('constraint `uq_uploads_storage_key` unique (`storage_key`)')
+    expect(table).toContain('constraint `uq_admin_uploads_storage_key` unique (`storage_key`)')
     expect(table).toContain(
-      'constraint `fk_uploads_uploaded_by` foreign key (`uploaded_by_user_no`) references `users` (`user_no`) on delete set null on update cascade',
+      'constraint `fk_admin_uploads_uploaded_by` foreign key (`uploaded_by_user_no`) references `users` (`user_no`) on delete set null on update cascade',
     )
     expect(table).toMatch(/engine=InnoDB default charset=utf8mb4 collate=utf8mb4_bin$/)
     expect(rest).toEqual([
-      'create index `idx_uploads_uploader` on `uploads` (`uploaded_by_user_no`, `upload_no`)',
-      'create index `idx_uploads_ref` on `uploads` (`ref_type`, `ref_id`)',
-      'create index `idx_uploads_deleted` on `uploads` (`deleted_at`, `created_at`)',
+      'create index `idx_admin_uploads_uploader` on `admin_uploads` (`uploaded_by_user_no`, `upload_no`)',
+      'create index `idx_admin_uploads_ref` on `admin_uploads` (`ref_type`, `ref_id`)',
+      'create index `idx_admin_uploads_deleted` on `admin_uploads` (`deleted_at`, `created_at`)',
     ])
   })
 
   it('down 은 표 하나', async () => {
-    expect(await capture((db) => uploads.down(db))).toEqual(['drop table `uploads`'])
+    expect(await capture((db) => adminUploads.down(db))).toEqual(['drop table `admin_uploads`'])
   })
 })

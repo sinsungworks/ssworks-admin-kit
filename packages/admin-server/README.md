@@ -96,21 +96,21 @@ export default defineConfig({
 export { up, down } from '@ssworks/admin-server/migrations/0001_roles'
 ```
 
-| 장 ID                          | 테이블                                                       |
-| ------------------------------ | ------------------------------------------------------------ |
-| `0001_roles`                   | `roles`                                                      |
-| `0002_users`                   | `users`                                                      |
-| `0003_teams`                   | `teams`                                                      |
-| `0004_team_closure`            | `team_closure`                                               |
-| `0005_team_user_map`           | `team_user_map`                                              |
-| `0006_user_employment_periods` | `user_employment_periods`                                    |
-| `0007_sessions`                | `sessions`                                                   |
-| `0008_audit_logs`              | `audit_logs`                                                 |
-| `0009_guard_locks`             | `guard_locks`(센티넬 행 하나)                                |
-| `0010_team_tree_lock`          | `guard_locks` 에 행 하나(팀 트리)                            |
-| `0011_legal_documents`         | `legal_documents` + `guard_locks` 에 행 하나(약관 발행)      |
-| `0012_ip_access_rules`         | `ip_access_rules` + global 허용 두 행(`0.0.0.0/0` · `::/0`)  |
-| `0013_uploads`                 | `uploads`(편집기 이미지 — 키 · 용도 · 첨부 대상 · 지움 표시) |
+| 장 ID                          | 테이블                                                             |
+| ------------------------------ | ------------------------------------------------------------------ |
+| `0001_roles`                   | `roles`                                                            |
+| `0002_users`                   | `users`                                                            |
+| `0003_teams`                   | `teams`                                                            |
+| `0004_team_closure`            | `team_closure`                                                     |
+| `0005_team_user_map`           | `team_user_map`                                                    |
+| `0006_user_employment_periods` | `user_employment_periods`                                          |
+| `0007_sessions`                | `sessions`                                                         |
+| `0008_audit_logs`              | `audit_logs`                                                       |
+| `0009_guard_locks`             | `guard_locks`(센티넬 행 하나)                                      |
+| `0010_team_tree_lock`          | `guard_locks` 에 행 하나(팀 트리)                                  |
+| `0011_legal_documents`         | `legal_documents` + `guard_locks` 에 행 하나(약관 발행)            |
+| `0012_ip_access_rules`         | `ip_access_rules` + global 허용 두 행(`0.0.0.0/0` · `::/0`)        |
+| `0013_admin_uploads`           | `admin_uploads`(편집기 이미지 — 키 · 용도 · 첨부 대상 · 지움 표시) |
 
 🔴 패키지가 새 장을 내면 changeset 이 알린다 — 스텁 한 줄을 더한다. `assertAdminMigrationStubs` 가 빠진 장을 잡는다. 시드(첫 관리자 계정 · 역할)는 프로젝트 몫이다. 🔴 프로젝트 장을 이미 적용한 DB 라면 새 스텁의 **파일 이름이 마지막으로 적용된 장보다 뒤에** 정렬돼야 한다 — Kysely Migrator 는 적용된 장 앞에 끼는 새 장을 "corrupted migrations" 로 거부한다(프로젝트 장이 타임스탬프 이름이면 스텁도 `kysely migrate:make` 로 만든다). 스텁 검사는 파일 이름이 아니라 가리키는 장과 그 순서를 본다.
 
@@ -694,8 +694,10 @@ imports: [
 
 ```ts
 // src/database/migrations/013_admin_uploads.migration.ts
-export { up, down } from '@ssworks/admin-server/migrations/0013_uploads'
+export { up, down } from '@ssworks/admin-server/migrations/0013_admin_uploads'
 ```
+
+표 이름은 `admin_uploads`(Kysely 키 `adminUploads`)다 — 앱이 회원 업로드 같은 자기 `uploads` 표를 가져도 겹치지 않는다(둘은 따로 산다).
 
 `main.ts` 의 `app.enableShutdownHooks()`(위 「최소 배선」)가 정리 타이머도 멈춘다.
 
@@ -709,7 +711,7 @@ export { up, down } from '@ssworks/admin-server/migrations/0013_uploads'
 - **본문 저장이 첨부한다**: 앱 라우트는 자기 문서 행을 잠근 뒤 **같은 트랜잭션**에서 `uploads.attach(trx, { markdown, purpose, refType, refId, actorUserNo, keys? })` 를 부른다(`AdminUploadsService` 주입 — 전역 모듈). 큰 본문은 `const keys = uploads.collectKeys(markdown)` 를 **트랜잭션 밖**에서 부르고 `keys` 로 넘긴다 — Markdown 렌더와 본문당 장수 409 가 잠금 밖에서 끝난다.
   - 제자리 수정 문서(공지 · 게시글)는 `uploads.sync(...)` — 첨부 뒤 이 문서에 붙어 있었는데 본문에서 빠진 그림을 지움 표시한다. 🔴 `sync` 는 엄격하다 — 이미 첨부된 그림은 같은 `refType` **과 `refId`** 여야 한다. 다른 문서의 그림 주소를 적으면 404 다(복사해 쓰려면 다시 올린다) — 한 문서의 수정이 남의 그림을 지우지 못한다. 약관(append-only)은 `attach` 만 쓴다(앞 판의 그림을 지우면 안 된다).
   - 잘못된 키(없음 · 남이 올린 미첨부 · 지움 · 다른 용도 · 다른 종류 문서)는 사유를 가르지 않고 404 `ERR_UPLOAD_NOT_FOUND` — **저장 전체가 실패**한다(롤백). 본문당 장수 초과는 409 `ERR_UPLOAD_LIMIT`(`details.limit`).
-  - 🔴 `uploads` 는 잠금 순서의 마지막이다 — 자기 문서 행 → `uploads`. 그 앞에 비잠금 SELECT 를 두지 않는다(스냅샷 격리 ON 에서 1020). `trx` 는 `Transaction<AdminDatabase>` 자리에 쓰는 쪽 `Transaction<Database>` 가 그대로 들어간다(트랜잭션 밖 호출은 타입이 막는다). 쓰기 트랜잭션은 `runWriteTransaction` 으로 감싼다 — 교착 1213 · 잠금 대기 1205 가 409 `ERR_COMMON_CONFLICT` · 504 `ERR_COMMON_TIMEOUT` 이 된다.
+  - 🔴 `admin_uploads` 는 잠금 순서의 마지막이다 — 자기 문서 행 → `admin_uploads`. 그 앞에 비잠금 SELECT 를 두지 않는다(스냅샷 격리 ON 에서 1020). `trx` 는 `Transaction<AdminDatabase>` 자리에 쓰는 쪽 `Transaction<Database>` 가 그대로 들어간다(트랜잭션 밖 호출은 타입이 막는다). 쓰기 트랜잭션은 `runWriteTransaction` 으로 감싼다 — 교착 1213 · 잠금 대기 1205 가 409 `ERR_COMMON_CONFLICT` · 504 `ERR_COMMON_TIMEOUT` 이 된다.
   - `refType` 은 감사 대상 이름과 같은 값을 쓴다(`CoreAuditTargets.LEGAL_DOCUMENT`, 앱이면 자기 대상 이름 — 폭 64).
 
 ```ts

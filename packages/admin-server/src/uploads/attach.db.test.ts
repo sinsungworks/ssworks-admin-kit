@@ -33,7 +33,7 @@ const inTrx = <T>(fn: (trx: Transaction<AdminDatabase>) => Promise<T>) =>
 
 async function rowOf(key: string) {
   return t.db
-    .selectFrom('uploads')
+    .selectFrom('adminUploads')
     .select(['refType', 'refId', 'attachedAt', 'deletedAt'])
     .where('storageKey', '=', key)
     .executeTakeFirstOrThrow()

@@ -25,7 +25,7 @@ import { AdminUploadsService } from './uploads.service.js'
 // 🔴 @Global() 을 지우면 권한 가드가 설정을 못 봐 @RequireUploadPurpose 라우트가 모두 403 이 되고 약관 발행이 첨부를 건너뛴다(조용히).
 // 🔴 이 파일은 admin-server.module.ts 를 import 하지 않는다 — 코어 모듈이 이 모듈을 ADMIN_ROUTE_MODULES 로 import 한다.
 // 🔴 legal 용도 자동 등록은 AdminLegalModule 의 등록 여부(ModulesContainer)로 정한다 — provider 팩토리 시점에 모든 모듈이 스캔돼 있다.
-// 🔴 장 0013_uploads 가 있어야 돈다 — 스텁 검사가 먼저 막는다(모든 장 필수).
+// 🔴 장 0013_admin_uploads 가 있어야 돈다 — 스텁 검사가 먼저 막는다(모든 장 필수).
 
 @Global()
 @Module({

@@ -5,6 +5,7 @@ import { createTestDatabase, type TestDatabase } from '../../test-support/db.js'
 import { ADMIN_MIGRATIONS } from './index.js'
 
 const CORE_TABLES = [
+  'admin_uploads',
   'audit_logs',
   'guard_locks',
   'ip_access_rules',
@@ -14,7 +15,6 @@ const CORE_TABLES = [
   'team_closure',
   'team_user_map',
   'teams',
-  'uploads',
   'user_employment_periods',
   'users',
 ]
@@ -132,7 +132,20 @@ describe('코어 마이그레이션(실 MariaDB)', () => {
     expect(column('ip_access_rules', 'scope_ref_no').isNullable).toBe('YES')
     expect(column('ip_access_rules', 'description').isNullable).toBe('YES')
     expect(column('ip_access_rules', 'update_at').extra.toLowerCase()).not.toContain('on update')
-    // 업로드 장(PR 2h)    for (const name of ['storage_key', 'purpose', 'ref_type']) {      expect(column('uploads', name).collationName).toBe('ascii_bin')    }    for (const name of ['uploaded_by_user_no', 'ref_type', 'ref_id', 'attached_at', 'deleted_at']) {      expect(column('uploads', name).isNullable).toBe('YES')    }    for (const name of ['storage_key', 'purpose', 'bytes', 'width', 'height', 'created_at']) {      expect(column('uploads', name).isNullable).toBe('NO')    }    expect(column('uploads', 'attached_at').columnType).toBe('datetime')    expect(column('uploads', 'deleted_at').columnType).toBe('datetime')    expect(column('uploads', 'created_at').columnType).toBe('timestamp')    expect(column('uploads', 'created_at').extra.toLowerCase()).not.toContain('on update')
+    // 업로드 장(PR 2h)
+    for (const name of ['storage_key', 'purpose', 'ref_type']) {
+      expect(column('admin_uploads', name).collationName).toBe('ascii_bin')
+    }
+    for (const name of ['uploaded_by_user_no', 'ref_type', 'ref_id', 'attached_at', 'deleted_at']) {
+      expect(column('admin_uploads', name).isNullable).toBe('YES')
+    }
+    for (const name of ['storage_key', 'purpose', 'bytes', 'width', 'height', 'created_at']) {
+      expect(column('admin_uploads', name).isNullable).toBe('NO')
+    }
+    expect(column('admin_uploads', 'attached_at').columnType).toBe('datetime')
+    expect(column('admin_uploads', 'deleted_at').columnType).toBe('datetime')
+    expect(column('admin_uploads', 'created_at').columnType).toBe('timestamp')
+    expect(column('admin_uploads', 'created_at').extra.toLowerCase()).not.toContain('on update')
   })
 
   it('🔴 제약 이름은 snake_case(CamelCasePlugin 이 이름도 바꾼다 — 스펙 R3)', async () => {
@@ -158,8 +171,8 @@ describe('코어 마이그레이션(실 MariaDB)', () => {
         'sessions.uq_sessions_refresh_token_hash',
         'sessions.fk_sessions_user',
         'legal_documents.fk_legal_documents_published_by',
-        'uploads.uq_uploads_storage_key',
-        'uploads.fk_uploads_uploaded_by',
+        'admin_uploads.uq_admin_uploads_storage_key',
+        'admin_uploads.fk_admin_uploads_uploaded_by',
       ].sort(),
     )
   })
@@ -198,9 +211,9 @@ describe('코어 마이그레이션(실 MariaDB)', () => {
       'idx_audit_logs_action',
       'idx_legal_documents_kind_published',
       'idx_ip_access_rules_scope',
-      'idx_uploads_uploader',
-      'idx_uploads_ref',
-      'idx_uploads_deleted',
+      'idx_admin_uploads_uploader',
+      'idx_admin_uploads_ref',
+      'idx_admin_uploads_deleted',
     ]) {
       expect(names).toContain(expected)
     }

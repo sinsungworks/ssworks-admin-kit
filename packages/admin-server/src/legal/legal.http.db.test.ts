@@ -502,7 +502,7 @@ describe('그림 첨부(2h) — 업로드 → 발행 → 중계', () => {
     })
     expect(
       await t.db
-        .selectFrom('uploads')
+        .selectFrom('adminUploads')
         .select(['refType', 'refId'])
         .where('storageKey', '=', created.key)
         .executeTakeFirstOrThrow(),

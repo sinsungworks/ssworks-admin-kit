@@ -7,7 +7,7 @@ import type { AdminSessionsTable } from './tables/sessions.js'
 import type { AdminTeamClosureTable } from './tables/team-closure.js'
 import type { AdminTeamUserMapTable } from './tables/team-user-map.js'
 import type { AdminTeamsTable } from './tables/teams.js'
-import type { AdminUploadsTable } from './tables/uploads.js'
+import type { AdminUploadsTable } from './tables/admin-uploads.js'
 import type { AdminUserEmploymentPeriodsTable } from './tables/user-employment-periods.js'
 import type { AdminUsersTable } from './tables/users.js'
 
@@ -28,7 +28,7 @@ export interface AdminDatabase {
   guardLocks: AdminGuardLocksTable
   legalDocuments: AdminLegalDocumentsTable
   ipAccessRules: AdminIpAccessRulesTable
-  uploads: AdminUploadsTable
+  adminUploads: AdminUploadsTable
 }
 
 export type {

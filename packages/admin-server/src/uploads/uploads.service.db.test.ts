@@ -34,7 +34,7 @@ const count = async () =>
   Number(
     (
       await t.db
-        .selectFrom('uploads')
+        .selectFrom('adminUploads')
         .select((eb) => eb.fn.countAll<number>().as('n'))
         .executeTakeFirstOrThrow()
     ).n,
@@ -49,7 +49,7 @@ describe('create(스펙 U3)', () => {
     expect(created.body).toMatchObject({ width: 8, height: 6 })
     expect(storage.objects.get(created.body.key)?.contentType).toBe('image/webp')
     const row = await t.db
-      .selectFrom('uploads')
+      .selectFrom('adminUploads')
       .selectAll()
       .where('uploadNo', '=', created.uploadNo)
       .executeTakeFirstOrThrow()
@@ -139,7 +139,7 @@ describe('remove(스펙 U4)', () => {
       uploadNo: created.uploadNo,
     })
     const row = await t.db
-      .selectFrom('uploads')
+      .selectFrom('adminUploads')
       .select('deletedAt')
       .where('uploadNo', '=', created.uploadNo)
       .executeTakeFirstOrThrow()

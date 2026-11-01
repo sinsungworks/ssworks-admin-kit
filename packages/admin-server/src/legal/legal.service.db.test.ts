@@ -233,7 +233,7 @@ describe('첨부(2h 스펙 U10) — 업로드 모듈이 있을 때', () => {
     )
     expect(result.attachedUploads).toBe(1)
     const row = await t.db
-      .selectFrom('uploads')
+      .selectFrom('adminUploads')
       .select(['refType', 'refId'])
       .where('uploadNo', '=', created.uploadNo)
       .executeTakeFirstOrThrow()
@@ -248,7 +248,7 @@ describe('첨부(2h 스펙 U10) — 업로드 모듈이 있을 때', () => {
     expect(
       (
         await t.db
-          .selectFrom('uploads')
+          .selectFrom('adminUploads')
           .select('refId')
           .where('uploadNo', '=', created.uploadNo)
           .executeTakeFirstOrThrow()
@@ -319,7 +319,7 @@ describe('첨부(2h 스펙 U10) — 업로드 모듈이 있을 때', () => {
     expect(off.attachedUploads).toBe(0)
     expect(
       await t.db
-        .selectFrom('uploads')
+        .selectFrom('adminUploads')
         .select(['refType', 'refId', 'attachedAt'])
         .where('uploadNo', '=', pending.uploadNo)
         .executeTakeFirstOrThrow(),

@@ -23,7 +23,7 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
-  await t.db.deleteFrom('uploads').execute()
+  await t.db.deleteFrom('adminUploads').execute()
   storage = new MemoryObjectStorage()
 })
 
@@ -36,13 +36,13 @@ afterAll(async () => {
 })
 
 const keysOf = async () =>
-  (await t.db.selectFrom('uploads').select('storageKey').orderBy('uploadNo').execute()).map(
+  (await t.db.selectFrom('adminUploads').select('storageKey').orderBy('uploadNo').execute()).map(
     (r) => r.storageKey,
   )
 const deletedKeys = async () =>
   (
     await t.db
-      .selectFrom('uploads')
+      .selectFrom('adminUploads')
       .select('storageKey')
       .where('deletedAt', 'is not', null)
       .orderBy('uploadNo')
@@ -53,7 +53,7 @@ const deletedKeys = async () =>
 async function seedDeletedRows(n: number): Promise<void> {
   const now = new Date()
   await t.db
-    .insertInto('uploads')
+    .insertInto('adminUploads')
     .values(
       Array.from({ length: n }, () => ({
         storageKey: newUploadKey('legal', now),

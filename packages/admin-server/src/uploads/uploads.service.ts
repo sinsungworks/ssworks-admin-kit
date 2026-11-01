@@ -84,7 +84,7 @@ export class AdminUploadsService {
     try {
       const inserted = await runQuery(() =>
         this.db
-          .insertInto('uploads')
+          .insertInto('adminUploads')
           .values({
             storageKey: key,
             purpose,
@@ -128,7 +128,7 @@ export class AdminUploadsService {
     if (!isUploadKey(key)) throw uploadNotFound()
     const row = await runQuery(() =>
       this.db
-        .selectFrom('uploads')
+        .selectFrom('adminUploads')
         .select('uploadNo')
         .where('storageKey', '=', key)
         .where('uploadedByUserNo', '=', actorUserNo)
@@ -139,7 +139,7 @@ export class AdminUploadsService {
     if (row === undefined) throw uploadNotFound()
     const result = await runQuery(() =>
       this.db
-        .updateTable('uploads')
+        .updateTable('adminUploads')
         .set({ deletedAt: new Date() })
         .where('uploadNo', '=', row.uploadNo)
         .where('refType', 'is', null)
@@ -175,7 +175,7 @@ export class AdminUploadsService {
   async isServable(key: string): Promise<boolean> {
     const row = await runQuery(() =>
       this.db
-        .selectFrom('uploads')
+        .selectFrom('adminUploads')
         .select('uploadNo')
         .where('storageKey', '=', key)
         .where('refType', 'is not', null)
@@ -222,10 +222,10 @@ export class AdminUploadsService {
     return { mediaPath: this.config.mediaPath, maxPerBody: this.config.policy.maxPerBody }
   }
 
-  /** 미첨부 · 미삭제 수 — idx_uploads_uploader 범위 */
+  /** 미첨부 · 미삭제 수 — idx_admin_uploads_uploader 범위 */
   private async pendingCount(userNo: bigint): Promise<number> {
     const row = await this.db
-      .selectFrom('uploads')
+      .selectFrom('adminUploads')
       .select((eb) => eb.fn.countAll<number>().as('n'))
       .where('uploadedByUserNo', '=', userNo)
       .where('refType', 'is', null)

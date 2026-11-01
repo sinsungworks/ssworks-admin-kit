@@ -10,8 +10,8 @@ import { uploadLimit, uploadNotFound } from './errors.js'
 //    syncUploads 는 ringside 처럼 엄격하다(strictRef — 같은 refType 과 refId 만) — 한 문서의 수정이 다른 문서의 그림을 지우지 않게.
 //  - 잘못된 키는 사유를 가르지 않고 404 하나(열거 방어). ringside 는 400 + details.keys.
 //  - 읽기는 `storageKey IN (...) FOR UPDATE` 하나 — 비잠금 선행 읽기가 없다(스냅샷 격리 ON 에서 1020). 잠금 순서는
-//    `uq_uploads_storage_key`(IN 목록 정렬)를 따른다 — ORDER BY uploadNo 는 PRIMARY 스캔을 부를 수 있어 두지 않는다.
-// 🔴 트랜잭션 안에서, 자기 문서 행을 먼저 잠근 뒤 부른다 — `uploads` 가 잠금 순서의 마지막이다(스펙 §5-6). 첫 인자가
+//    `uq_admin_uploads_storage_key`(IN 목록 정렬)를 따른다 — ORDER BY uploadNo 는 PRIMARY 스캔을 부를 수 있어 두지 않는다.
+// 🔴 트랜잭션 안에서, 자기 문서 행을 먼저 잠근 뒤 부른다 — `adminUploads` 가 잠금 순서의 마지막이다(스펙 §5-6). 첫 인자가
 //    Transaction 이라 트랜잭션 밖에서는 부를 수 없다(쓰는 쪽 Transaction<Database> 도 그대로 들어간다).
 
 export interface AttachUploadsInput {
@@ -75,7 +75,7 @@ export async function attachUploads(
   if (keys.length > maxPerBody) throw uploadLimit(maxPerBody)
 
   const rows = await trx
-    .selectFrom('uploads')
+    .selectFrom('adminUploads')
     .select([
       'uploadNo',
       'storageKey',
@@ -107,7 +107,7 @@ export async function attachUploads(
   }
   if (toAttach.length > 0) {
     await trx
-      .updateTable('uploads')
+      .updateTable('adminUploads')
       .set({ refType: input.refType, refId: input.refId, attachedAt: options.now ?? new Date() })
       .where('uploadNo', 'in', toAttach)
       .execute()
@@ -129,7 +129,7 @@ export async function syncUploads(
   const result = await attachUploads(trx, input, { ...options, strictRef: true })
   const inBody = new Set(result.keys)
   const current = await trx
-    .selectFrom('uploads')
+    .selectFrom('adminUploads')
     .select(['uploadNo', 'storageKey'])
     .where('refType', '=', input.refType)
     .where('refId', '=', input.refId)
@@ -139,7 +139,7 @@ export async function syncUploads(
   const gone = current.filter((row) => !inBody.has(row.storageKey)).map((row) => row.uploadNo)
   if (gone.length > 0) {
     await trx
-      .updateTable('uploads')
+      .updateTable('adminUploads')
       .set({ deletedAt: options.now ?? new Date() })
       .where('uploadNo', 'in', gone)
       .execute()

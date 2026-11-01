@@ -23,7 +23,7 @@ import { legalNotFound, legalRevisionConflict, legalSameContent } from './errors
 //    두 정본에 없었다) → 같은 본문 검사 → INSERT. gise 는 트랜잭션 없이 검사 · 삽입이라 동시 발행 둘이 모두 들어갔다.
 //  - 리포지토리 층을 두지 않는다(팀 · 역할 서비스와 같은 모양) — 테이블 교체 지점이 필요 없다.
 //  - 2h: 업로드 모듈이 있으면 INSERT 뒤 같은 트랜잭션에서 본문 속 우리 그림을 새 판에 붙인다(attach — 스펙 U10). 잠금 순서 가드 행 →
-//    legalDocuments → uploads. 키는 트랜잭션 밖에서 모아(collectKeys — 렌더) 넘긴다. 모듈이 없으면(@Optional undefined)
+//    legalDocuments → adminUploads. 키는 트랜잭션 밖에서 모아(collectKeys — 렌더) 넘긴다. 모듈이 없으면(@Optional undefined)
 //    건너뛴다 — 우리 경로가 본문에 있어도 평범한 링크다.
 // 🔴 append-only — 수정 · 삭제 메서드를 만들지 않는다(legal-append-only.test.ts 가 소스 전체를 본다).
 // 🔴 시행본 = 종류별 (publishedAt DESC, legalDocNo DESC) 첫 행. publishedAt 은 초 단위라 같은 초 발행이 실제로 난다 — 두 키 중
@@ -126,7 +126,7 @@ export class AdminLegalService {
       if (legalDocNo === undefined) {
         throw new Error('legalDocuments INSERT 가 insertId 를 돌려주지 않았다.')
       }
-      // 🔴 INSERT 뒤 · 같은 트랜잭션 — uploads 는 잠금 순서의 마지막(2h 스펙 §5-6). 첨부가 던지면 판도 롤백된다. 키는 밖에서
+      // 🔴 INSERT 뒤 · 같은 트랜잭션 — adminUploads 는 잠금 순서의 마지막(2h 스펙 §5-6). 첨부가 던지면 판도 롤백된다. 키는 밖에서
       //    모은 것을 넘긴다(keys — 여기서 다시 렌더하지 않는다)
       const attached =
         this.uploads !== undefined && uploadKeys.length > 0

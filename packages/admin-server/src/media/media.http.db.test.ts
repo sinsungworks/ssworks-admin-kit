@@ -77,7 +77,7 @@ describe('GET /media/:purpose/:yyyy/:mm/:file', () => {
 
     // 첨부(약관 발행이 하는 일을 DB 로 — 전구간은 legal.service.db.test)
     await t.db
-      .updateTable('uploads')
+      .updateTable('adminUploads')
       .set({ refType: 'legalDocument', refId: 1n, attachedAt: new Date() })
       .where('storageKey', '=', created.key)
       .execute()

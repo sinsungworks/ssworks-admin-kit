@@ -28,7 +28,7 @@ export async function seedUpload(
   const key = input.key ?? newUploadKey(purpose, new Date())
   const attached = input.refType != null
   const result = await db
-    .insertInto('uploads')
+    .insertInto('adminUploads')
     .values({
       storageKey: key,
       purpose,
@@ -44,7 +44,7 @@ export async function seedUpload(
     .executeTakeFirstOrThrow()
   const uploadNo = result.insertId as bigint
   if (input.createdAt !== undefined) {
-    await sql`update uploads set created_at = ${input.createdAt} where upload_no = ${uploadNo}`.execute(
+    await sql`update admin_uploads set created_at = ${input.createdAt} where upload_no = ${uploadNo}`.execute(
       db,
     )
   }

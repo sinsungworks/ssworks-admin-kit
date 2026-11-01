@@ -31,7 +31,7 @@ export async function markExpiredUploads(
 ): Promise<number> {
   const before = new Date(now.getTime() - ttlHours * HOUR_MS)
   const result = await db
-    .updateTable('uploads')
+    .updateTable('adminUploads')
     .set({ deletedAt: now })
     .where('refType', 'is', null)
     .where('deletedAt', 'is', null)
@@ -48,7 +48,7 @@ export async function purgeDeletedUploads(
   limit: number = SWEEP_BATCH,
 ): Promise<{ deleted: number; failed: number }> {
   const rows = await db
-    .selectFrom('uploads')
+    .selectFrom('adminUploads')
     .select(['uploadNo', 'storageKey'])
     .where('deletedAt', 'is not', null)
     .orderBy('uploadNo')
@@ -67,7 +67,7 @@ export async function purgeDeletedUploads(
   }
   if (done.length === 0) return { deleted: 0, failed }
   const result = await db
-    .deleteFrom('uploads')
+    .deleteFrom('adminUploads')
     .where('uploadNo', 'in', done)
     .where('deletedAt', 'is not', null)
     .executeTakeFirst()

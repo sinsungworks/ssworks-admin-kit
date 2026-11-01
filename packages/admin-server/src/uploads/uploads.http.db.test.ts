@@ -103,7 +103,7 @@ describe('POST /admin/uploads', () => {
     expect(created.url).toBe(`/media/${created.key}`)
     expect(storage.objects.has(created.key)).toBe(true)
     const row = await t.db
-      .selectFrom('uploads')
+      .selectFrom('adminUploads')
       .selectAll()
       .where('storageKey', '=', created.key)
       .executeTakeFirstOrThrow()
@@ -217,7 +217,7 @@ describe('POST /admin/uploads', () => {
       Number(
         (
           await t.db
-            .selectFrom('uploads')
+            .selectFrom('adminUploads')
             .select((eb) => eb.fn.countAll<number>().as('n'))
             .executeTakeFirstOrThrow()
         ).n,
@@ -250,7 +250,7 @@ describe('DELETE /admin/uploads/:purpose/:yyyy/:mm/:file', () => {
       data: null,
     })
     const row = await t.db
-      .selectFrom('uploads')
+      .selectFrom('adminUploads')
       .select('deletedAt')
       .where('storageKey', '=', created.key)
       .executeTakeFirstOrThrow()
@@ -317,7 +317,7 @@ describe('DELETE /admin/uploads/:purpose/:yyyy/:mm/:file', () => {
       CommonErrorCodes.ERR_COMMON_FORBIDDEN,
     )
     const stillThere = await t.db
-      .selectFrom('uploads')
+      .selectFrom('adminUploads')
       .select('deletedAt')
       .where('storageKey', '=', noticeKey.key)
       .executeTakeFirstOrThrow()
