@@ -1,5 +1,5 @@
 import { CommonErrorCodes, uploadUrl } from '@ssworks/admin-shared'
-import type { Kysely } from 'kysely'
+import type { Generated, Transaction } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { AdminDatabase } from '../database/types.js'
 import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
@@ -7,6 +7,7 @@ import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { failure } from '../test-support/errors.js'
 import { seedUpload } from '../test-support/uploads.js'
 import { attachUploads, syncUploads } from './attach.js'
+import type { AdminUploadsService } from './uploads.service.js'
 
 // 첨부 도우미(스펙 U8 · U9) — 트랜잭션 안에서 부른다. 잠금 순서의 마지막.
 
@@ -27,7 +28,8 @@ afterAll(async () => {
   await t?.drop()
 })
 
-const inTrx = <T>(fn: (trx: Kysely<AdminDatabase>) => Promise<T>) => t.db.transaction().execute(fn)
+const inTrx = <T>(fn: (trx: Transaction<AdminDatabase>) => Promise<T>) =>
+  t.db.transaction().execute(fn)
 
 async function rowOf(key: string) {
   return t.db
@@ -195,4 +197,123 @@ describe('syncUploads(제자리 수정 문서)', () => {
     expect((await rowOf(elsewhere.key)).deletedAt).toBeNull()
     expect(await rowOf(fresh.key)).toMatchObject({ refType: 'notice', refId: 10n })
   })
+
+  it('🔴 다른 문서(같은 refType · 다른 refId)에 붙은 키는 404 — 아무 행도 안 바뀐다(엄격 — 리뷰 Important 3)', async () => {
+    const own = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 20n,
+    })
+    const foreign = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 21n,
+    })
+    const error = await failure(
+      inTrx((trx) =>
+        syncUploads(
+          trx,
+          {
+            markdown: img(foreign.key),
+            purpose: 'notice',
+            refType: 'notice',
+            refId: 20n,
+            actorUserNo: me.userNo,
+          },
+          { mediaPath: MEDIA },
+        ),
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_NOT_FOUND)
+    expect(await rowOf(foreign.key)).toMatchObject({
+      refType: 'notice',
+      refId: 21n,
+      deletedAt: null,
+    })
+    expect(await rowOf(own.key)).toMatchObject({ refType: 'notice', refId: 20n, deletedAt: null })
+  })
+
+  it('빈 본문은 그 문서에 붙은 키를 모두 지움 표시 — detached 는 그 수, 다른 문서는 그대로', async () => {
+    const one = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 30n,
+    })
+    const two = await seedUpload(t.db, {
+      uploadedByUserNo: other.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 30n,
+    })
+    const neighbor = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 31n,
+    })
+    const result = await inTrx((trx) =>
+      syncUploads(
+        trx,
+        { markdown: '', purpose: 'notice', refType: 'notice', refId: 30n, actorUserNo: me.userNo },
+        { mediaPath: MEDIA },
+      ),
+    )
+    expect(result).toEqual({ attached: 0, detached: 2, keys: [] })
+    expect((await rowOf(one.key)).deletedAt).toBeInstanceOf(Date)
+    expect((await rowOf(two.key)).deletedAt).toBeInstanceOf(Date)
+    expect((await rowOf(neighbor.key)).deletedAt).toBeNull()
+  })
+
+  it('🔴 같은 refId 라도 다른 refType 에 붙은 키는 404', async () => {
+    const post = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'post',
+      refId: 40n,
+    })
+    const error = await failure(
+      inTrx((trx) =>
+        syncUploads(
+          trx,
+          {
+            markdown: img(post.key),
+            purpose: 'notice',
+            refType: 'notice',
+            refId: 40n,
+            actorUserNo: me.userNo,
+          },
+          { mediaPath: MEDIA },
+        ),
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_NOT_FOUND)
+    expect(await rowOf(post.key)).toMatchObject({ refType: 'post', refId: 40n, deletedAt: null })
+  })
 })
+
+// 🔴 컴파일 회귀 — 쓰는 쪽 Database(코어 + 자기 표)의 Transaction 이 그대로 들어가야 한다(리뷰 Important 1)
+type ConsumerDatabase = AdminDatabase & { notices: { noticeNo: Generated<bigint>; body: string } }
+export function consumerTransactionCompiles(
+  trx: Transaction<ConsumerDatabase>,
+  service: AdminUploadsService,
+) {
+  return Promise.all([
+    attachUploads(trx, {
+      markdown: '',
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 1n,
+      actorUserNo: 1n,
+    }),
+    service.sync(trx, {
+      markdown: '',
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 1n,
+      actorUserNo: 1n,
+    }),
+  ])
+}

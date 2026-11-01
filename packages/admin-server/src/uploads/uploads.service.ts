@@ -1,9 +1,15 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import { isUploadKey, uploadUrl, type AdminUploadCreated } from '@ssworks/admin-shared'
+import {
+  UPLOAD_SCHEMA_MESSAGES,
+  isUploadKey,
+  uploadUrl,
+  type AdminUploadCreated,
+} from '@ssworks/admin-shared'
 import type { Request } from 'express'
-import type { Kysely } from 'kysely'
+import type { Kysely, Transaction } from 'kysely'
 import { runQuery } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
+import { validationError } from '../http/validation.js'
 import type { StoredObject } from '../storage/object-storage.js'
 import { ADMIN_UPLOADS_CONFIG, KYSELY } from '../tokens.js'
 import {
@@ -50,8 +56,16 @@ export class AdminUploadsService {
     return this.config
   }
 
-  /** `POST /uploads` — 스트림 읽기(415 · 413) → 미첨부 상한(409) → 재인코딩 → PUT → INSERT(실패면 객체 삭제) */
+  /**
+   * `POST /uploads` — 용도(400) → 스트림 읽기(415 · 413) → 미첨부 상한(409) → 재인코딩 → PUT → INSERT(실패면 객체 삭제).
+   * 용도 검사는 방어다 — 가드(@RequireUploadPurpose)가 먼저 막지만, 서비스를 직접 부르는 앱 코드도 모르는 용도로 키를 만들지 못하게
+   */
   async create(actorUserNo: bigint, purpose: string, req: Request): Promise<CreatedUpload> {
+    if (!this.config.purposes.has(purpose)) {
+      throw validationError([
+        { path: ['purpose'], code: 'custom', message: UPLOAD_SCHEMA_MESSAGES.purpose },
+      ])
+    }
     const policy = this.config.policy
     const input = await readImageBody(req, policy.maxBytes)
     const pending = await runQuery(() => this.pendingCount(actorUserNo))
@@ -130,12 +144,12 @@ export class AdminUploadsService {
   }
 
   /** 앱 쓰기 라우트 · 약관 발행이 트랜잭션 안에서 부른다 — 정책 · mediaPath 를 채운 attachUploads */
-  attach(trx: Kysely<AdminDatabase>, input: AttachUploadsInput): Promise<AttachUploadsResult> {
+  attach(trx: Transaction<AdminDatabase>, input: AttachUploadsInput): Promise<AttachUploadsResult> {
     return attachUploads(trx, input, this.attachOptions())
   }
 
-  /** 제자리 수정 문서용 — 붙이고 빠진 키는 지움 표시 */
-  sync(trx: Kysely<AdminDatabase>, input: AttachUploadsInput): Promise<SyncUploadsResult> {
+  /** 제자리 수정 문서용 — 같은 refType · refId 에 붙은 키만 통과(다른 문서 그림은 404), 빠진 키는 지움 표시 */
+  sync(trx: Transaction<AdminDatabase>, input: AttachUploadsInput): Promise<SyncUploadsResult> {
     return syncUploads(trx, input, this.attachOptions())
   }
 
@@ -163,8 +177,10 @@ export class AdminUploadsService {
     const marked = await runQuery(() =>
       markExpiredUploads(this.db, this.config.policy.pendingTtlHours, now),
     )
-    const purged = await purgeDeletedUploads(this.db, this.config.storage, (key, reason) =>
-      this.logger.warn(`업로드 객체 삭제 실패(${key}) — ${messageOf(reason)}`),
+    const purged = await runQuery(() =>
+      purgeDeletedUploads(this.db, this.config.storage, (key, reason) =>
+        this.logger.warn(`업로드 객체 삭제 실패(${key}) — ${messageOf(reason)}`),
+      ),
     )
     const result = { marked, ...purged }
     if (marked > 0 || purged.deleted > 0 || purged.failed > 0) {

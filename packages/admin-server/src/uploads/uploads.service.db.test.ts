@@ -103,6 +103,33 @@ describe('create(스펙 U3)', () => {
     )
     expect(await count()).toBe(before)
   })
+
+  it('🔴 INSERT 실패(없는 사용자 — FK)는 PUT 한 객체를 지우고 원래 오류를 던진다', async () => {
+    const objects = storage.objects.size
+    const rows = await count()
+    const error = await failure(service.create(999_999n, 'legal', imageRequest(png)))
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_BAD_REQUEST)
+    expect(storage.objects.size).toBe(objects)
+    expect(await count()).toBe(rows)
+  })
+
+  it('🔴 INSERT 실패 뒤 객체 정리마저 실패해도 원래 오류가 나간다(503 이 아니다 · 정리 실패는 로그)', async () => {
+    const rows = await count()
+    storage.failNext('delete')
+    const error = await failure(service.create(999_999n, 'legal', imageRequest(png)))
+    expect(error.code).not.toBe(CommonErrorCodes.ERR_UPLOAD_UNAVAILABLE)
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_BAD_REQUEST)
+    expect(await count()).toBe(rows)
+  })
+
+  it('모르는 용도는 400 ERR_COMMON_VALIDATION — 행 · 객체가 생기지 않는다(가드 뒤 방어)', async () => {
+    const objects = storage.objects.size
+    const rows = await count()
+    const error = await failure(service.create(me.userNo, 'nope', imageRequest(png)))
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_VALIDATION)
+    expect(storage.objects.size).toBe(objects)
+    expect(await count()).toBe(rows)
+  })
 })
 
 describe('remove(스펙 U4)', () => {
