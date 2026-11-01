@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { IP_ACCESS_SCHEMA_MESSAGES } from '@ssworks/admin-shared'
+import { IP_ACCESS_SCHEMA_MESSAGES, UPLOAD_SCHEMA_MESSAGES } from '@ssworks/admin-shared'
 import { describe, expect, it } from 'vitest'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import { AUDIT_MESSAGES } from '../audit/errors.js'
@@ -10,6 +10,7 @@ import { IP_ACCESS_MESSAGES } from '../ip-access/errors.js'
 import { LEGAL_MESSAGES } from '../legal/errors.js'
 import { SESSION_MESSAGES } from '../sessions/errors.js'
 import { TEAM_MESSAGES } from '../teams/errors.js'
+import { UPLOAD_MESSAGES } from '../uploads/errors.js'
 import {
   ADMIN_SERVER_DEFAULT_MESSAGES,
   applyMessageOverrides,
@@ -18,7 +19,7 @@ import {
 } from './messages.js'
 
 describe('ADMIN_SERVER_DEFAULT_MESSAGES(2g M1 · M2)', () => {
-  it('묶음 여덟은 서버가 쓰는 그 표 객체이고 모두 얼려 있다', () => {
+  it('묶음 열은 서버가 쓰는 그 표 객체이고 모두 얼려 있다', () => {
     expect(ADMIN_SERVER_DEFAULT_MESSAGES).toEqual({
       auth: AUTH_MESSAGES,
       accounts: ACCOUNT_MESSAGES,
@@ -28,6 +29,8 @@ describe('ADMIN_SERVER_DEFAULT_MESSAGES(2g M1 · M2)', () => {
       legal: LEGAL_MESSAGES,
       ipAccess: IP_ACCESS_MESSAGES,
       ipAccessSchema: IP_ACCESS_SCHEMA_MESSAGES,
+      uploads: UPLOAD_MESSAGES,
+      uploadsSchema: UPLOAD_SCHEMA_MESSAGES,
     })
     const tables = {
       auth: AUTH_MESSAGES,
@@ -38,6 +41,8 @@ describe('ADMIN_SERVER_DEFAULT_MESSAGES(2g M1 · M2)', () => {
       legal: LEGAL_MESSAGES,
       ipAccess: IP_ACCESS_MESSAGES,
       ipAccessSchema: IP_ACCESS_SCHEMA_MESSAGES,
+      uploads: UPLOAD_MESSAGES,
+      uploadsSchema: UPLOAD_SCHEMA_MESSAGES,
     } as const
     for (const [group, table] of Object.entries(tables)) {
       expect(ADMIN_SERVER_DEFAULT_MESSAGES[group as keyof typeof tables]).toBe(table)
@@ -69,6 +74,7 @@ describe('ADMIN_SERVER_DEFAULT_MESSAGES(2g M1 · M2)', () => {
       'TEAM_MESSAGES',
       'LEGAL_MESSAGES',
       'IP_ACCESS_MESSAGES',
+      'UPLOAD_MESSAGES',
     ]
     // GUARD_MESSAGES — 5xx 라 고정 문구로 가려진다(M1). ADMIN_SERVER_DEFAULT_MESSAGES — 묶음 자체
     const excluded = ['GUARD_MESSAGES', 'ADMIN_SERVER_DEFAULT_MESSAGES']
