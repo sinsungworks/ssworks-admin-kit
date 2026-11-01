@@ -13,6 +13,10 @@ import { uploadLimit, uploadNotFound } from './errors.js'
 //    `uq_admin_uploads_storage_key`(IN 목록 정렬)를 따른다 — ORDER BY uploadNo 는 PRIMARY 스캔을 부를 수 있어 두지 않는다.
 // 🔴 트랜잭션 안에서, 자기 문서 행을 먼저 잠근 뒤 부른다 — `adminUploads` 가 잠금 순서의 마지막이다(스펙 §5-6). 첫 인자가
 //    Transaction 이라 트랜잭션 밖에서는 부를 수 없다(쓰는 쪽 Transaction<Database> 도 그대로 들어간다).
+// 🔴 한 refType 에 attach 와 sync 를 섞지 않는다 — 제자리 편집 문서(공지 · 게시글)는 만들기 · 고치기 · 지우기 모두 sync 다
+//    (만들기 = 새 refId 로 sync — 떼어 낼 것이 없는 엄격한 첨부, 지우기 = 빈 본문 sync). 만들기를 attach 로 하면 같은 refType 의
+//    다른 문서에 붙은 그림이 통과해(엄격하지 않다) 둘째 문서가 첫 문서의 그림을 빌려 쓰고, 첫 문서가 sync 로 그 그림을 빼는 순간
+//    지움 표시돼 둘째 문서의 그림이 404 가 된다. attach 는 append-only 문서(약관 — 새 판이 앞 판 그림을 다시 쓴다)만 쓴다.
 
 export interface AttachUploadsInput {
   /** 저장하려는 본문(Markdown) — 키는 collectUploadKeys 로 모은다(keys 가 없을 때) */
@@ -117,7 +121,7 @@ export async function attachUploads(
 
 /**
  * 제자리 수정 문서용 — 엄격한 attachUploads(strictRef) 뒤, 같은 refType · refId 에 붙어 있는데 본문에서 빠진 키를 지움 표시한다
- * (객체는 정리 잡이).
+ * (객체는 정리 잡이). 만들기(새 refId) · 고치기 · 지우기(빈 본문) 모두 이것이다 — 같은 refType 에 attach 를 섞지 않는다(머리 주석).
  * 🔴 약관(append-only)은 쓰지 않는다. 다른 문서의 그림을 적으면 저장이 404 로 실패한다(복사해 쓰려면 다시 올린다) — 그래서 한
  *    문서의 수정이 다른 문서의 그림을 지우지 못한다.
  */

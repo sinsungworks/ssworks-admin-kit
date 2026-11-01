@@ -1,6 +1,6 @@
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, parse } from 'node:path'
 import type { Readable } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createFileSystemStorage } from './file-system.js'
@@ -63,6 +63,12 @@ describe('createFileSystemStorage(스펙 S2)', () => {
       await expect(storage.get(bad)).rejects.toThrow('root 밖')
       await expect(storage.delete(bad)).rejects.toThrow('root 밖')
     }
+  })
+
+  it('🔴 root 가 파일 시스템 뿌리(/ · C:\\)여도 키는 안이다 — 끝 구분자를 겹쳐 모두 밖으로 치지 않는다(쓰지 않고 get 만)', async () => {
+    const storage = createFileSystemStorage({ root: parse(process.cwd()).root })
+    expect(await storage.get(KEY)).toBeNull()
+    await expect(storage.get('.')).rejects.toThrow('root 밖')
   })
 
   it('폴더를 가리키는 키의 get 은 null', async () => {

@@ -10,6 +10,8 @@ export const UPLOAD_MESSAGES = Object.freeze({
   invalidImage: '이미지를 읽을 수 없습니다.',
   limit: '이미지 수가 한도를 넘었습니다.',
   notFound: '이미지를 찾을 수 없습니다.',
+  // 🔴 503 — 코어 필터가 5xx 본문을 고정 문구로 바꾸므로 messages.uploads.unavailable 을 덮어도 클라이언트에 닿지 않는다. 로그에는
+  //    이 기본 글자(원문)가 남는다 — 덮기는 4xx 본문에만 적용돼 로그도 바뀌지 않는다
   unavailable: '이미지 저장소를 사용할 수 없습니다. 잠시 후 다시 시도하세요.',
   aborted: '업로드 본문을 다 받기 전에 연결이 끊겼습니다.',
 })

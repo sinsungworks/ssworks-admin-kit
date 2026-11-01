@@ -18,10 +18,15 @@ export interface FileSystemStorageOptions {
 
 export function createFileSystemStorage(options: FileSystemStorageOptions): AdminObjectStorage {
   const root = resolve(options.root)
+  // 🔴 root 가 파일 시스템 뿌리('/' · 'C:\')면 resolve 가 끝 구분자를 남긴다 — root + sep 은 '//' · 'C:\\' 가 돼 모든 키가 밖이 된다
+  const rootPrefix = root.endsWith(sep) ? root : root + sep
 
   const pathOf = (key: string): string => {
     const full = resolve(root, key)
-    if (!full.startsWith(root + sep)) throw new Error(`저장소 키가 root 밖을 가리킨다: ${key}`)
+    // root 자체('.' · 'a/..')는 접두사와 같은 길이라 밖으로 친다(뿌리 root 에서도)
+    if (!full.startsWith(rootPrefix) || full.length === rootPrefix.length) {
+      throw new Error(`저장소 키가 root 밖을 가리킨다: ${key}`)
+    }
     return full
   }
 

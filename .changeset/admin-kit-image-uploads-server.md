@@ -18,5 +18,6 @@
 5. 앱 전역 접두사가 `api` 가 아니면 `uploads.mediaPath` 를 `'/<접두사>/media'` 로(앞 `/` 필수).
 6. 🔴 코어 유니온이 넓어진다 — `Record<CommonErrorCode, …>` · `Record<CoreAuditAction, …>` · `Record<CoreAuditTarget, …>` 를 자기 표로 둔 앱은 새 키(`ERR_UPLOAD_*` 여섯 · `upload.create` · `upload.delete` · `upload`)를 채운다.
 7. 약관만 쓰는 앱은 발행 감사 meta 에 `attachedUploads: 0` 이 더 실리는 것뿐이다.
+8. 앱 문서(공지 · 게시글)에 그림을 붙이면 만들기 · 고치기 · 지우기(빈 본문) 모두 `uploads.sync(...)` 다 — `attach` 는 append-only 문서만 쓴다(한 종류에 섞으면 다른 문서가 빌려 쓴 그림이 지움 표시된다).
 
 README 「이미지 업로드」(배선 · 라우트 · 첨부 · 정리 잡 · 재인코딩 · 저장소).

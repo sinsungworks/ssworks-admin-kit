@@ -161,12 +161,12 @@ export class AdminUploadsService {
     return keys
   }
 
-  /** 앱 쓰기 라우트 · 약관 발행이 트랜잭션 안에서 부른다 — 정책 · mediaPath 를 채운 attachUploads */
+  /** append-only 문서(약관 발행)가 트랜잭션 안에서 부른다 — 정책 · mediaPath 를 채운 attachUploads. 제자리 편집 문서는 sync */
   attach(trx: Transaction<AdminDatabase>, input: AttachUploadsInput): Promise<AttachUploadsResult> {
     return attachUploads(trx, input, this.attachOptions())
   }
 
-  /** 제자리 수정 문서용 — 같은 refType · refId 에 붙은 키만 통과(다른 문서 그림은 404), 빠진 키는 지움 표시 */
+  /** 제자리 편집 문서의 만들기 · 고치기 · 지우기(빈 본문) — 같은 refType · refId 에 붙은 키만 통과(다른 문서 그림은 404), 빠진 키는 지움 표시 */
   sync(trx: Transaction<AdminDatabase>, input: AttachUploadsInput): Promise<SyncUploadsResult> {
     return syncUploads(trx, input, this.attachOptions())
   }

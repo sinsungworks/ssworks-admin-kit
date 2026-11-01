@@ -96,7 +96,7 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 - 데코레이터가 붙은 시그니처의 인터페이스 · 타입 별칭은 `import type`(TS1272), DI 로 받는 클래스는 일반 import.
 - 장은 `Kysely<unknown>` 을 받는다. 제약 · 인덱스 이름은 DB 에서 snake_case(`CamelCasePlugin`).
 - 테스트 세 층: 단위 · DB 없는 HTTP(프로브 모듈, `src/test-support/`)는 `pnpm check`, 실 MariaDB(`*.db.test.ts`)는 `pnpm db:test:up` 뒤 `pnpm test:db`(CI 필수 검사 `db` 가 `db (11.4)` · `db (12.3)` 매트릭스를 모은다 — 버전을 바꿔도 ruleset 은 그대로 · 12.3 로컬은 `db:test:up:12.3` · 포트 33307).
-- 인증 · 권한 가드는 **앱 전역**(`AdminAuthModule` 의 `APP_GUARD`)이다. 관리자 밖 컨트롤러는 `@Public()`, 관리자 라우트는 `@RequirePermissions` · `@RequireAnyPermissions` · `@SelfOnly` 중 하나를 선언한다 — 없으면 403(fail-closed).
+- 인증 · 권한 가드는 **앱 전역**(`AdminAuthModule` 의 `APP_GUARD`)이다. 관리자 밖 컨트롤러는 `@Public()`, 관리자 라우트는 `@RequirePermissions` · `@RequireAnyPermissions` · `@SelfOnly` · `@RequireUploadPurpose` 중 하나를 선언한다 — 없으면 403(fail-closed).
 - argon2(`hashPassword` · `verifyPassword` · 재인증)는 트랜잭션 밖에서만 부른다. 인증 문구는 `auth/errors.ts` 의 `AUTH_MESSAGES` 하나에서 가져온다.
 - 패키지 라우트의 권한은 **슬롯**(`sessions.read` …)이다 — 키는 쓰는 쪽 `AdminServerOptions.permissions`. 새 슬롯은 `AdminPermissionSlot` · `ADMIN_PERMISSION_SLOTS` 에 더하고 그 모듈의 `onModuleInit` 에서 `assertPermissionSlots` · `assertAuthModuleRegistered`.
 - 쓰기 라우트에는 `@Audit({ action, targetType })` — 코어 액션은 admin-shared `CoreAuditActions`(+ 라벨 · 개수 테스트)에 먼저 더한다(카탈로그 밖이면 기동에서 멈춘다). meta 는 `attachAuditMeta` · `attachAuditDiff`, 비밀 키는 쓸 때 가린다.

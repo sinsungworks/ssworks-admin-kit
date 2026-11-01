@@ -1,3 +1,10 @@
+import {
+  Agent as HttpAgent,
+  request as httpRequest,
+  type IncomingMessage,
+  type Server,
+} from 'node:http'
+import type { AddressInfo } from 'node:net'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import {
   CommonErrorCodes,
@@ -91,6 +98,94 @@ async function auditRows(action: string) {
     .where('action', '=', action)
     .orderBy('logNo', 'desc')
     .execute()
+}
+
+/** 로그인 응답의 Set-Cookie → 요청 Cookie 머리글 */
+function cookieHeader(response: Response): string {
+  const setCookie = response.headers['set-cookie'] as unknown as string[] | undefined
+  return (setCookie ?? []).map((cookie) => cookie.split(';')[0]).join('; ')
+}
+
+/** chunked 업로드가 응답을 못 받고 보낼 수 있는 최대 — 여기까지 응답이 없으면 본문을 끝낸다(그러면 테스트가 빨개진다) */
+const CHUNKED_MAX_BYTES = 20_000
+
+interface ChunkedResult {
+  status: number
+  text: string
+  /** 응답이 오기 전까지 보낸 바이트 */
+  sentBytes: number
+  /** 응답이 왔을 때 이미 본문을 끝냈는가 — false 여야 "넘는 순간" 413 이다 */
+  endedBeforeResponse: boolean
+  /** 요청 쪽 소켓 오류(EPIPE · ECONNRESET) — 서버가 먼저 닫아도 응답은 본다 */
+  requestError?: string
+}
+
+/**
+ * supertest 는 언제나 Content-Length 를 싣는다 — Content-Length 없는 본문(Transfer-Encoding: chunked)은 node:http 로 직접 보낸다.
+ * 100바이트 조각을 10ms 마다 보내다가 응답이 오면 멈추고 본문을 끝낸다. keep-alive 에이전트라 응답 뒤 서버가 남은 본문을
+ * 버리는 동안 소켓이 열려 있다(Connection: close 면 서버가 받지 않은 바이트를 둔 채 닫아 RST 가 응답을 앞지를 수 있다).
+ */
+async function chunkedUpload(
+  target: NestExpressApplication,
+  cookie: string,
+): Promise<ChunkedResult> {
+  const server = target.getHttpServer() as Server
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address() as AddressInfo
+  const agent = new HttpAgent({ keepAlive: true })
+  try {
+    return await new Promise<ChunkedResult>((resolve, reject) => {
+      let sentBytes = 0
+      let responded = false
+      let requestError: string | undefined
+      const req = httpRequest({
+        host: '127.0.0.1',
+        port,
+        method: 'POST',
+        path: `${UPLOADS}?purpose=legal`,
+        agent,
+        headers: { 'Content-Type': 'image/png', 'Transfer-Encoding': 'chunked', Cookie: cookie },
+      })
+      req.on('error', (error: NodeJS.ErrnoException) => {
+        requestError = error.code ?? error.message
+        // 응답이 이미 왔거나 곧 온다 — 끝내 안 오면 그때 실패
+        setTimeout(() => {
+          if (!responded) reject(error)
+        }, 2_000)
+      })
+      req.on('response', (res: IncomingMessage) => {
+        responded = true
+        const endedBeforeResponse = req.writableEnded
+        req.end()
+        const chunks: Buffer[] = []
+        res.on('data', (chunk: Buffer) => chunks.push(chunk))
+        res.on('error', reject)
+        res.on('end', () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            text: Buffer.concat(chunks).toString('utf8'),
+            sentBytes,
+            endedBeforeResponse,
+            ...(requestError === undefined ? {} : { requestError }),
+          }),
+        )
+      })
+      const pump = () => {
+        if (responded || req.destroyed || req.writableEnded) return
+        if (sentBytes >= CHUNKED_MAX_BYTES) {
+          req.end()
+          return
+        }
+        req.write(Buffer.alloc(100))
+        sentBytes += 100
+        setTimeout(pump, 10)
+      }
+      pump()
+    })
+  } finally {
+    agent.destroy()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
 }
 
 describe('POST /admin/uploads', () => {
@@ -209,6 +304,24 @@ describe('POST /admin/uploads', () => {
       UPLOAD_MESSAGES.limit,
     )
     expect(limit.details).toEqual({ limit: 1 })
+  })
+
+  it('🔴 413 — Content-Length 없는 chunked 본문이 상한(200)을 넘으면 본문이 끝나기 전에 413 이 온다(소켓을 끊지 않는다)', async () => {
+    const login = await request(small.getHttpServer())
+      .post('/admin/auth/login')
+      .send({ userId: limited.userId, password: limited.password })
+      .expect(200)
+    const result = await chunkedUpload(small, cookieHeader(login))
+    expect(result.status).toBe(413)
+    // 본문을 다 보내기 전에 응답이 왔다 — Content-Length 검사가 아니라 스트림 검사가 막았다
+    expect(result.endedBeforeResponse).toBe(false)
+    expect(result.sentBytes).toBeGreaterThan(200)
+    expect(result.sentBytes).toBeLessThan(CHUNKED_MAX_BYTES)
+    // 서버는 남은 본문을 버리며(resume) 소켓을 연 채 둔다 — 보내던 쪽에 EPIPE · ECONNRESET 이 없다
+    expect(result.requestError).toBeUndefined()
+    const body = errorRespSchema.parse(parseJSON(result.text))
+    expect(body.code).toBe(CommonErrorCodes.ERR_UPLOAD_TOO_LARGE)
+    expect(body.details).toEqual({ maxBytes: 200 })
   })
 
   it('🔴 저장소 꺼짐 503 — 행이 남지 않고 감사는 실패로 남는다', async () => {

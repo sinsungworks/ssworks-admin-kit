@@ -708,13 +708,35 @@ export { up, down } from '@ssworks/admin-server/migrations/0013_admin_uploads'
 | `GET /api/media/:purpose/:yyyy/:mm/:file`        | `@Public`               | → `image/webp` 스트림 · 304(ETag) — 첨부됨 · 미삭제만. 미첨부 · 지움 · 없음은 404                                             | —                                                                              |
 
 - **용도(purpose)**: 영숫자 · `_` 1~32자 — 키의 첫 조각이다(`<용도>/<yyyy>/<mm>/<32자>.webp`). `legal`(admin-shared `LEGAL_UPLOAD_PURPOSE`)은 `AdminLegalModule` 이 있으면 자동으로 `legal.publish` 슬롯에 이어진다 — `purposes` 에 적으면 기동에서 멈춘다. 앱 용도는 `{ slot }`(패키지 슬롯 — `permissions` 맵에 이어져 있어야 한다) 또는 `{ permissions: [...] }`(앱 권한 키 AND) 중 하나. 모르는 용도 · 권한 없음은 403. 🔴 쿼리와 경로에 용도가 둘 다 오면 403 이다 — 가드가 핸들러와 다른 값을 보지 못하게(POST 는 쿼리만 · DELETE 는 경로만).
-- **본문 저장이 첨부한다**: 앱 라우트는 자기 문서 행을 잠근 뒤 **같은 트랜잭션**에서 `uploads.attach(trx, { markdown, purpose, refType, refId, actorUserNo, keys? })` 를 부른다(`AdminUploadsService` 주입 — 전역 모듈). 큰 본문은 `const keys = uploads.collectKeys(markdown)` 를 **트랜잭션 밖**에서 부르고 `keys` 로 넘긴다 — Markdown 렌더와 본문당 장수 409 가 잠금 밖에서 끝난다.
-  - 제자리 수정 문서(공지 · 게시글)는 `uploads.sync(...)` — 첨부 뒤 이 문서에 붙어 있었는데 본문에서 빠진 그림을 지움 표시한다. 🔴 `sync` 는 엄격하다 — 이미 첨부된 그림은 같은 `refType` **과 `refId`** 여야 한다. 다른 문서의 그림 주소를 적으면 404 다(복사해 쓰려면 다시 올린다) — 한 문서의 수정이 남의 그림을 지우지 못한다. 약관(append-only)은 `attach` 만 쓴다(앞 판의 그림을 지우면 안 된다).
+- **본문 저장이 첨부한다**: 앱 라우트는 자기 문서 행을 잠근 뒤 **같은 트랜잭션**에서 `uploads.sync(trx, { markdown, purpose, refType, refId, actorUserNo, keys? })` 를 부른다(`AdminUploadsService` 주입 — 전역 모듈). 큰 본문은 `const keys = uploads.collectKeys(markdown)` 를 **트랜잭션 밖**에서 부르고 `keys` 로 넘긴다 — Markdown 렌더와 본문당 장수 409 가 잠금 밖에서 끝난다.
+  - 제자리 편집 문서(공지 · 게시글)는 **만들기 · 고치기 · 지우기 모두 `uploads.sync(...)`** 다 — 만들기는 새 `refId` 로(떼어 낼 것이 없는 엄격한 첨부), 고치기는 본문에서 빠진 그림을 지움 표시, 지우기는 빈 본문(`markdown: ''`)으로 그 문서의 그림을 모두 지움 표시한다. 🔴 `sync` 는 엄격하다 — 이미 첨부된 그림은 같은 `refType` **과 `refId`** 여야 한다. 다른 문서의 그림 주소를 적으면 404 다(복사해 쓰려면 다시 올린다) — 한 문서의 수정이 남의 그림을 지우지 못한다.
+  - 🔴 한 `refType` 에 `attach` 와 `sync` 를 섞지 않는다 — `attach` 는 같은 `refType` 의 다른 문서에 붙은 그림도 통과시킨다. 만들기를 `attach` 로 하면 둘째 문서가 첫 문서의 그림을 빌려 쓰고, 첫 문서가 고치기(`sync`)로 그 그림을 빼는 순간 지움 표시돼 둘째 문서의 그림이 404 가 된다. `attach` 는 append-only 문서(약관 — 새 판이 앞 판의 그림을 다시 쓴다. 앞 판의 그림을 지우면 안 된다)만 쓴다.
   - 잘못된 키(없음 · 남이 올린 미첨부 · 지움 · 다른 용도 · 다른 종류 문서)는 사유를 가르지 않고 404 `ERR_UPLOAD_NOT_FOUND` — **저장 전체가 실패**한다(롤백). 본문당 장수 초과는 409 `ERR_UPLOAD_LIMIT`(`details.limit`).
   - 🔴 `admin_uploads` 는 잠금 순서의 마지막이다 — 자기 문서 행 → `admin_uploads`. 그 앞에 비잠금 SELECT 를 두지 않는다(스냅샷 격리 ON 에서 1020). `trx` 는 `Transaction<AdminDatabase>` 자리에 쓰는 쪽 `Transaction<Database>` 가 그대로 들어간다(트랜잭션 밖 호출은 타입이 막는다). 쓰기 트랜잭션은 `runWriteTransaction` 으로 감싼다 — 교착 1213 · 잠금 대기 1205 가 409 `ERR_COMMON_CONFLICT` · 504 `ERR_COMMON_TIMEOUT` 이 된다.
   - `refType` 은 감사 대상 이름과 같은 값을 쓴다(`CoreAuditTargets.LEGAL_DOCUMENT`, 앱이면 자기 대상 이름 — 폭 64).
 
 ```ts
+async create(input: NoticeCreate, actorUserNo: bigint) {
+  const keys = this.uploads.collectKeys(input.body) // 🔴 트랜잭션 밖 — 렌더 · 본문당 장수 409
+  return runWriteTransaction(this.db, async (trx) => {
+    const { insertId } = await trx
+      .insertInto('notices')
+      .values({ body: input.body /* … */ })
+      .executeTakeFirstOrThrow() // 자기 문서 행이 먼저
+    const noticeNo = BigInt(insertId!)
+    // 🔴 만들기도 sync — attach 면 다른 공지에 붙은 그림이 통과해 빌려 쓰인다
+    await this.uploads.sync(trx, {
+      markdown: input.body,
+      keys,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: noticeNo,
+      actorUserNo,
+    })
+    return noticeNo
+  })
+}
+
 async update(noticeNo: bigint, input: NoticeUpdate, actorUserNo: bigint) {
   const keys = this.uploads.collectKeys(input.body) // 🔴 트랜잭션 밖 — 렌더 · 본문당 장수 409
   return runWriteTransaction(this.db, async (trx) => {
@@ -735,6 +757,20 @@ async update(noticeNo: bigint, input: NoticeUpdate, actorUserNo: bigint) {
     })
   })
 }
+
+async remove(noticeNo: bigint, actorUserNo: bigint) {
+  return runWriteTransaction(this.db, async (trx) => {
+    // … 자기 문서 행 잠금 · DELETE notices
+    // 빈 본문 sync — 이 공지에 붙은 그림을 모두 지움 표시(객체는 정리 잡이)
+    await this.uploads.sync(trx, {
+      markdown: '',
+      purpose: 'notice',
+      refType: 'notice',
+      refId: noticeNo,
+      actorUserNo,
+    })
+  })
+}
 ```
 
 - **`mediaPath` 와 전역 접두사**: 중계 컨트롤러 경로는 `media` 로 고정이다 — `mediaPath` 는 `'/<앱 전역 접두사>/media'`(앞 `/` 필수)이고 `/media` 로 끝나지 않으면 기동에서 멈춘다(`setGlobalPrefix('api')` → 기본 `'/api/media'`). 접두사와 어긋나면 저장은 되는데 그림만 안 보인다. 🔴 운영 중에 바꾸지 않는다 — 옛 본문의 주소를 키로 알아보지 못해 다음 `sync` 가 그 그림들을 지움 표시한다.
@@ -743,7 +779,7 @@ async update(noticeNo: bigint, input: NoticeUpdate, actorUserNo: bigint) {
 - **정리 잡**: 주기마다(기본 60분 · `sweep.intervalMinutes` 는 35,791 이하 — Node 타이머 상한) ① 미첨부가 `policy.pendingTtlHours`(기본 24 — `sweep` 이 아니라 `policy` 아래다)를 넘으면 지움 표시 ② 지움 표시 행의 객체를 지우고 행을 지운다 — 100개씩, 한 틱에 최대 10묶음(= 1,000행). 앞 회차가 안 끝났으면 그 틱은 건너뛴다. 멱등이라 인스턴스가 여럿이어도 된다. `sweep: false` 면 앱 워커가 `AdminUploadsService.sweep()` 을 부른다. 객체 삭제에 실패한 행은 남아 다음 회차 맨 앞에서 다시 잡힌다 — 실패 행이 100개 이상 쌓이면 뒤 행이 밀리고, 저장소가 돌아오면 따라잡는다.
 - **재인코딩**(sharp): 매직 바이트로 형식을 다시 본다(Content-Type 이 아니라) · 픽셀(너비 × 높이 × 프레임) 4천만 · 프레임 100 을 풀기 전에 막는다 · 정지 이미지는 EXIF 방향대로 돌린다 · 긴 변 2048 로 줄인다(키우지 않음) · WebP 품질 82 · 메타데이터(EXIF · GPS · ICC)를 싣지 않는다 — 광색역 이미지는 sRGB 로 변환된 뒤 프로파일이 빠진다 · 움짤 → 움직이는 WebP · 처리 15초 초과는 400. 동시 재인코딩은 2, 대기열 8 — 자리를 5초 넘게 기다리거나 대기열이 차면 503(앱마다 하나 — 프로세스당 앱이 하나면 프로세스당 하나). 최대 메모리 ≈ 동시 수 × 픽셀 상한 × 4바이트. 정책 값은 `uploads.policy`(admin-shared `DEFAULT_UPLOAD_POLICY` — 장당 10MiB · 본문당 20장 · 사람당 미첨부 50장).
 - **본문 읽기**: 원시 이미지 바이트만 받는다(multipart 아님) — 다른 `Content-Type` · `Content-Encoding`(압축) 본문은 415. 크기는 `Content-Length` 를 먼저 보고, 스트림이 상한을 넘는 순간 남은 본문을 버리고 413. 다 받기 전에 연결이 끊기면 400 `ERR_COMMON_BAD_REQUEST`(문구 `messages.uploads.aborted`). 🔴 `image/*` 를 먹는 전역 raw · text 본문 파서를 달지 않는다 — 컨트롤러가 요청 스트림을 직접 읽으므로 파서가 먼저 소비하면 모든 업로드가 500 이다(서버 로그에 "업로드 본문이 이미 소비됐다 …").
-- **오류 코드 여섯**: 415 `ERR_UPLOAD_UNSUPPORTED_TYPE` · 413 `ERR_UPLOAD_TOO_LARGE`(`details.maxBytes`) · 400 `ERR_UPLOAD_INVALID_IMAGE`(`details.reason` — `unreadable` · `too_many_pixels` · `too_many_frames`) · 409 `ERR_UPLOAD_LIMIT`(`details.limit` — 사람당 미첨부 · 본문당 장수) · 404 `ERR_UPLOAD_NOT_FOUND` · 503 `ERR_UPLOAD_UNAVAILABLE`(저장소 오류 · 재인코딩 대기). 문구는 `messages: { uploads: { … }, uploadsSchema: { purpose } }` 로 덮는다(위 「오류 문구 바꾸기」). 🔴 503 의 문구는 서버가 보내지 않는다(5xx 는 고정 문구 — 코드만 남는다) — 화면은 코드로 문구를 고른다.
+- **오류 코드 여섯**: 415 `ERR_UPLOAD_UNSUPPORTED_TYPE` · 413 `ERR_UPLOAD_TOO_LARGE`(`details.maxBytes`) · 400 `ERR_UPLOAD_INVALID_IMAGE`(`details.reason` — `unreadable` · `too_many_pixels` · `too_many_frames`) · 409 `ERR_UPLOAD_LIMIT`(`details.limit` — 사람당 미첨부 · 본문당 장수) · 404 `ERR_UPLOAD_NOT_FOUND` · 503 `ERR_UPLOAD_UNAVAILABLE`(저장소 오류 · 재인코딩 대기). 문구는 `messages: { uploads: { … }, uploadsSchema: { purpose } }` 로 덮는다(위 「오류 문구 바꾸기」). 🔴 503 의 문구는 서버가 보내지 않는다(5xx 는 고정 문구 — 코드만 남는다) — 화면은 코드로 문구를 고른다. 그래서 `messages.uploads.unavailable` 을 덮어도 클라이언트에 닿지 않는다(서버 로그에는 덮기 전 킷 기본 문구가 남는다).
 - **저장소**
   - 파일 시스템 `createFileSystemStorage({ root })` — 객체는 `<root>/<키>`. 임시 파일에 쓰고 rename 한다(중계가 반쪽 파일을 읽지 않게). 키가 `root` 밖을 가리키면 던진다 — 심볼릭 링크는 검사하지 않으니 `root` 안에 링크를 두지 않는다. 개발 · 단일 서버용.
   - S3 호환 `createS3ObjectStorage({ bucket, region?, endpoint?, credentials?, forcePathStyle?, prefix?, timeoutMs? })`(`@ssworks/admin-server/storage/s3`) — R2 · MinIO · NCP 같은 공급자는 `endpoint`. 버킷은 비공개로 둔다(중계가 첨부 여부를 보고 내보낸다). 던지는 오류의 문구 · 스택에서 접근 키 · 비밀 키를 가린다. 종료 때 `storage.destroy()`(keep-alive 소켓 — 모듈이 부르지 않는다).

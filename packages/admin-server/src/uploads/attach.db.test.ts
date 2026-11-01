@@ -1,7 +1,7 @@
 import { CommonErrorCodes, uploadUrl } from '@ssworks/admin-shared'
-import type { Generated, Transaction } from 'kysely'
+import type { Generated, Kysely, Transaction } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { AdminDatabase } from '../database/types.js'
+import type { AdminDatabase, AdminUploadsTable } from '../database/types.js'
 import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { failure } from '../test-support/errors.js'
@@ -314,26 +314,83 @@ describe('syncUploads(제자리 수정 문서)', () => {
   })
 })
 
-// 🔴 컴파일 회귀 — 쓰는 쪽 Database(코어 + 자기 표)의 Transaction 이 그대로 들어가야 한다(리뷰 Important 1)
-type ConsumerDatabase = AdminDatabase & { notices: { noticeNo: Generated<bigint>; body: string } }
+describe('🔴 제자리 편집 문서는 만들기 · 고치기 · 지우기 모두 sync(최종 리뷰)', () => {
+  const sync = (markdown: string, refId: bigint) =>
+    inTrx((trx) =>
+      syncUploads(
+        trx,
+        { markdown, purpose: 'notice', refType: 'notice', refId, actorUserNo: me.userNo },
+        { mediaPath: MEDIA },
+      ),
+    )
+
+  it('만들기 sync(새 refId) — 같은 refType 의 다른 문서에 붙은 키는 404, 아무 행도 안 바뀐다(attach 였다면 통과해 빌려 쓴다)', async () => {
+    const first = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 50n,
+    })
+    const error = await failure(sync(img(first.key), 51n))
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_NOT_FOUND)
+    expect(await rowOf(first.key)).toMatchObject({ refType: 'notice', refId: 50n, deletedAt: null })
+  })
+
+  it('만들기 sync(새 refId) 가 새 미첨부 키를 붙이고 → 지우기 sync(빈 본문)가 떼어 지움 표시한다', async () => {
+    const fresh = await seedUpload(t.db, { uploadedByUserNo: me.userNo, purpose: 'notice' })
+    expect(await sync(img(fresh.key), 60n)).toEqual({ attached: 1, detached: 0, keys: [fresh.key] })
+    expect(await rowOf(fresh.key)).toMatchObject({ refType: 'notice', refId: 60n, deletedAt: null })
+    expect(await sync('', 60n)).toEqual({ attached: 0, detached: 1, keys: [] })
+    expect((await rowOf(fresh.key)).deletedAt).toBeInstanceOf(Date)
+  })
+
+  it('섞으면 사고 — attach 로 만든 둘째 문서가 첫 문서의 그림을 빌리고, 첫 문서의 sync 가 그 그림을 지움 표시한다', async () => {
+    const shared = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 70n,
+    })
+    const borrowed = await inTrx((trx) =>
+      attachUploads(
+        trx,
+        {
+          markdown: img(shared.key),
+          purpose: 'notice',
+          refType: 'notice',
+          refId: 71n,
+          actorUserNo: me.userNo,
+        },
+        { mediaPath: MEDIA },
+      ),
+    )
+    expect(borrowed).toEqual({ attached: 0, keys: [shared.key] })
+    expect(await sync('', 70n)).toMatchObject({ detached: 1 })
+    // 둘째 문서(71) 본문에는 아직 그 그림이 있는데 행은 지움 표시 — 중계가 404 를 낸다
+    expect((await rowOf(shared.key)).deletedAt).toBeInstanceOf(Date)
+  })
+})
+
+// 🔴 컴파일 회귀 — 쓰는 쪽 Database(README 모양: 코어 표 넓히기 + 자기 표)의 Transaction 이 그대로 들어가야 한다(리뷰 Important 1).
+//    트랜잭션 밖(Kysely)은 타입이 막는다.
+interface ConsumerDatabase extends AdminDatabase {
+  adminUploads: AdminUploadsTable & { note: string | null }
+  notices: { noticeNo: Generated<bigint>; body: string }
+}
 export function consumerTransactionCompiles(
   trx: Transaction<ConsumerDatabase>,
+  db: Kysely<ConsumerDatabase>,
   service: AdminUploadsService,
 ) {
+  const input = { markdown: '', purpose: 'notice', refType: 'notice', refId: 1n, actorUserNo: 1n }
+  // @ts-expect-error — 트랜잭션 밖 호출은 타입 오류다(attach · sync 의 첫 인자는 Transaction). input 은 아래에서 통과한다
+  void attachUploads(db, input)
+  // @ts-expect-error — 서비스도 같다
+  void service.sync(db, input)
   return Promise.all([
-    attachUploads(trx, {
-      markdown: '',
-      purpose: 'notice',
-      refType: 'notice',
-      refId: 1n,
-      actorUserNo: 1n,
-    }),
-    service.sync(trx, {
-      markdown: '',
-      purpose: 'notice',
-      refType: 'notice',
-      refId: 1n,
-      actorUserNo: 1n,
-    }),
+    attachUploads(trx, input),
+    syncUploads(trx, input),
+    service.attach(trx, input),
+    service.sync(trx, input),
   ])
 }

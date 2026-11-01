@@ -90,12 +90,8 @@ export {
   type AttachUploadsResult,
   type SyncUploadsResult,
 } from './uploads/attach.js'
-export {
-  markExpiredUploads,
-  purgeDeletedUploads,
-  SWEEP_BATCH,
-  type SweepResult,
-} from './uploads/sweep.js'
+// 정리 단계 함수(markExpiredUploads · purgeDeletedUploads · SWEEP_BATCH)는 내보내지 않는다 — 공개 경로는 AdminUploadsService.sweep()
+export type { SweepResult } from './uploads/sweep.js'
 export { RequireUploadPurpose } from './auth/upload-purpose.js'
 export type { AdminObjectStorage, StoredObject } from './storage/object-storage.js'
 export { createFileSystemStorage, type FileSystemStorageOptions } from './storage/file-system.js'
