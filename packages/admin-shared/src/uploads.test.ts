@@ -91,10 +91,11 @@ describe('collectUploadKeys(스펙 §4-1 — 렌더 위에서 센다)', () => {
     expect(collectUploadKeys(md)).toEqual([KEY, KEY2])
   })
 
-  it('mediaPath 인자 — 다른 접두사로 세고, 어긋나면 비어 있다', () => {
+  it('mediaPath 인자 — 다른 접두사로 세고, 어긋나면 비어 있다 · 접두사가 앞부분만 같은 경로(/api/media2)는 키가 아니다', () => {
     const md = `![a](/media/${KEY})`
     expect(collectUploadKeys(md, '/media')).toEqual([KEY])
     expect(collectUploadKeys(md)).toEqual([])
+    expect(collectUploadKeys(`![a](/api/media2/${KEY})`)).toEqual([])
   })
 
   it('빈 본문은 []', () => {
