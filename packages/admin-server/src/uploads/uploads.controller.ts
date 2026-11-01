@@ -22,7 +22,7 @@ import { AdminUploadsService } from './uploads.service.js'
 //   @RequireUploadPurpose(용도 → 권한). 감사 둘(upload.create · upload.delete) — meta 에 바이트 · 본문은 싣지 않는다.
 // 🔴 DELETE 경로는 키의 네 조각이다 — Express 5(path-to-regexp v8)는 `:key(*)` 정규식 파라미터를 지원하지 않는다. 가드는
 //    POST 는 query.purpose, DELETE 는 params.purpose 로 용도를 읽고 **둘 다 오면 403** 이다(핸들러와 다른 값을 볼 수 없게).
-// 🔴 가드가 먼저다 — 모르는 · 형식 밖 용도는 400 이 아니라 403 이다(스펙 U6). 쿼리 파이프의 400 은 가드를 지난 뒤 잘못된 모양(배열 등)에만.
+// 🔴 가드가 먼저다 — 모르는 · 형식 밖 · 배열 용도는 가드에서 403 이다(스펙 U6). 쿼리 파이프는 타입을 좁히는 역할뿐이라 400 이 날 길이 없다.
 
 @Controller('uploads')
 export class AdminUploadsController {

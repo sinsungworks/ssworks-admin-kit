@@ -1,4 +1,4 @@
-import { UPLOAD_CONTENT_TYPES } from '@ssworks/admin-shared'
+import { BusinessError, CommonErrorCodes, UPLOAD_CONTENT_TYPES } from '@ssworks/admin-shared'
 import type { Request } from 'express'
 import { uploadTooLarge, uploadUnsupportedType } from './errors.js'
 
@@ -7,6 +7,16 @@ import { uploadTooLarge, uploadUnsupportedType } from './errors.js'
 //   않아 요청 스트림이 온전하다. Content-Encoding 이 붙은 본문은 풀지 않고 415(압축 폭탄).
 // 🔴 상한을 넘는 순간 모으기를 멈추고 `resume()` 으로 남은 본문을 버린 뒤 413 을 던진다 — 소켓을 끊지 않아 클라이언트가 413 을 받는다.
 // 🔴 이미지 형식은 CORS 단순 요청 형식이 아니다 — 다른 출처는 사전 요청에서 막힌다(CSRF — 같은 출처 + 비단순 본문 규약).
+// 🔴 본문을 다 받기 전의 스트림 오류 · 연결 끊김은 400 BusinessError(details.reason)다 — 흔들리는 연결이 500 로그가 되지 않게.
+
+/** 400 — 본문을 다 받기 전에 끊김. reason 은 스트림 오류 문구 또는 'closed' */
+function bodyAborted(reason: string): BusinessError {
+  return new BusinessError(
+    CommonErrorCodes.ERR_COMMON_BAD_REQUEST,
+    '업로드 본문을 다 받기 전에 연결이 끊겼습니다.',
+    { reason },
+  )
+}
 
 const UPLOAD_TYPES: ReadonlySet<string> = new Set(UPLOAD_CONTENT_TYPES)
 
@@ -65,9 +75,8 @@ export function readImageBody(req: Request, maxBytes: number): Promise<Buffer> {
       chunks.push(chunk)
     }
     const onEnd = () => finish(() => resolve(Buffer.concat(chunks)))
-    const onError = (error: Error) => finish(() => reject(error))
-    const onClose = () =>
-      finish(() => reject(new Error('업로드 본문을 다 받기 전에 연결이 끊겼다')))
+    const onError = (error: Error) => finish(() => reject(bodyAborted(error.message)))
+    const onClose = () => finish(() => reject(bodyAborted('closed')))
     req.on('data', onData)
     req.on('end', onEnd)
     req.on('error', onError)

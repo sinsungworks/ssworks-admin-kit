@@ -53,6 +53,8 @@ export interface ResolvedUploadsConfig {
 const MEDIA_PATH = /^(\/[A-Za-z0-9_-]+)*\/media$/
 const POSITIVE_INT = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 1
+/** 🔴 Node setInterval 은 2^31-1 ms 를 넘는 지연을 1 ms 로 바꾼다 — 넘기면 정리 잡이 1 ms 마다 돈다 */
+const MAX_SWEEP_MINUTES = Math.floor((2 ** 31 - 1) / 60_000)
 
 function isStorage(value: unknown): value is AdminObjectStorage {
   if (typeof value !== 'object' || value === null) return false
@@ -209,6 +211,12 @@ function resolveSweep(raw: unknown, problems: string[]): number | null {
   if (minutes === undefined) return 60 * 60_000
   if (!POSITIVE_INT(minutes)) {
     problems.push(`uploads.sweep.intervalMinutes 는 1 이상의 정수여야 한다: ${String(minutes)}`)
+    return null
+  }
+  if (minutes > MAX_SWEEP_MINUTES) {
+    problems.push(
+      `uploads.sweep.intervalMinutes 는 ${MAX_SWEEP_MINUTES} 이하여야 한다(Node 타이머 상한): ${String(minutes)}`,
+    )
     return null
   }
   return minutes * 60_000

@@ -128,6 +128,18 @@ describe('resolveUploadsConfig(스펙 U7 · U14 · S6)', () => {
     )
   })
 
+  it('🔴 정리 주기 상한 — Node 타이머 상한(2^31-1 ms)을 넘는 분은 기동에서 멈춘다(넘기면 1 ms 마다 돈다)', () => {
+    expect(resolve({ storage, sweep: { intervalMinutes: 35_791 } }).sweepIntervalMs).toBe(
+      35_791 * 60_000,
+    )
+    expect(messageOf(() => resolve({ storage, sweep: { intervalMinutes: 35_792 } }))).toContain(
+      'uploads.sweep.intervalMinutes 는 35791 이하여야 한다(Node 타이머 상한): 35792',
+    )
+    expect(messageOf(() => resolve({ storage, sweep: { intervalMinutes: 43_200 } }))).toContain(
+      'uploads.sweep.intervalMinutes 는 35791 이하여야 한다(Node 타이머 상한): 43200',
+    )
+  })
+
   it('mediaPath — 루트 · 접두사 여럿 · 끝 슬래시 · 비어 있음', () => {
     expect(resolve({ storage, mediaPath: '/media' }).mediaPath).toBe('/media')
     expect(resolve({ storage, mediaPath: '/api/v1/media' }).mediaPath).toBe('/api/v1/media')

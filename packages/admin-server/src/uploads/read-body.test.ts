@@ -92,10 +92,13 @@ describe('readImageBody(스펙 U2)', () => {
     const pending = readImageBody(request, 100)
     stream.push(Buffer.from('ab'))
     setTimeout(() => stream.destroy(), 5)
-    await expect(pending).rejects.toThrow('연결이 끊겼다')
+    const error = await failure(pending)
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_BAD_REQUEST)
+    expect(error.message).toContain('연결이 끊겼습니다')
+    expect(error.details).toEqual({ reason: 'closed' })
   })
 
-  it('스트림 오류는 그대로 던진다', async () => {
+  it('🔴 스트림 오류 · 연결 끊김은 400 BusinessError(details.reason) — 흔들리는 연결이 500 이 되지 않는다', async () => {
     const stream = new Readable({
       read() {
         this.destroy(new Error('socket hang up'))
@@ -104,6 +107,8 @@ describe('readImageBody(스펙 U2)', () => {
     const request = Object.assign(stream, {
       headers: { 'content-type': 'image/png' },
     }) as unknown as Request
-    await expect(readImageBody(request, 100)).rejects.toThrow('socket hang up')
+    const error = await failure(readImageBody(request, 100))
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_BAD_REQUEST)
+    expect(error.details).toEqual({ reason: 'socket hang up' })
   })
 })

@@ -5,6 +5,7 @@ import {
   Module,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
+  type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common'
 import { ModulesContainer } from '@nestjs/core'
@@ -40,17 +41,17 @@ import { AdminUploadsService } from './uploads.service.js'
         ),
       inject: [ADMIN_SERVER_OPTIONS, ModulesContainer],
     },
-    // 앱마다 한 문 — useValue 면 모듈 정의 시점의 한 인스턴스를 한 프로세스의 모든 앱이 나눈다
     { provide: EncodeGate, useFactory: () => new EncodeGate() },
     AdminUploadsService,
   ],
   exports: [ADMIN_UPLOADS_CONFIG, AdminUploadsService],
 })
 export class AdminUploadsModule
-  implements OnModuleInit, OnApplicationBootstrap, OnApplicationShutdown
+  implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy, OnApplicationShutdown
 {
   private readonly logger = new Logger(AdminUploadsModule.name)
   private timer: ReturnType<typeof setInterval> | null = null
+  private running = false
 
   constructor(
     private readonly modules: ModulesContainer,
@@ -62,20 +63,38 @@ export class AdminUploadsModule
     assertAuthModuleRegistered(this.modules, 'AdminUploadsModule')
   }
 
-  /** 정리 잡(스펙 U11) — 주기마다 sweep. unref 라 프로세스를 붙들지 않는다. 겹쳐 돌아도 멱등 */
+  /** 정리 잡(스펙 U11) — 주기마다 sweep. unref 라 프로세스를 붙들지 않는다. sweep 은 멱등이다 */
   onApplicationBootstrap(): void {
     if (this.config.sweepIntervalMs === null) return
     this.timer = setInterval(() => {
-      void this.uploads.sweep().catch((error: unknown) => {
-        this.logger.warn(
-          `업로드 정리 실패 — ${error instanceof Error ? error.message : String(error)}`,
-        )
-      })
+      // 🔴 겹침 방지 — 앞 회차가 끝나기 전에 다음 틱이 오면 건너뛴다(저장소가 느릴 때 풀을 고갈시키지 않게)
+      if (this.running) return
+      this.running = true
+      void this.uploads
+        .sweep()
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `업로드 정리 실패 — ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
+        .finally(() => {
+          this.running = false
+        })
     }, this.config.sweepIntervalMs)
     this.timer.unref()
   }
 
+  /** 🔴 코어 모듈의 onModuleDestroy 가 Kysely 풀을 닫는다 — onApplicationShutdown 은 그 뒤라 여기서 먼저 멈춘다 */
+  onModuleDestroy(): void {
+    this.stopSweep()
+  }
+
+  /** 안전망 — onModuleDestroy 가 이미 멈췄으면 아무 일도 하지 않는다 */
   onApplicationShutdown(): void {
+    this.stopSweep()
+  }
+
+  private stopSweep(): void {
     if (this.timer !== null) clearInterval(this.timer)
     this.timer = null
   }

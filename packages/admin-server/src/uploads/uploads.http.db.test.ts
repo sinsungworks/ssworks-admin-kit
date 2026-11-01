@@ -173,6 +173,24 @@ describe('POST /admin/uploads', () => {
     )
   })
 
+  it('400 — 잘린 PNG(매직 바이트는 맞다) · details.reason · 감사는 실패 한 줄(meta 없음)', async () => {
+    const agent = await signIn(publisher)
+    const truncated = png.subarray(0, Math.floor(png.length * 0.5))
+    const invalid = expectError(
+      await upload(agent, truncated),
+      400,
+      CommonErrorCodes.ERR_UPLOAD_INVALID_IMAGE,
+      UPLOAD_MESSAGES.invalidImage,
+    )
+    expect(invalid.details).toEqual({ reason: 'unreadable' })
+    const [audit] = await auditRows(CoreAuditActions.UPLOAD_CREATE)
+    expect(audit).toMatchObject({
+      statusCode: 400,
+      errorCode: CommonErrorCodes.ERR_UPLOAD_INVALID_IMAGE,
+      meta: null,
+    })
+  })
+
   it('413 · 409 — 작은 정책 앱: 장당 200바이트 · 사람당 미첨부 1', async () => {
     const agent = await signIn(limited, small)
     const big = await pngImage(400, 400)
@@ -272,6 +290,9 @@ describe('DELETE /admin/uploads/:purpose/:yyyy/:mm/:file', () => {
       404,
       CommonErrorCodes.ERR_UPLOAD_NOT_FOUND,
     )
+    // 실패한 지우기도 감사 한 줄 — 대상 번호는 없다(숫자 경로 조각이 yyyy · mm 둘이라 추론하지 않는다)
+    const [failed] = await auditRows(CoreAuditActions.UPLOAD_DELETE)
+    expect(failed).toMatchObject({ statusCode: 404, targetRefNo: null })
     expectError(
       await me.delete(`${UPLOADS}/legal/2026/11/short.webp`),
       404,

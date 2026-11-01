@@ -106,7 +106,8 @@ export async function encodeUpload(input: Buffer, policy: UploadPolicy): Promise
 /**
  * 프로세스당 동시 재인코딩 문(스펙 S5 — 기본 동시 2 · 대기 5초 · 대기열 8). 자리가 없으면 차례로 기다리고 waitMs 가 넘거나 대기열이
  * 찼으면 503 ERR_UPLOAD_UNAVAILABLE(자리를 받지 않는다). fn 이 끝나면(던져도) 자리를 다음 대기에 바로 넘긴다.
- * Nest 제공자는 `{ provide: EncodeGate, useValue: new EncodeGate() }` — 생성자 인자가 숫자라 클래스 제공자로 두지 않는다.
+ * Nest 제공자는 `{ provide: EncodeGate, useFactory: () => new EncodeGate() }` — 앱마다 하나(useValue 는 프로세스의 모든 앱이
+ * 하나를 나눈다). 생성자 인자가 숫자라 클래스 제공자로 두지 않는다.
  */
 export class EncodeGate {
   private active = 0
