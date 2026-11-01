@@ -8,9 +8,11 @@ import { ASCII_BIN, TABLE_OPTIONS, comment } from './_shared.js'
 //  - CHECK(ref_type ⇔ ref_id ⇔ attached_at) 는 두지 않는다 — 쓰는 곳이 attach.ts · sweep.ts 둘뿐이고 MariaDB CHECK 는 옵티마이저 힌트가 없다.
 //  - mime 열이 없다 — 저장 형식은 언제나 WebP(스펙 U1).
 //  - attached_at · deleted_at 은 DATETIME(앱 시계 · UTC 프로세스) — TIMESTAMP 는 첫 열에 암묵 DEFAULT/ON UPDATE 가 붙는 판이 있다.
+//  - created_at 은 DB 시계(CURRENT_TIMESTAMP), attached_at · deleted_at 은 앱이 쓴다(new Date()). created_at < ? 에 앱 Date 를 넘겨도
+//    안전하다 — 풀이 세션 timezone 'Z' 로 고정하고(database/connection.ts) createAdminKysely 가 프로세스 TZ = UTC 를 지킨다.
 // 🔴 ref_type 폭 64 = CoreAuditTargets 폭(AUDIT_TARGET_TYPE_MAX_LENGTH) — 첨부 대상 이름을 감사 대상 이름과 같은 값으로 쓴다(스펙 §2 끝).
 // 🔴 idx_uploads_uploader(uploaded_by_user_no, upload_no) 는 미첨부 셈, idx_uploads_deleted(deleted_at, created_at) 는 정리 잡의
-//    두 문장(미첨부 보관 초과 · 지움 표시 묶음)이 탄다.
+//    두 문장(미첨부 보관 초과 · 지움 표시 묶음)이 탄다. idx_uploads_ref(ref_type, ref_id) 는 미디어 조회 · 첨부 · 동기화 질의가 탄다.
 
 export async function up(db: Kysely<unknown>): Promise<void> {
   await db.schema

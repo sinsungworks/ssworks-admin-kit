@@ -7,8 +7,8 @@ import type { AdminSessionsTable } from './tables/sessions.js'
 import type { AdminTeamClosureTable } from './tables/team-closure.js'
 import type { AdminTeamUserMapTable } from './tables/team-user-map.js'
 import type { AdminTeamsTable } from './tables/teams.js'
-import type { AdminUserEmploymentPeriodsTable } from './tables/user-employment-periods.js'
 import type { AdminUploadsTable } from './tables/uploads.js'
+import type { AdminUserEmploymentPeriodsTable } from './tables/user-employment-periods.js'
 import type { AdminUsersTable } from './tables/users.js'
 
 // 정본: hangang-home apps/api/src/core/database/types.ts(테이블 파일 분리 + 조합)
