@@ -52,8 +52,11 @@ jobs:
         image: mariadb:${{ matrix.mariadb }}
         env:
           MARIADB_ROOT_PASSWORD: admin-kit-test
+        # 🔴 호스트 포트를 고정하지 않는다 — 33306 은 리눅스 임시 포트 범위(32768–60999) 안이라 docker pull · 러너 통신의
+        #    아웃바운드 연결이 그 포트를 쥐고 있으면 `failed to bind host port … address already in use` 로 컨테이너가 안 뜬다
+        #    (2026-11-01 run 41334630961). Docker 가 고른 포트는 job.services.mariadb.ports['3306'] 로 읽는다.
         ports:
-          - 33306:3306
+          - 3306
         options: >-
           --health-cmd="healthcheck.sh --connect --innodb_initialized"
           --health-interval=5s
@@ -74,7 +77,7 @@ jobs:
       - name: DB Test
         run: pnpm test:db
         env:
-          ADMIN_TEST_DB_URL: mariadb://root:admin-kit-test@127.0.0.1:33306
+          ADMIN_TEST_DB_URL: mariadb://root:admin-kit-test@127.0.0.1:${{ job.services.mariadb.ports['3306'] }}
 
   # 🔴 main ruleset 의 필수 검사 `db` 는 이 잡이다 — 매트릭스 버전을 더하거나 빼도 ruleset 은 그대로 둔다.
   db:
