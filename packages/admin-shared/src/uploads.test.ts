@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_MEDIA_PATH,
   DEFAULT_UPLOAD_POLICY,
+  LEGAL_UPLOAD_PURPOSE,
   UPLOAD_CONTENT_TYPES,
   UPLOAD_PURPOSE_PATTERN,
   UPLOAD_SCHEMA_MESSAGES,
@@ -53,6 +54,9 @@ describe('키 모양(스펙 U1)', () => {
     expect(UPLOAD_PURPOSE_PATTERN.test('A'.repeat(33))).toBe(false)
     expect(UPLOAD_PURPOSE_PATTERN.test('bad kind')).toBe(false)
     expect(UPLOAD_PURPOSE_PATTERN.test('약관')).toBe(false)
+    // 약관 용도 상수도 같은 패턴 안이다(서버 자동 등록 · 키 첫 조각)
+    expect(LEGAL_UPLOAD_PURPOSE).toBe('legal')
+    expect(UPLOAD_PURPOSE_PATTERN.test(LEGAL_UPLOAD_PURPOSE)).toBe(true)
   })
 })
 

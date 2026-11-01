@@ -17,6 +17,11 @@ import { uploadLimit, uploadNotFound } from './errors.js'
 export interface AttachUploadsInput {
   /** 저장하려는 본문(Markdown) — 키는 collectUploadKeys 로 모은다 */
   markdown: string
+  /**
+   * 미리 모은 키 — 주면 markdown 을 렌더하지 않는다(트랜잭션 밖에서 collectKeys 로 모아 넘긴다).
+   * 🔴 렌더는 본문 크기에 비례한다(1,000,000자 ≈ 수백 ms) — 가드 · 행 잠금을 쥔 채 돌지 않게
+   */
+  keys?: readonly string[]
   /** 이 본문의 용도 — 키의 용도와 같아야 한다 */
   purpose: string
   /** 첨부 대상 종류 — 감사 대상 이름과 같은 값(CoreAuditTargets.LEGAL_DOCUMENT …) */
@@ -60,7 +65,11 @@ export async function attachUploads(
   input: AttachUploadsInput,
   options: AttachUploadsOptions = {},
 ): Promise<AttachUploadsResult> {
-  const keys = collectUploadKeys(input.markdown, options.mediaPath ?? DEFAULT_MEDIA_PATH)
+  // 미리 모은 키가 있으면 그것을 믿는다(겹침만 걸러 — 같은 행을 두 번 세지 않게). 없으면 여기서 렌더해 모은다
+  const keys =
+    input.keys !== undefined
+      ? [...new Set(input.keys)]
+      : collectUploadKeys(input.markdown, options.mediaPath ?? DEFAULT_MEDIA_PATH)
   if (keys.length === 0) return { attached: 0, keys }
   const maxPerBody = options.maxPerBody ?? DEFAULT_UPLOAD_POLICY.maxPerBody
   if (keys.length > maxPerBody) throw uploadLimit(maxPerBody)

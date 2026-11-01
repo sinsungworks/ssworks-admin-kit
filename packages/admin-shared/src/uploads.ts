@@ -19,6 +19,8 @@ export type UploadContentType = (typeof UPLOAD_CONTENT_TYPES)[number]
 
 /** 용도 — 영숫자 · `_` 1~32자(약관 종류와 같은 폭). 키의 첫 조각이자 서버 옵션 uploads.purposes 의 키 */
 export const UPLOAD_PURPOSE_PATTERN = /^[A-Za-z0-9_]{1,32}$/
+/** 약관 발행이 쓰는 용도 — admin-server 가 자동 등록 · admin-ui 어댑터가 `?purpose=` 에 쓴다 */
+export const LEGAL_UPLOAD_PURPOSE = 'legal'
 /** `<용도>/<yyyy>/<mm>/<base64url 32자>.webp` — 저장 형식은 언제나 WebP(서버가 다시 만든다) */
 export const UPLOAD_KEY_PATTERN =
   /^([A-Za-z0-9_]{1,32})\/[0-9]{4}\/[0-9]{2}\/[A-Za-z0-9_-]{32}\.webp$/

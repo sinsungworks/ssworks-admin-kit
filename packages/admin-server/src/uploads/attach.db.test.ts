@@ -103,6 +103,26 @@ describe('attachUploads', () => {
     ).toEqual({ attached: 0, keys: [] })
   })
 
+  it('🔴 미리 모은 keys 가 있으면 markdown 을 렌더하지 않고 그 키를 쓴다(약관 발행 — 렌더는 트랜잭션 밖)', async () => {
+    const a = await seedUpload(t.db, { uploadedByUserNo: me.userNo })
+    const result = await inTrx((trx) =>
+      attachUploads(
+        trx,
+        {
+          markdown: '글자뿐',
+          keys: [a.key, a.key],
+          purpose: 'legal',
+          refType: 'legalDocument',
+          refId: 9n,
+          actorUserNo: me.userNo,
+        },
+        { mediaPath: MEDIA },
+      ),
+    )
+    expect(result).toEqual({ attached: 1, keys: [a.key] })
+    expect(await rowOf(a.key)).toMatchObject({ refType: 'legalDocument', refId: 9n })
+  })
+
   it('🔴 404 — 남의 미첨부 · 지움 표시 · 다른 용도 · 다른 refType 에 첨부됨 · 없는 키. 트랜잭션은 롤백(아무 행도 안 바뀐다)', async () => {
     const mine = await seedUpload(t.db, { uploadedByUserNo: me.userNo })
     const cases = [

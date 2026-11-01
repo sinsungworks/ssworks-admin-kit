@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common'
-import { CoreAuditTargets } from '@ssworks/admin-shared'
+import { CoreAuditTargets, LEGAL_UPLOAD_PURPOSE } from '@ssworks/admin-shared'
 import type {
   AdminLegalDocument,
   AdminLegalHistoryItem,
@@ -23,7 +23,8 @@ import { legalNotFound, legalRevisionConflict, legalSameContent } from './errors
 //    두 정본에 없었다) → 같은 본문 검사 → INSERT. gise 는 트랜잭션 없이 검사 · 삽입이라 동시 발행 둘이 모두 들어갔다.
 //  - 리포지토리 층을 두지 않는다(팀 · 역할 서비스와 같은 모양) — 테이블 교체 지점이 필요 없다.
 //  - 2h: 업로드 모듈이 있으면 INSERT 뒤 같은 트랜잭션에서 본문 속 우리 그림을 새 판에 붙인다(attach — 스펙 U10). 잠금 순서 가드 행 →
-//    legalDocuments → uploads. 모듈이 없으면(@Optional undefined) 건너뛴다 — 우리 경로가 본문에 있어도 평범한 링크다.
+//    legalDocuments → uploads. 키는 트랜잭션 밖에서 모아(collectKeys — 렌더) 넘긴다. 모듈이 없으면(@Optional undefined)
+//    건너뛴다 — 우리 경로가 본문에 있어도 평범한 링크다.
 // 🔴 append-only — 수정 · 삭제 메서드를 만들지 않는다(legal-append-only.test.ts 가 소스 전체를 본다).
 // 🔴 시행본 = 종류별 (publishedAt DESC, legalDocNo DESC) 첫 행. publishedAt 은 초 단위라 같은 초 발행이 실제로 난다 — 두 키 중
 //    하나라도 빠지면 "현재본" 이 요청마다 달라진다(gise). 현재본 · 이력 · 발행의 읽기가 같은 두 키다.
@@ -90,8 +91,10 @@ export class AdminLegalService {
    * 🔴 해시는 서버만 셈한다 — 클라이언트 해시를 믿으면 동의 기록의 스냅샷을 위조할 수 있다.
    */
   async publish(body: AdminLegalPublish, actorUserNo: bigint): Promise<LegalPublishOutcome> {
-    // 트랜잭션 밖에서 — 1,000,000자 본문의 sha256 이 가드를 쥔 채 돌지 않게
+    // 🔴 트랜잭션 밖에서 — 본문 크기에 비례하는 일(1,000,000자 본문의 sha256 · 그림 키 모으기의 Markdown 렌더)이 가드를 쥔 채
+    //    돌지 않게. 본문당 장수 초과 409 도 여기서 — 잠그기 전에 끝난다
     const contentHash = legalContentHash(body.body)
+    const uploadKeys = this.uploads?.collectKeys(body.body) ?? []
     return runWriteTransaction(this.db, async (trx) => {
       // 🔴 첫 문장(⑩ L1) — 같은 종류 동시 발행을 한 줄로 세운다. 앞에 비잠금 SELECT 를 두면 읽기 뷰가 먼저 열려 스냅샷 격리
       //    ON 에서 INSERT 의 FK 검사(발행자 users 행)가 1020 을 만난다(§14 R5-5). 가드가 없으면 진 쪽이 기준 판 409 가 아니라
@@ -123,16 +126,19 @@ export class AdminLegalService {
       if (legalDocNo === undefined) {
         throw new Error('legalDocuments INSERT 가 insertId 를 돌려주지 않았다.')
       }
-      // 🔴 INSERT 뒤 · 같은 트랜잭션 — uploads 는 잠금 순서의 마지막(2h 스펙 §5-6). 첨부가 던지면 판도 롤백된다
-      const attached = this.uploads
-        ? await this.uploads.attach(trx, {
-            markdown: body.body,
-            purpose: 'legal',
-            refType: CoreAuditTargets.LEGAL_DOCUMENT,
-            refId: legalDocNo,
-            actorUserNo,
-          })
-        : { attached: 0 }
+      // 🔴 INSERT 뒤 · 같은 트랜잭션 — uploads 는 잠금 순서의 마지막(2h 스펙 §5-6). 첨부가 던지면 판도 롤백된다. 키는 밖에서
+      //    모은 것을 넘긴다(keys — 여기서 다시 렌더하지 않는다)
+      const attached =
+        this.uploads !== undefined && uploadKeys.length > 0
+          ? await this.uploads.attach(trx, {
+              markdown: body.body,
+              keys: uploadKeys,
+              purpose: LEGAL_UPLOAD_PURPOSE,
+              refType: CoreAuditTargets.LEGAL_DOCUMENT,
+              refId: legalDocNo,
+              actorUserNo,
+            })
+          : { attached: 0 }
       return { legalDocNo, contentHash, attachedUploads: attached.attached }
     })
   }

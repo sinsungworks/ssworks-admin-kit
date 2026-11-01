@@ -1,6 +1,7 @@
 import {
   DEFAULT_MEDIA_PATH,
   DEFAULT_UPLOAD_POLICY,
+  LEGAL_UPLOAD_PURPOSE,
   UPLOAD_PURPOSE_PATTERN,
   type UploadPolicy,
 } from '@ssworks/admin-shared'
@@ -91,7 +92,9 @@ export function resolveUploadsConfig(
   }
 
   const purposes = new Map<string, UploadPurposeGrant>()
-  if (hasLegalModule) purposes.set('legal', { slot: 'legal.publish', permissions: [] })
+  if (hasLegalModule) {
+    purposes.set(LEGAL_UPLOAD_PURPOSE, { slot: 'legal.publish', permissions: [] })
+  }
   const declared = input.purposes
   if (declared !== undefined) {
     if (typeof declared !== 'object' || declared === null) {
@@ -101,7 +104,7 @@ export function resolveUploadsConfig(
         const place = UPLOAD_PURPOSE_PATTERN.test(name)
           ? `uploads.purposes.${name}`
           : `uploads.purposes[${JSON.stringify(name)}]`
-        if (name === 'legal' && hasLegalModule) {
+        if (name === LEGAL_UPLOAD_PURPOSE && hasLegalModule) {
           problems.push(`${place} — legal 용도는 AdminLegalModule 이 자동으로 등록한다(빼라)`)
           continue
         }

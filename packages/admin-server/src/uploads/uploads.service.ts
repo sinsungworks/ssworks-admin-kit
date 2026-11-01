@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import {
   UPLOAD_SCHEMA_MESSAGES,
+  collectUploadKeys,
   isUploadKey,
   uploadUrl,
   type AdminUploadCreated,
@@ -147,6 +148,17 @@ export class AdminUploadsService {
     )
     if (Number(result.numUpdatedRows) === 0) throw uploadNotFound()
     return { uploadNo: row.uploadNo }
+  }
+
+  /**
+   * 본문 속 우리 키(mediaPath 기준) — 본문당 장수 초과는 409(잠그기 전에). 결과를 attach · sync 의 `keys` 로 넘긴다.
+   * 🔴 트랜잭션 밖에서 부른다 — 렌더(collectUploadKeys)가 잠금을 쥔 채 돌지 않게
+   */
+  collectKeys(markdown: string): string[] {
+    const keys = collectUploadKeys(markdown, this.config.mediaPath)
+    const maxPerBody = this.config.policy.maxPerBody
+    if (keys.length > maxPerBody) throw uploadLimit(maxPerBody)
+    return keys
   }
 
   /** 앱 쓰기 라우트 · 약관 발행이 트랜잭션 안에서 부른다 — 정책 · mediaPath 를 채운 attachUploads */

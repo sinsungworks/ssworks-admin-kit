@@ -5,6 +5,7 @@ import { AdminServerModule } from '../admin-server.module.js'
 import { AdminAuditModule } from '../audit/audit.module.js'
 import { AdminAuthModule } from '../auth/admin-auth.module.js'
 import { AdminLegalModule } from '../legal/legal.module.js'
+import { AdminLegalService } from '../legal/legal.service.js'
 import type { AdminServerOptions } from '../options.js'
 import { TEST_JWT_SECRET } from '../test-support/auth.js'
 import { createHttpApp } from '../test-support/http.js'
@@ -85,6 +86,12 @@ describe('AdminUploadsModule 배선(스펙 U7 · §4-2)', () => {
         uploads: { storage, sweep: false, purposes: { legal: { slot: 'legal.publish' } } },
       }),
     ).rejects.toThrow('legal 용도는 AdminLegalModule 이 자동으로 등록한다')
+  })
+
+  it('🔴 약관 서비스가 업로드 서비스를 실제로 주입받는다(@Optional 이 조용히 건너뛰지 않게)', async () => {
+    const app = await boot([AdminAuthModule, AdminLegalModule, AdminUploadsModule])
+    const legal = app.get(AdminLegalService) as unknown as { uploads: unknown }
+    expect(legal.uploads).toBeInstanceOf(AdminUploadsService)
   })
 
   it('약관 모듈이 없으면 앱이 legal 용도를 적어도 된다(다른 권한으로)', async () => {

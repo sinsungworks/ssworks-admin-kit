@@ -270,7 +270,33 @@ describe('첨부(2h 스펙 U10) — 업로드 모듈이 있을 때', () => {
     expect(await withUploads.current(kind)).toEqual({ item: null })
   })
 
-  it('그림 없는 본문 · 업로드 모듈 없는 서비스는 attachedUploads 0', async () => {
+  it('🔴 본문당 장수 초과 409 ERR_UPLOAD_LIMIT — 키 모으기(트랜잭션 밖)에서 멈추고 판도 들어가지 않는다', async () => {
+    const limited = new AdminLegalService(
+      t.db,
+      new AdminUploadsService(
+        t.db,
+        testUploadsConfig(storage, { policy: { maxPerBody: 1 } }),
+        new EncodeGate(),
+      ),
+    )
+    const one = await uploads.create(actor.userNo, 'legal', imageRequest(await pngImage()))
+    const two = await uploads.create(
+      actor.userNo,
+      'legal',
+      imageRequest(await pngImage(8, 8, '#000000')),
+    )
+    const kind = 'svc_attach_limit'
+    const error = await failure(
+      limited.publish(
+        { kind, body: `![](${one.body.url})\n\n![](${two.body.url})`, baseLegalDocNo: null },
+        actor.userNo,
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_LIMIT)
+    expect(await limited.current(kind)).toEqual({ item: null })
+  })
+
+  it('그림 없는 본문은 attachedUploads 0 · 🔴 업로드 모듈 없는 서비스는 본문에 우리 경로가 있어도 건너뛴다(행 그대로)', async () => {
     expect(
       (
         await withUploads.publish(
@@ -279,13 +305,23 @@ describe('첨부(2h 스펙 U10) — 업로드 모듈이 있을 때', () => {
         )
       ).attachedUploads,
     ).toBe(0)
+    // 본인의 미첨부 그림 — 모듈이 있었다면 붙었을 것이다
+    const pending = await seedUpload(t.db, { uploadedByUserNo: actor.userNo })
+    const off = await service.publish(
+      {
+        kind: 'svc_attach_off',
+        body: `평범한 링크\n\n![](${uploadUrl(pending.key, '/media')})`,
+        baseLegalDocNo: null,
+      },
+      actor.userNo,
+    )
+    expect(off.attachedUploads).toBe(0)
     expect(
-      (
-        await service.publish(
-          { kind: 'svc_attach_off', body: '글자뿐', baseLegalDocNo: null },
-          actor.userNo,
-        )
-      ).attachedUploads,
-    ).toBe(0)
+      await t.db
+        .selectFrom('uploads')
+        .select(['refType', 'refId', 'attachedAt'])
+        .where('uploadNo', '=', pending.uploadNo)
+        .executeTakeFirstOrThrow(),
+    ).toEqual({ refType: null, refId: null, attachedAt: null })
   })
 })
