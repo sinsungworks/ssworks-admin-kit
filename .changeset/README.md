@@ -39,7 +39,7 @@ admin-ui · admin-server 는 admin-shared 를 peer 로 둔다. **`workspace:^` �
 | 패키지       | peer `@ssworks/admin-shared` | 발행 시           |
 | ------------ | ---------------------------- | ----------------- |
 | admin-ui     | `workspace:>=0.4.0 <1.0.0`   | `>=0.4.0 <1.0.0`  |
-| admin-server | `workspace:>=0.10.0 <1.0.0`  | `>=0.10.0 <1.0.0` |
+| admin-server | `workspace:>=0.11.0 <1.0.0`  | `>=0.11.0 <1.0.0` |
 
 둘 다 0.x 의 모든 minor 를 덮는다 — `config.json` 의 `onlyUpdatePeerDependentsWhenOutOfRange: true` 와 한 벌이다(범위 안이면 changesets 가 의존 패키지를 올리지도, 범위를 다시 쓰지도 않는다). `fixed` 가 세 패키지를 같은 번호로만 내보내므로 소비자는 같은 번호끼리 설치하면 된다. `workspace:` 뒤의 범위는 pnpm 이 pack · publish 때 그대로 꺼내 쓴다.
 

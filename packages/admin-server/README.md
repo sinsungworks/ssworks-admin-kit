@@ -18,7 +18,7 @@ pnpm add sharp@^0.35   # 이미지 업로드(AdminUploadsModule) — 재인코�
 - Express 만 지원한다(`@nestjs/platform-express`).
 - `sharp` 는 필수 peer 다 — `.` 진입점이 import 때 싣는다(업로드를 안 쓰는 앱도 설치한다 · `./runner` 는 싣지 않는다). 네이티브 모듈이라 배포 이미지(실행할 OS · CPU)에서 설치한다. 🔴 peer `^0.35` 는 0.35.x 만 덮는다(sharp 0.x 는 minor 가 breaking) — 킷이 올릴 때 함께 올린다.
 - `@aws-sdk/client-s3` 는 선택 peer — `@ssworks/admin-server/storage/s3` 서브패스만 싣는다.
-- `@ssworks/admin-shared` 는 `>=0.10.0 <1.0.0`(peer) — admin-kit 세 패키지는 같은 번호끼리 설치한다.
+- `@ssworks/admin-shared` 는 `>=0.11.0 <1.0.0`(peer) — admin-kit 세 패키지는 같은 번호끼리 설치한다.
 
 ## 진입점
 

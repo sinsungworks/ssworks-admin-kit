@@ -7,7 +7,7 @@
 
 - admin-shared: 업로드 계약 `uploads.ts` — 키 · 용도 패턴(`UPLOAD_KEY_PATTERN` · `UPLOAD_PURPOSE_PATTERN` · `isUploadKey` · `uploadPurposeOf` · `uploadUrl`) · `LEGAL_UPLOAD_PURPOSE` · `DEFAULT_MEDIA_PATH` · 정책(`UploadPolicy` · `DEFAULT_UPLOAD_POLICY`) · `collectUploadKeys`(렌더 출력의 `<img src>` 에서 키를 모은다 — 서버 첨부 · 클라이언트 남은 칸이 같은 함수) · 스키마(`uploadPurposeQuerySchema` · `adminUploadCreatedSchema`). 코어 오류 코드 `ERR_UPLOAD_*` 여섯(415 · 413 · 400 · 409 · 404 · 503), 코어 감사 액션 `upload.create` · `upload.delete` 와 대상 `upload`.
 - admin-server: `AdminUploadsModule`(`POST /admin/uploads?purpose=` 원시 이미지 바이트 · `DELETE /admin/uploads/:purpose/:yyyy/:mm/:file` · sharp 재인코딩 · 정리 잡) · `AdminMediaModule`(`GET /media/:purpose/:yyyy/:mm/:file` — 첨부된 것만 · ETag · `@Public`) · 코어 옵션 `uploads`(`storage` · `mediaPath` · `purposes` · `policy` · `sweep`) · 저장소 `AdminObjectStorage` · `createFileSystemStorage` · 서브패스 `@ssworks/admin-server/storage/s3`(`createS3ObjectStorage`) · 장 `0013_admin_uploads`(표 `admin_uploads`) · `@RequireUploadPurpose()` · `attachUploads` · `syncUploads`(엄격 — 같은 refType 과 refId) · `AttachUploadsInput.keys` · `AdminUploadsService.collectKeys` · `attach` · `sync` · `sweep`. 약관 발행이 본문 속 그림을 새 판에 첨부한다(감사 meta `attachedUploads`).
-- peer: admin-server 의 `@ssworks/admin-shared` 하한 `>=0.10.0`, 새 필수 peer `sharp@^0.35`, 선택 peer `@aws-sdk/client-s3@^3`.
+- peer: admin-server 의 `@ssworks/admin-shared` 하한 `>=0.11.0`, 새 필수 peer `sharp@^0.35`, 선택 peer `@aws-sdk/client-s3@^3`.
 
 **쓰는 쪽이 할 일:**
 
