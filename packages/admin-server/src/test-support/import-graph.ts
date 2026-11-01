@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 // 테스트 전용 — 소스의 상대 import 를 따라가 바깥 패키지를 모은다(runner-graph · s3-isolation 이 쓴다). 🔴 빌드에서 빠진다.
+// 정적 import · export … from 만 본다 — 동적 `import('x')` · `require` 는 모으지 않는다(격리 보장은 정적 간선에 한한다). 주석 · 문자열 속
+// import 글자는 과잉 매칭할 수 있다(더 넓게 잡는 쪽이라 안전하다).
 
 const SPECIFIER =
   /(?:^|[ \t\r\n;])(import|export)[ \t]*(type[ \t]+)?(?:[A-Za-z0-9_*{}, \t\r\n]*?[ \t\r\n]from[ \t]*)?['"]([^'"]+)['"]/g

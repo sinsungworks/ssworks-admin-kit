@@ -55,7 +55,11 @@ function errorFacts(error: unknown): { name: string | null; status: number | nul
   }
 }
 
-/** 객체가 없다(NoSuchKey · 404). 버킷 없음(NoSuchBucket)은 설정 오류라 덮지 않는다 */
+/**
+ * 객체가 없다(NoSuchKey · 404). 버킷 없음(NoSuchBucket)은 설정 오류라 덮지 않는다.
+ * 이름 없는 404 도 "없음" 으로 읽는다 — 일부 S3 호환 공급자가 NoSuchKey 이름 없이 404 만 준다. 대가로 잘못된 엔드포인트 · 프록시의
+ * 맨 404 가 get 에서는 null(중계 404)로 보인다(delete 는 반대로 이름 있는 NoSuchKey 만 삼킨다 — 지우기 실패를 숨기지 않게).
+ */
 function isMissingObject(error: unknown): boolean {
   const { name, status } = errorFacts(error)
   return name !== 'NoSuchBucket' && (name === 'NoSuchKey' || status === 404)
@@ -84,7 +88,11 @@ function maskSecrets<T>(error: T, secrets: readonly string[]): T {
   return error
 }
 
-/** 호출 하나에 시간 제한 — AbortSignal.timeout() 대신 타이머를 send 가 끝나면 지운다(흐르는 본문까지 끊지 않게) */
+/**
+ * 호출 하나에 시간 제한 — AbortSignal.timeout() 대신 타이머를 send 가 끝나면 지운다(흐르는 본문까지 끊지 않게).
+ * get 은 응답 머리가 오면 제한이 풀리고 본문은 socketTimeout(쉬는 시간)만 본다 — 전체 다운로드 시간은 일부러 재지 않는다.
+ * 실 SDK 는 abort 를 자기 AbortError 로 던질 수 있어 이 문구는 보장이 아니다(가짜 클라이언트 테스트만 문구를 잰다)
+ */
 async function withTimeout<T>(
   timeoutMs: number,
   run: (abortSignal: AbortSignal) => Promise<T>,

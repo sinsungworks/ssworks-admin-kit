@@ -137,6 +137,28 @@ describe('createS3ObjectStorage(스펙 S3)', () => {
     await expect(storage.get(KEY)).rejects.toThrow('20ms 안에 답하지 않았다')
   })
 
+  it('prefix 는 get · delete 의 Key 에도 붙는다', async () => {
+    const { client, sent } = fakeClient(() => ({
+      Body: Readable.from([Buffer.from('x')]),
+      ContentLength: 1,
+    }))
+    const storage = createS3ObjectStorage({ bucket: 'b', prefix: 'admin/', client })
+    await storage.get(KEY)
+    await storage.delete(KEY)
+    expect((sent[0] as GetObjectCommand).input.Key).toBe(`admin/${KEY}`)
+    expect((sent[1] as DeleteObjectCommand).input.Key).toBe(`admin/${KEY}`)
+  })
+
+  it('🔴 응답에 Content-Length 가 없으면 본문을 파기하고 던진다', async () => {
+    const body = Readable.from([Buffer.from('x')])
+    const storage = createS3ObjectStorage({
+      bucket: 'b',
+      client: fakeClient(() => ({ Body: body })).client,
+    })
+    await expect(storage.get(KEY)).rejects.toThrow('Content-Length 가 없다')
+    expect(body.destroyed).toBe(true)
+  })
+
   it('destroy 는 클라이언트를 닫는다', () => {
     const { client } = fakeClient(() => ({}))
     createS3ObjectStorage({ bucket: 'b', client }).destroy()
