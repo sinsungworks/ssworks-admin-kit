@@ -1,4 +1,11 @@
-import { Extension, InputRule, type Content, type JSONContent } from '@tiptap/core'
+import {
+  Extension,
+  InputRule,
+  combineTransactionSteps,
+  getChangedRanges,
+  type Content,
+  type JSONContent,
+} from '@tiptap/core'
 import Code from '@tiptap/extension-code'
 import CodeBlock from '@tiptap/extension-code-block'
 import Document from '@tiptap/extension-document'
@@ -7,7 +14,8 @@ import { ListItem } from '@tiptap/extension-list'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
 import { Markdown, type MarkdownExtensionOptions } from '@tiptap/markdown'
-import { Selection, TextSelection } from '@tiptap/pm/state'
+import type { Mark, MarkType, Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { NodeSelection, Plugin, PluginKey, TextSelection, type Transaction } from '@tiptap/pm/state'
 import StarterKit, { type StarterKitOptions } from '@tiptap/starter-kit'
 import { Marked, Tokenizer, type Tokens } from 'marked'
 import { splitImagesOutOfTextblocks } from './editor-markdown-normalize.js'
@@ -23,6 +31,8 @@ import { splitImagesOutOfTextblocks } from './editor-markdown-normalize.js'
 // 🔴 `renderMarkdown` 옵션은 바꾸지 않는다(보안 표면) — 맞추는 쪽은 언제나 편집기다.
 
 const HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i
+/** 같은 사이트 안 주소 — 경로 · 조각 · 쿼리 · 상대 경로에는 https:// 를 붙이지 않는다(약관의 「제3조」 조각 링크 같은 것, 리뷰 사소 #5) */
+const SAME_SITE = /^(?:[/#?]|\.{1,2}\/)/
 /** Markdown 링크 대상 `[글](주소)` 를 끊는 글자 — @tiptap/markdown 은 주소를 그대로 적는다(꺾쇠 감싸기 없음) */
 const HREF_BREAKING = /[\s()<>]/gu
 
@@ -34,14 +44,14 @@ function percentEncode(char: string): string {
 }
 
 /**
- * 링크 대화상자 주소(A11) — 다듬고, 스킴이 없으면 https://. 비면 null(링크를 지운다).
- * 안쪽 공백(전각 포함) · 괄호 · 꺾쇠는 퍼센트 인코딩한다 — 그대로 두면 직렬화한 `[글](주소)` 가 공백 · `)` 에서 끊겨 렌더가 링크를
- * 잃는다. 그 밖의 글자는 그대로(이미 인코딩된 `%xx` 도 두 번 인코딩하지 않는다)
+ * 링크 대화상자 주소(A11) — 다듬고, 스킴도 없고 같은 사이트 안 주소(`/` · `#` · `?` · `./` · `../`)도 아니면 https://. 비면 null(링크를
+ * 지운다). 안쪽 공백(전각 포함) · 괄호 · 꺾쇠는 퍼센트 인코딩한다 — 그대로 두면 직렬화한 `[글](주소)` 가 공백 · `)` 에서 끊겨 렌더가
+ * 링크를 잃는다. 그 밖의 글자는 그대로(이미 인코딩된 `%xx` 도 두 번 인코딩하지 않는다)
  */
 export function normalizeLinkHref(input: string): string | null {
   const value = input.trim()
   if (value === '') return null
-  const href = HAS_SCHEME.test(value) ? value : `https://${value}`
+  const href = HAS_SCHEME.test(value) || SAME_SITE.test(value) ? value : `https://${value}`
   return href.replace(HREF_BREAKING, percentEncode)
 }
 
@@ -106,8 +116,81 @@ export function markdownOptions(): MarkdownExtensionOptions {
   }
 }
 
-/** 코드 마크가 굵게 · 기울임 · 링크와 겹친다(기본은 `excludes: '_'` — 전부 배제해 `[\`코드\`](url)` 가 링크를 잃었다) */
-export const EditorCode = Code.extend({ excludes: 'code' })
+/** 텍스트 블록 하나의 코드 구간(이어진 코드 마크 글자 노드들)마다, 구간 전체를 덮지 않는 다른 마크를 뗀다 */
+function normalizeCodeRuns(
+  tr: Transaction,
+  block: ProseMirrorNode,
+  blockPos: number,
+  code: MarkType,
+): boolean {
+  let changed = false
+  let run: { from: number; to: number; nodes: ProseMirrorNode[] } | null = null
+  const flush = () => {
+    if (run === null) return
+    const others = new Map<MarkType, Mark>()
+    for (const node of run.nodes) {
+      for (const mark of node.marks) if (mark.type !== code) others.set(mark.type, mark)
+    }
+    for (const [type, mark] of others) {
+      if (run.nodes.every((node) => mark.isInSet(node.marks))) continue
+      tr.removeMark(run.from, run.to, type)
+      changed = true
+    }
+    run = null
+  }
+  block.forEach((child, offset) => {
+    const pos = blockPos + 1 + offset
+    if (child.isText && code.isInSet(child.marks)) {
+      if (run === null) run = { from: pos, to: pos + child.nodeSize, nodes: [child] }
+      else {
+        run.to = pos + child.nodeSize
+        run.nodes.push(child)
+      }
+      return
+    }
+    flush()
+  })
+  flush()
+  return changed
+}
+
+const CODE_RUNS_KEY = new PluginKey('kitCodeRuns')
+
+/**
+ * 코드 마크가 굵게 · 기울임 · 링크와 겹친다(기본은 `excludes: '_'` — 전부 배제해 `[\`코드\`](url)` · `**굵은 \`코드\`**` 가 바깥
+ * 마크를 잃었다). 🔴 대신 겹침은 **코드 구간 전체를 덮는 마크**만 허용한다 — 구간 일부에만 걸린 마크(도구 막대로 코드 안에서 굵게를
+ * 시작하는 것 같은)는 `@tiptap/markdown` 이 코드 안에 `**` 를 적거나 `<strong>` 원문 HTML 을 내어 렌더가 갈렸다(리뷰 중요 #1).
+ * 트랜잭션이 바꾼 범위의 텍스트 블록만 본다(`getChangedRanges` — AddMarkStep 도 범위를 낸다)
+ */
+export const EditorCode = Code.extend({
+  excludes: 'code',
+  addProseMirrorPlugins() {
+    const code = this.type
+    return [
+      new Plugin({
+        key: CODE_RUNS_KEY,
+        appendTransaction: (transactions, oldState, newState) => {
+          if (!transactions.some((transaction) => transaction.docChanged)) return null
+          const transform = combineTransactionSteps(oldState.doc, [...transactions])
+          const tr = newState.tr
+          const seen = new Set<number>()
+          let changed = false
+          for (const { newRange } of getChangedRanges(transform)) {
+            newState.doc.nodesBetween(newRange.from, newRange.to, (node, pos) => {
+              if (!node.isTextblock) return true
+              if (!seen.has(pos)) {
+                seen.add(pos)
+                if (normalizeCodeRuns(tr, node, pos, code)) changed = true
+              }
+              return false
+            })
+          }
+          return changed ? tr : null
+        },
+      }),
+    ]
+  },
+})
 
 /** TipTap `Image` 의 입력 규칙과 같은 모양 — 앞이 줄머리 · 공백인 `![alt](src "title")` 를 마지막 `)` 까지 쳤을 때 */
 const IMAGE_INPUT = /(?:^|\s)(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/
@@ -116,8 +199,9 @@ const IMAGE_INPUT = /(?:^|\s)(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/
  * 그림(A4) — 기본 `Image` 에 입력 규칙만 바꿔 끼운다. 기본 `nodeInputRule` 은 블록 노드를 문단 가운데 넣을 때 친 마지막 글자 `)` 를
  * 그림 뒤 새 문단(`<p>)</p>`)에 남긴다(TipTap 3.32.0 — happy-dom · 실브라우저 Chrome 둘 다, 2026-11-01). 여기서는 친 글자를 넣지 않고
  * `![…](…)` 글자 자리에 그림을 넣는다(`insertContentAt` 이 문단을 가른다). 거르기는 없다(결정 ②) — 거르기는 앱 몫.
- * 🔴 넣은 뒤 캐럿을 그림 **뒤 글자 자리**로 옮긴다 — `insertContentAt` 은 그림을 NodeSelection 으로 남겨 다음 타자가 그림을 지운다
- *    (ringside C1 과 같은 함정). 뒤에 텍스트 블록이 없으면(그림이 문서 끝) 빈 문단을 만들어 거기에 둔다
+ * 🔴 넣은 뒤 캐럿을 그림 **바로 뒤**로 옮긴다 — `insertContentAt` 은 그림을 NodeSelection 으로 남겨 다음 타자가 그림을 지운다
+ *    (ringside C1 과 같은 함정). 바로 뒤가 문단(글자를 가른 뒷부분)이면 그 첫머리, 아니면(문서 끝 · 뒤가 목록 · 구분선) 빈 문단을
+ *    만들어 거기에 둔다 — 멀리 있는 목록 항목으로 튀지 않는다(리뷰 사소 #4)
  */
 export const EditorImage = Image.extend({
   addInputRules() {
@@ -135,10 +219,13 @@ export const EditorImage = Image.extend({
               attrs: { src, alt: alt ?? '', title: title ?? null },
             })
             .command(({ tr }) => {
-              const after = tr.selection.to
-              const next = Selection.findFrom(tr.doc.resolve(after), 1, true)
-              if (next) {
-                tr.setSelection(next)
+              // 문단 가운데였으면 insertContentAt 이 뒷글 문단 첫머리에 글자 선택을 둔다 — 그대로. 그림이 선택돼 있을 때만 옮긴다
+              const { selection } = tr
+              if (!(selection instanceof NodeSelection)) return true
+              const after = selection.to
+              const next = tr.doc.resolve(after).nodeAfter
+              if (next?.isTextblock) {
+                tr.setSelection(TextSelection.create(tr.doc, after + 1))
                 return true
               }
               const paragraph = tr.doc.type.schema.nodes.paragraph

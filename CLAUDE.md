@@ -84,7 +84,7 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 - `:loading` 은 클릭을 안 막는다. 제출 버튼은 항상 `:disabled` 와 한 벌이다.
 - Boolean prop 에 `undefined` 기본값을 주지 않는다(Vue 가 false 로 캐스팅한다). 3상태가 필요하면 `boolean | 'auto'` 처럼 문자열을 섞는다.
 - 테스트: `src/**/*.test.ts`. DOM 이 필요하면 파일 머리에 `// @vitest-environment happy-dom`. 오버레이(VDialog·VSnackbar)를 여는 테스트는 `installVisualViewport()` 를 모듈 최상단에서 부른다. 색·높이는 못 잰다 — 구조·클래스·문구·속성을 잰다. 테스트 전용 `data-testid` 를 심지 않는다 — 사람이 읽는 글자와 `name` 으로 찾는다.
-- 브라우저 `prompt` · `confirm` · `alert` 를 쓰지 않는다 — 묻는 것은 `BaseDialog` · 킷 확인 창(`createConfirm`). `MarkdownEditor` 는 TipTap 이고 값은 Markdown 이다 — 렌더(`renderMarkdown`)를 편집기에 맞추지 않고 편집기(`editor-markdown.ts` 어댑터)를 렌더에 맞춘다. 어댑터를 고치면 왕복 테스트의 오라클 넷(렌더 동일 · 구조 · 4회 왕복 · `doc.check()`)이 지킨다. 소스에 U+00A0 같은 특수 공백을 글자 그대로 적지 않는다(`String.fromCharCode`).
+- 브라우저 `prompt` · `confirm` · `alert` 를 쓰지 않는다 — 묻는 것은 `BaseDialog` · 킷 확인 창(`createConfirm`). 예외는 `useDirtyGuard` 가 킷 확인 창이 없을 때 `window.confirm` 으로 폴백하는 것 하나다. `MarkdownEditor` 는 TipTap 이고 값은 Markdown 이다 — 렌더(`renderMarkdown`)를 편집기에 맞추지 않고 편집기(`editor-markdown.ts` 어댑터)를 렌더에 맞춘다. 어댑터를 고치면 왕복 테스트의 오라클 넷(렌더 동일 · 구조 · 4회 왕복 · `doc.check()`)이 지킨다. 소스에 U+00A0 같은 특수 공백을 글자 그대로 적지 않는다(`String.fromCharCode`).
 
 ### `@ssworks/admin-server` (Phase 2)
 

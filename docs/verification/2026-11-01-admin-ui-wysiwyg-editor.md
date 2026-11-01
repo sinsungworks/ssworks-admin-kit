@@ -46,7 +46,18 @@
 | 실제 키: ` ![x](…)뒤글`(캐럿 이동 뒤, 재빌드 · 재설치 — 4402b92)       | 그림 뒤 글자 자리에서 타자가 이어진다 · 그림 안 지워짐    | img 1 · NodeSelection 아님 · `뒤글` 이 다음 텍스트 블록(첫 목록 항목 「뒤글하나」)에 들어감 · 값 `…정한다. \n\n![x](…)\n\n- 뒤글하나…` · 미리보기 img |
 | 콘솔                                                                    | 오류 없음                                                | 오류 · 예외 없음(네 번 확인)                                                                                                                               |
 
-## 5. 남은 것
+## 5. 최종 리뷰(opus · `superpowers:code-reviewer`, 766f368..82fc1e1)
+
+- 판정 "고친 뒤 머지". 치명 0 · 중요 3 · 사소 9. 리뷰어는 저장소를 건드리지 않고 스크래치패드 탐침으로 확인했다(`pnpm --filter @ssworks/admin-ui test` 1399 · `pnpm lint` 초록).
+- 고친 것(중요 셋 + 사소 #4 #5 #6 #7 #8 #9 #10 #11):
+  - 중요 #1 코드 구간 일부에 걸린 마크 — `EditorCode` 의 `appendTransaction` 정규화 + "편집 경로 오라클" 테스트 5건(코드 뒤 굵게 · 코드 안 서식 셋 · 전체 덮는 굵게 · 링크 · 앞에서 시작해 가운데서 끝남 · Markdown 읽기는 불변).
+  - 중요 #2 디바운스로 `isDirty` 가 늦음 — 첫 변경 즉시 emit(leading) · 최대 1초 · `flush()` expose · `beforeunload` · `pagehide` flush. 테스트: 즉시 emit · 트레일링 · `flush()` · `pagehide` · echo 가림 · 외부 변경 중 대기 폐기 · 언마운트 flush(리스너로 잼).
+  - 중요 #3 접근성 — 모드 토글 `role="group"` + `aria-pressed`, 토글형 도구 `aria-pressed` 'true' | 'false', 동작형 없음.
+  - 사소 — 그림 뒤 캐럿(문단 첫머리 또는 새 빈 문단, 문단 가운데 · 목록 앞 · 목록 항목 안 테스트) · 같은 사이트 안 링크 주소 · history 재등록이 걸린 플러그인 spec 재사용 · 원문 왕복에 기록 유지 · ProseMirror 기본 CSS 셋 · 조합 중 Enter · NodeSelection 에서 링크 단추 끔 · `toBeInstanceOf(TextSelection)` · 테스트 제목 · CLAUDE.md 의 `useDirtyGuard` confirm 예외.
+- 하지 않은 것: #12 roving tabindex(HANDOFF 선택 과제).
+- 반영 뒤 admin-ui markdown · legal 테스트 306 초록, `pnpm check` · `format:check` 는 §1 의 최종 수치(아래 「끝 커밋」).
+
+## 6. 남은 것
 
 - 그림 입력 규칙 뒤 캐럿은 그림 뒤 **첫 글자 자리**(다음 텍스트 블록의 첫머리 — ringside 넣기 도우미와 같은 선택)다. 그림 바로 뒤에 새 문단을 원하면 Enter 한 번(사람 확인에서 어색하면 빈 문단을 늘 만드는 쪽으로 바꾼다 — 가운데 빈 문단은 `&nbsp;` 로 렌더되는 대가가 있다).
 - 한글 IME(데스크톱 Chrome · Android Chrome · iOS Safari) · 붙여넣기(스크린숏 · Word · 한글 문서) · 도구 막대 클릭 뒤 포커스 · 되돌리기 범위 — 사람 확인(HANDOFF 「PR #3j 가 넘긴 것」).

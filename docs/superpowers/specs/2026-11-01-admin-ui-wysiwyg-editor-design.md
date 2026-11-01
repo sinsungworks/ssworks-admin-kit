@@ -283,3 +283,9 @@ pnpm add @tiptap/core@3.32.0 @tiptap/pm@3.32.0 @tiptap/vue-3@3.32.0 @tiptap/star
 - 결정 ② · A4: 기본 `Image` 의 `nodeInputRule` 은 블록 그림을 문단 가운데 넣을 때 친 마지막 글자 `)` 를 그림 뒤 새 문단에 남긴다(happy-dom · Chrome 둘 다) — `EditorImage` 가 입력 규칙만 바꿔 끼운다(`![…](…)` 글자 자리에 그림, 친 글자는 넣지 않음). 입력 규칙은 켠 채다.
 - 소스에 ` ` 를 적으면 편집 도구가 글자(U+00A0)로 써 eslint `no-irregular-whitespace` 에 걸린다 — `String.fromCharCode(160)`.
 - 템플릿(§7-4)은 로컬 tarball(0.9.0 + 3j) overrides 로 install · frontend typecheck · build 를 확인했다(lockfile 은 되돌림).
+- 최종 리뷰(opus) 반영:
+  - 결정 ③ · W3 · §3: 디바운스는 **첫 변경 즉시(leading) + 이어지는 변경 200ms 트레일링 + 최대 1초**로 — 순수 트레일링은 부모의 `isDirty` 가 버스트 동안 거짓이라 blur 없는 이탈(F5 · router.push)에서 확인 없이 떠났다. `flush()` 를 expose 하고 `beforeunload` · `pagehide` 에서 flush. leading emit 의 echo 는 `lastEmitted` 가 가리므로 D3 는 그대로다.
+  - A3 · §2-4: `Code.extend({ excludes: 'code' })` 만으로는 코드 구간 **일부**에 걸린 마크(도구 막대로 코드 안에서 굵게 시작)를 `@tiptap/markdown` 이 코드 안 `**` · `<strong>` 원문 HTML 로 적어 렌더가 갈렸다 — `EditorCode` 의 `appendTransaction` 이 바뀐 텍스트 블록의 코드 구간마다 구간 전체를 덮지 않는 마크를 뗀다(Markdown 코드 스팬 안에는 서식이 없다). 테스트는 "편집 경로 오라클"(명령 뒤 편집기 구조 = 직렬화의 렌더)로.
+  - W8 · §9 접근성: Vuetify 가 role · `aria-pressed` 를 달지 않아 모드 토글에 `role="group"` + 두 단추 `aria-pressed`, 토글형 도구는 `'true' | 'false'`, 동작형은 없음.
+  - A4 캐럿: 그림 뒤가 문단이면 그 첫머리, 아니면 빈 문단(멀리 있는 목록 항목으로 튀지 않는다). A11: 같은 사이트 안 주소(`/` · `#` · `?` · `./`)에는 `https://` 를 붙이지 않는다. W5: history 재등록은 지금 걸린 플러그인의 spec 으로. W11: 원문에서 고쳤다 같은 값으로 되돌리면 문서 · 기록을 지킨다. W12: 조합 중 Enter 는 적용이 아니고 그림(NodeSelection)에는 링크 단추가 꺼진다. W15: `.ProseMirror-hideselection` · `font-variant-ligatures: none` · `pre { white-space: pre-wrap }`.
+  - 하지 않은 것: 도구 막대 roving tabindex(APG — Tab 정지 14개, 선택 과제 → HANDOFF).

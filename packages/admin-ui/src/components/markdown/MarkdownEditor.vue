@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import { history } from '@tiptap/pm/history'
+  import { NodeSelection, Plugin } from '@tiptap/pm/state'
   import { Editor } from '@tiptap/vue-3'
   import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
   import { VBtn, VBtnToggle, VDivider } from 'vuetify/components'
@@ -7,6 +8,7 @@
   import {
     DEFAULT_MARKDOWN_EDITOR_MESSAGES,
     MARKDOWN_EDITOR_EMIT_DELAY_MS,
+    MARKDOWN_EDITOR_EMIT_MAX_WAIT_MS,
     type MarkdownEditorMessages,
     type MarkdownEditorMode,
   } from './markdown-editor.js'
@@ -21,7 +23,8 @@
   //  - 엔진 TipTap(`@tiptap/vue-3` Editor 를 호스트 <div> 에 직접 마운트 — `EditorContent` 없이도 vue-3 Editor 의 반응성은 온다).
   //  - 충실도 어댑터는 editor-markdown.ts(화면과 시험 하니스가 같은 확장 묶음).
   //  - 「원문」 모드 — 평문 textarea, 같은 v-model, 값 변환 없음(약관 표기 보존 · IME 탈출구 — 결정 ①).
-  //  - emit 디바운스 200ms(결정 ③) — 큰 본문에서 입력마다 전체 직렬화하지 않는다. 포커스 잃음 · 전환 · readonly · 언마운트에서 flush.
+  //  - emit 디바운스(결정 ③) — 버스트의 첫 변경은 즉시(부모의 더티 판정이 바로 선다), 이어지는 변경은 200ms 멈추면(최대 1초) 나간다.
+  //    포커스 잃음 · 전환 · readonly · 언마운트 · pagehide 에서 flush. `flush()` 를 expose 한다(라우트 가드 · 단축키 저장 전).
   //  - 링크는 BaseDialog(브라우저 prompt 금지). 도구 막대 문구는 `messages`.
   //
   // 🔴 받은 값(prop)이 마지막으로 합의한 값(`lastEmitted`)과 같으면 아무것도 하지 않는다(D3). 디바운스 뒤 부모가 돌려준 값은 그 사이 더
@@ -72,6 +75,8 @@
   /** 원문 모드에서 값이 바뀌어 서식 편집기 문서가 낡았다 — 서식으로 돌아올 때 맞춘다 */
   let wysiwygStale = false
   let pending: ReturnType<typeof setTimeout> | null = null
+  /** 지금 버스트에서 마지막으로 emit 한 시각 — maxWait 판정 */
+  let lastEmitAt = 0
 
   const linkOpen = ref(false)
   const linkHref = ref('')
@@ -92,20 +97,35 @@
     pending = null
   }
 
-  /** 대기 중인 emit 을 지금 보낸다 — 값이 합의한 값과 같으면 보내지 않는다(친 뒤 지운 경우) */
-  function flush(): void {
-    if (pending == null) return
-    cancelPending()
+  /** 지금 문서를 emit 한다 — 값이 합의한 값과 같으면 보내지 않는다(친 뒤 지운 경우) */
+  function emitNow(): void {
     const instance = editor.value
     if (instance == null || instance.isDestroyed) return
+    lastEmitAt = Date.now()
     const markdown = instance.getMarkdown()
     if (markdown === lastEmitted) return
     lastEmitted = markdown
     emit('update:modelValue', markdown)
   }
 
-  function scheduleEmit(): void {
+  /** 대기 중인 emit 을 지금 보낸다(라우트 가드 · 단축키 저장 전에 쓰는 쪽이 부를 수 있다 — expose) */
+  function flush(): void {
+    if (pending == null) return
     cancelPending()
+    emitNow()
+  }
+
+  /**
+   * 사용자 변경마다 — 버스트의 첫 변경은 즉시 emit(부모의 isDirty 가 바로 선다), 그 뒤는 멈춘 뒤 DELAY 에, 쉼 없이 치면 MAX_WAIT 마다.
+   * 🔴 즉시 emit 한 값을 부모가 돌려주는 echo 는 `lastEmitted` 로 가려진다(W4) — 그래서 leading edge 가 D3 를 깨지 않는다
+   */
+  function scheduleEmit(): void {
+    if (pending == null) {
+      emitNow()
+    } else {
+      cancelPending()
+      if (Date.now() - lastEmitAt >= MARKDOWN_EDITOR_EMIT_MAX_WAIT_MS) emitNow()
+    }
     pending = setTimeout(flush, MARKDOWN_EDITOR_EMIT_DELAY_MS)
   }
 
@@ -115,11 +135,21 @@
     if (instance == null) return
     cancelPending()
     instance.commands.setContent(value, { contentType: 'markdown', emitUpdate: false })
-    // history 플러그인을 새 인스턴스로 — 플러그인 상태가 처음부터 다시 만들어져 되돌리기 기록이 빈다(StarterKit undoRedo 기본 옵션)
+    // history 플러그인을 같은 spec 의 새 인스턴스로 — 플러그인 상태가 처음부터 다시 만들어져 되돌리기 기록이 빈다. 키 · 옵션은
+    // 지금 걸린 플러그인 것을 그대로 쓴다(StarterKit undoRedo 옵션을 바꿔도 갈라지지 않는다 — 리뷰 사소 #6)
+    // `Plugin.key`(문자열 — PluginKey 이름 + '$')는 d.ts 에 없다
+    const current = instance.state.plugins.find((plugin) =>
+      (plugin as unknown as { key: string }).key.startsWith('history$'),
+    )
     instance.unregisterPlugin('history')
-    instance.registerPlugin(history())
+    instance.registerPlugin(current ? new Plugin(current.spec) : history())
     lastEmitted = value
     wysiwygStale = false
+  }
+
+  /** 페이지가 사라질 때(새로 고침 · 탭 닫기 · bfcache) 대기 중 emit 을 먼저 보낸다 — 부모의 이탈 확인보다 먼저 선다 */
+  function onPageHide(): void {
+    flush()
   }
 
   onMounted(() => {
@@ -138,9 +168,13 @@
       },
     })
     editor.value = instance
+    window.addEventListener('beforeunload', onPageHide)
+    window.addEventListener('pagehide', onPageHide)
   })
 
   onBeforeUnmount(() => {
+    window.removeEventListener('beforeunload', onPageHide)
+    window.removeEventListener('pagehide', onPageHide)
     flush()
     editor.value?.destroy()
     editor.value = undefined
@@ -183,7 +217,10 @@
     if ((next !== 'wysiwyg' && next !== 'source') || next === mode.value) return
     if (next === 'source') flush()
     mode.value = next
-    if (next === 'wysiwyg' && wysiwygStale) replaceExternal(lastEmitted)
+    if (next !== 'wysiwyg' || !wysiwygStale) return
+    // 원문에서 고쳤다가 같은 값으로 되돌렸으면 문서도 기록도 그대로 둔다(리뷰 사소 #7)
+    if (lastEmitted === editor.value?.getMarkdown()) wysiwygStale = false
+    else replaceExternal(lastEmitted)
   }
 
   function onSourceInput(event: Event): void {
@@ -211,6 +248,8 @@
     icon: string
     active: boolean
     disabled: boolean
+    /** 토글형(서식 · 블록 · 링크)이면 `aria-pressed` 를 'true' | 'false' 로 — 동작형(구분선 · 되돌리기 · 다시)은 없음 */
+    pressed: 'true' | 'false' | undefined
     run: () => void
   }
 
@@ -221,7 +260,7 @@
     icon: string
     /** 실행 · 가능 판정이 같은 체인이다 — `chain().focus()` 뒤에 붙인다 */
     command: (chain: Chain) => Chain
-    /** 켜진 서식인가(선택) */
+    /** 켜진 서식인가(토글형만 — 있으면 `aria-pressed` 를 단다) */
     active?: (editor: Editor) => boolean
     /** 기본 가능 판정(`can()`) 대신 쓸 판정(선택) */
     enabled?: (editor: Editor) => boolean
@@ -291,7 +330,10 @@
         icon: 'mdi-link-variant',
         command: (c) => c,
         active: (e) => e.isActive('link'),
-        enabled: (e) => !e.state.selection.empty || e.isActive('link'),
+        // 글자 선택이 있거나 링크 위일 때 — 그림 같은 노드 선택(NodeSelection)에는 링크를 걸 수 없다(리뷰 사소 #9)
+        enabled: (e) =>
+          (!e.state.selection.empty && !(e.state.selection instanceof NodeSelection)) ||
+          e.isActive('link'),
         run: () => openLink(),
       },
       { key: 'horizontalRule', icon: 'mdi-minus', command: (c) => c.setHorizontalRule() },
@@ -308,17 +350,28 @@
     const instance = editor.value
     return TOOL_GROUPS.map((group) =>
       group.map((spec) => {
+        const pressedOf = (active: boolean): Tool['pressed'] =>
+          spec.active ? (active ? 'true' : 'false') : undefined
         if (instance == null) {
-          return { key: spec.key, icon: spec.icon, active: false, disabled: true, run: () => {} }
+          return {
+            key: spec.key,
+            icon: spec.icon,
+            active: false,
+            disabled: true,
+            pressed: pressedOf(false),
+            run: () => {},
+          }
         }
         const enabled = spec.enabled
           ? spec.enabled(instance)
           : spec.command(instance.can().chain().focus()).run()
+        const active = spec.active?.(instance) ?? false
         return {
           key: spec.key,
           icon: spec.icon,
-          active: spec.active?.(instance) ?? false,
+          active,
           disabled: !enabled,
+          pressed: pressedOf(active),
           run: spec.run ?? (() => spec.command(instance.chain().focus()).run()),
         }
       }),
@@ -356,7 +409,7 @@
     editor.value?.chain().focus().extendMarkRange('link').unsetLink().run()
   }
 
-  defineExpose({ editor })
+  defineExpose({ editor, flush })
 </script>
 
 <template>
@@ -369,7 +422,7 @@
           :key="tool.key"
           :active="tool.active"
           :aria-label="text[tool.key]"
-          :aria-pressed="tool.active ? 'true' : undefined"
+          :aria-pressed="tool.pressed"
           :disabled="toolsDisabled || tool.disabled"
           :icon="tool.icon"
           size="small"
@@ -378,17 +431,23 @@
           @click="tool.run"
         />
       </template>
+      <!-- Vuetify 는 role · aria-pressed 를 달지 않는다 — 묶음 이름과 선택 상태를 직접 노출한다(리뷰 중요 #3) -->
       <VBtnToggle
         :aria-label="text.modeToggle"
         class="markdown-editor__mode"
         density="compact"
         mandatory
         :model-value="mode"
+        role="group"
         variant="outlined"
         @update:model-value="setMode"
       >
-        <VBtn size="small" value="wysiwyg">{{ text.modeWysiwyg }}</VBtn>
-        <VBtn size="small" value="source">{{ text.modeSource }}</VBtn>
+        <VBtn :aria-pressed="mode === 'wysiwyg' ? 'true' : 'false'" size="small" value="wysiwyg">
+          {{ text.modeWysiwyg }}
+        </VBtn>
+        <VBtn :aria-pressed="mode === 'source' ? 'true' : 'false'" size="small" value="source">
+          {{ text.modeSource }}
+        </VBtn>
       </VBtnToggle>
     </div>
     <div class="markdown-editor__body">
@@ -489,6 +548,23 @@
 
   .markdown-editor__wysiwyg :deep(.ProseMirror ::selection) {
     background: rgba(var(--v-theme-primary), 0.2);
+  }
+
+  /* ProseMirror 기본 규칙(injectCSS 를 끈 대신) — 합자 끔 · 노드 선택 중 글자 선택 숨김 · 코드 블록 줄바꿈 */
+  .markdown-editor__wysiwyg :deep(.ProseMirror) {
+    font-variant-ligatures: none;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror-hideselection *::selection) {
+    background: transparent;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror-hideselection) {
+    caret-color: transparent;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror pre) {
+    white-space: pre-wrap;
   }
 
   .markdown-editor__wysiwyg :deep(.ProseMirror-selectednode) {

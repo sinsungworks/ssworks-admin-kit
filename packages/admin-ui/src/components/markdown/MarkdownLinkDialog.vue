@@ -51,6 +51,12 @@
     error.value = props.messages.linkInvalid
   }
 
+  /** Enter 적용 — 한글 조합 중의 Enter(조합 확정)는 적용이 아니다(리뷰 사소 #9) */
+  function onEnter(event: KeyboardEvent): void {
+    if (event.isComposing) return
+    onApply()
+  }
+
   function onRemove(): void {
     props.remove()
     close()
@@ -71,7 +77,7 @@
       :error-messages="error ? [error] : []"
       :label="messages.linkHref"
       placeholder="https://"
-      @keydown.enter.prevent="onApply"
+      @keydown.enter.prevent="onEnter"
       @update:model-value="error = ''"
     />
     <template #actions>

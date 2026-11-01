@@ -69,30 +69,46 @@ describe('MarkdownEditor — 값 · emit', () => {
   })
 
   it('🔴 구분선 · 그림으로 끝나는 본문도 마운트 때 값이 바뀌지 않는다(trailingNode 없음 — W6)', async () => {
-    const w = mountEditor({ modelValue: '위\n\n---' })
-    expect(editorOf(w).getMarkdown()).toBe('위\n\n---')
-    await wait(MARKDOWN_EDITOR_EMIT_DELAY_MS + 50)
-    expect(w.emitted('update:modelValue')).toBeUndefined()
+    for (const modelValue of ['위\n\n---', '위\n\n![](https://cdn.example.com/a.png)']) {
+      const w = mountEditor({ modelValue })
+      expect(editorOf(w).getMarkdown()).toBe(modelValue)
+      await wait(MARKDOWN_EDITOR_EMIT_DELAY_MS + 50)
+      expect(w.emitted('update:modelValue'), modelValue).toBeUndefined()
+      w.unmount()
+      wrapper = null
+      document.body.innerHTML = ''
+    }
   })
 
-  it('치고 포커스를 잃으면 update:modelValue 한 번, 값은 Markdown 전체', () => {
+  it('🔴 버스트의 첫 변경은 즉시 emit — 부모의 더티 판정이 바로 선다. 포커스를 잃어도 같은 값은 다시 내지 않는다', () => {
     const w = mountEditor()
     const editor = editorOf(w)
     type(editor, ' 총칙')
-    expect(w.emitted('update:modelValue')).toBeUndefined()
+    expect(w.emitted('update:modelValue')).toEqual([['# 제1조 총칙']])
     blur(editor)
     expect(w.emitted('update:modelValue')).toEqual([['# 제1조 총칙']])
   })
 
-  it('연달아 치면 디바운스 뒤 emit 한 번(실제 타이머)', async () => {
+  it('이어지는 변경은 디바운스 — 멈춘 뒤 emit 한 번(실제 타이머)', async () => {
     const w = mountEditor()
     const editor = editorOf(w)
     type(editor, '가')
     type(editor, '나')
+    type(editor, '다')
     await wait(MARKDOWN_EDITOR_EMIT_DELAY_MS / 2)
-    expect(w.emitted('update:modelValue')).toBeUndefined()
+    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가']])
     await wait(MARKDOWN_EDITOR_EMIT_DELAY_MS)
-    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가나']])
+    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가'], ['# 제1조가나다']])
+  })
+
+  it('expose 한 flush() 로 대기 중 emit 을 바로 보낸다(라우트 가드 · 단축키 저장 전)', () => {
+    const w = mountEditor()
+    const editor = editorOf(w)
+    type(editor, '가')
+    type(editor, '나')
+    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가']])
+    ;(w.vm as unknown as { flush: () => void }).flush()
+    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가'], ['# 제1조가나']])
   })
 
   it('🔴 prop 교체 → 문서가 바뀌고 emit 없음, 되돌리기 기록이 빈다(D4)', async () => {
@@ -118,11 +134,10 @@ describe('MarkdownEditor — 값 · emit', () => {
     expect(editor.state.doc).toBe(before)
   })
 
-  it('🔴 디바운스 중에 더 친 뒤 앞 emit 값이 돌아와도 치환하지 않는다(W4 — lastEmitted)', async () => {
+  it('🔴 즉시 emit 한 값의 echo 가 디바운스 중에 돌아와도 치환하지 않는다(W4 — lastEmitted)', async () => {
     const w = mountEditor()
     const editor = editorOf(w)
     type(editor, '가')
-    blur(editor)
     type(editor, '나')
     const before = editor.state.doc
     await w.setProps({ modelValue: '# 제1조가' })
@@ -135,20 +150,34 @@ describe('MarkdownEditor — 값 · emit', () => {
     const w = mountEditor()
     const editor = editorOf(w)
     type(editor, '가')
+    type(editor, '나')
     await w.setProps({ modelValue: '# 새 문서' })
     await wait(MARKDOWN_EDITOR_EMIT_DELAY_MS + 50)
-    expect(w.emitted('update:modelValue')).toBeUndefined()
+    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가']])
     expect(editor.getMarkdown()).toBe('# 새 문서')
   })
 
   it('언마운트하면 대기 중 emit 을 먼저 flush 하고 편집기를 파괴한다', () => {
+    // 언마운트 중의 emit 은 wrapper.emitted() 에 남지 않을 수 있다 — 리스너로 직접 받는다
+    const seen: string[] = []
+    const w = mountEditor({ 'onUpdate:modelValue': (value: string) => seen.push(value) })
+    const editor = editorOf(w)
+    type(editor, '가')
+    type(editor, '나')
+    expect(seen).toEqual(['# 제1조가'])
+    w.unmount()
+    wrapper = null
+    expect(seen).toEqual(['# 제1조가', '# 제1조가나'])
+    expect(editor.isDestroyed).toBe(true)
+  })
+
+  it('pagehide 가 오면 대기 중 emit 을 보낸다 — 새로 고침 · 탭 닫기 전에 부모가 최신 값을 갖는다', () => {
     const w = mountEditor()
     const editor = editorOf(w)
     type(editor, '가')
-    w.unmount()
-    wrapper = null
-    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가']])
-    expect(editor.isDestroyed).toBe(true)
+    type(editor, '나')
+    window.dispatchEvent(new Event('pagehide'))
+    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가'], ['# 제1조가나']])
   })
 })
 
@@ -169,8 +198,9 @@ describe('MarkdownEditor — readonly · label · height', () => {
   it('readonly 가 켜질 때 대기 중 emit 을 flush 한다', async () => {
     const w = mountEditor()
     type(editorOf(w), '가')
+    type(editorOf(w), '나')
     await w.setProps({ readonly: true })
-    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가']])
+    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가'], ['# 제1조가나']])
   })
 
   it('label 이 편집 영역 · 도구 막대 · 원문 textarea 의 접근 이름이 되고, 바꾸면 따라간다', async () => {
@@ -224,17 +254,28 @@ describe('MarkdownEditor — 도구 막대', () => {
     expect(document.querySelector('[role="toolbar"][aria-label="본문 tools"]')).toBeTruthy()
   })
 
-  it('선택한 글자에 굵게 → 직렬화에 **…**, 단추가 눌린 상태가 된다', async () => {
+  it('선택한 글자에 굵게 → 직렬화에 **…**, 단추가 눌린 상태가 된다(토글형은 aria-pressed true/false)', async () => {
     const w = mountEditor({ modelValue: '본문' })
     const editor = editorOf(w)
     editor.commands.setTextSelection({ from: 1, to: 3 })
     await flushPromises()
+    expect(toolButton('굵게')!.getAttribute('aria-pressed')).toBe('false')
+    expect(toolButton('구분선')!.hasAttribute('aria-pressed')).toBe(false)
     toolButton('굵게')!.click()
     await flushPromises()
     expect(editor.isActive('bold')).toBe(true)
     expect(toolButton('굵게')!.getAttribute('aria-pressed')).toBe('true')
     blur(editor)
     expect(w.emitted('update:modelValue')).toEqual([['**본문**']])
+  })
+
+  it('그림을 고른(NodeSelection) 상태에서는 링크 단추가 꺼진다', async () => {
+    const w = mountEditor({ modelValue: '![](https://cdn.example.com/a.png)' })
+    const editor = editorOf(w)
+    editor.commands.setNodeSelection(0)
+    await flushPromises()
+    expect(editor.state.selection.empty).toBe(false)
+    expect(toolButton('링크')!.disabled).toBe(true)
   })
 
   it('제목 2 · 글머리 목록 · 인용 · 구분선', async () => {
@@ -306,10 +347,14 @@ describe('MarkdownEditor — 원문 전환', () => {
   const modeButton = (name: string) =>
     buttonByText(name, document.querySelector('[role="toolbar"]')!)!
 
-  it('기본은 서식이고 원문 textarea 는 숨어 있다 · defaultMode 로 바꾼다', () => {
+  it('기본은 서식이고 원문 textarea 는 숨어 있다 · defaultMode 로 바꾼다 · 토글은 group 에 aria-pressed', () => {
     mountEditor()
     expect(sourceArea()!.style.display).toBe('none')
     expect(content()!.closest<HTMLElement>('.markdown-editor__wysiwyg')!.style.display).toBe('')
+    const group = document.querySelector('[role="group"][aria-label="편집 방식"]')
+    expect(group).toBeTruthy()
+    expect(modeButton('서식').getAttribute('aria-pressed')).toBe('true')
+    expect(modeButton('원문').getAttribute('aria-pressed')).toBe('false')
     wrapper!.unmount()
     wrapper = null
     document.body.innerHTML = ''
@@ -363,6 +408,25 @@ describe('MarkdownEditor — 원문 전환', () => {
     await flushPromises()
     expect(editor.getMarkdown()).toBe('# 바깥')
     expect(w.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('원문에서 고쳤다가 같은 값으로 되돌리면 서식 문서 · 되돌리기 기록을 지키고 emit 도 없다', async () => {
+    const w = mountEditor()
+    const editor = editorOf(w)
+    type(editor, '가')
+    expect(undoDepth(editor.state)).toBeGreaterThan(0)
+    const before = editor.state.doc
+    modeButton('원문').click()
+    await flushPromises()
+    sourceArea()!.value = '# 다른 값'
+    sourceArea()!.dispatchEvent(new Event('input'))
+    sourceArea()!.value = '# 제1조가'
+    sourceArea()!.dispatchEvent(new Event('input'))
+    modeButton('서식').click()
+    await flushPromises()
+    expect(editor.state.doc).toBe(before)
+    expect(undoDepth(editor.state)).toBeGreaterThan(0)
+    expect(w.emitted('update:modelValue')).toEqual([['# 제1조가'], ['# 다른 값'], ['# 제1조가']])
   })
 
   it('건드리지 않고 원문 ↔ 서식을 오가면 emit 도 문서 치환도 없다', async () => {

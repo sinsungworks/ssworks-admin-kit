@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { renderMarkdown } from '@ssworks/admin-shared'
 import { Editor } from '@tiptap/core'
+import { TextSelection } from '@tiptap/pm/state'
 import { marked } from 'marked'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
@@ -85,6 +86,14 @@ describe('normalizeLinkHref — 링크 대화상자 주소(스펙 A11)', () => {
     expect(normalizeLinkHref('https://example.com/a%20b?x=1&y=[2]#z')).toBe(
       'https://example.com/a%20b?x=1&y=[2]#z',
     )
+  })
+
+  it('같은 사이트 안 주소(경로 · 조각 · 쿼리 · 상대)에는 https:// 를 붙이지 않는다', () => {
+    expect(normalizeLinkHref('/terms')).toBe('/terms')
+    expect(normalizeLinkHref('#제3조')).toBe('#제3조')
+    expect(normalizeLinkHref('?tab=privacy')).toBe('?tab=privacy')
+    expect(normalizeLinkHref('./a b')).toBe('./a%20b')
+    expect(normalizeLinkHref('../up')).toBe('../up')
   })
 
   it('인코딩한 주소로 건 링크는 렌더에서 끊기지 않는다', () => {
@@ -609,11 +618,120 @@ describe('Image 입력 규칙 — 켜 둔다(결정 ②): `![alt](src)` 를 치�
     expect(renderMarkdown(written)).toContain(`<img src="${IMG}" alt="x">`)
     expect(md.roundTrip(written)).toBe(written)
     // 🔴 캐럿이 그림 뒤 글자 자리다 — NodeSelection 으로 남으면 다음 타자가 그림을 지운다
-    expect(editor.state.selection.constructor.name).not.toBe('NodeSelection')
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
     editor.commands.insertContent('y')
     editor.state.doc.check()
     expect(editor.getMarkdown()).toBe(`앞 \n\n![x](${IMG})\n\ny`)
     editor.destroy()
+  })
+
+  /** `prefix` 뒤에 그림 문법을 치고 `)` 로 규칙을 돌린다 — 문서는 `content`, 캐럿 위치는 `prefix` 끝 */
+  function typeImage(content: string, prefix: string): Editor {
+    const editor = openEditor(content)
+    let at = -1
+    editor.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isText && node.text?.startsWith(prefix) === true) at = pos + prefix.length
+    })
+    expect(at, `가드 — "${prefix}" 를 찾았다`).toBeGreaterThan(0)
+    editor.commands.setTextSelection(at)
+    editor.commands.insertContent(` ![x](${IMG}`)
+    const { from } = editor.state.selection
+    editor.view.someProp('handleTextInput', (f) =>
+      f(editor.view, from, from, ')', () => editor.view.state.tr.insertText(')', from, from)),
+    )
+    editor.state.doc.check()
+    expect(editor.state.selection).toBeInstanceOf(TextSelection)
+    return editor
+  }
+
+  it('문단 가운데 — 뒷글이 다음 문단이 되고 캐럿은 그 첫머리', () => {
+    const editor = typeImage('앞뒤', '앞')
+    editor.commands.insertContent('y')
+    expect(editor.getMarkdown()).toBe(`앞 \n\n![x](${IMG})\n\ny뒤`)
+    editor.destroy()
+  })
+
+  it('뒤에 목록이 오면 — 목록 항목으로 튀지 않고 그림 뒤 빈 문단에 캐럿', () => {
+    const editor = typeImage('앞\n\n- 하나', '앞')
+    editor.commands.insertContent('y')
+    expect(editor.getMarkdown()).toBe(`앞 \n\n![x](${IMG})\n\ny\n\n- 하나`)
+    editor.destroy()
+  })
+
+  it('목록 항목 안 — 그림은 항목 안 블록, 캐럿은 그 뒤 문단', () => {
+    const editor = typeImage('- 항목\n- 둘', '항목')
+    editor.commands.insertContent('y')
+    editor.state.doc.check()
+    expect(editor.getMarkdown()).toBe(`- 항목 \n  ![x](${IMG})\n\n  y\n- 둘`)
+    editor.destroy()
+  })
+})
+
+describe('코드 마크 겹침 정규화(리뷰 중요 #1) — 코드 구간 전체를 덮지 않는 마크는 뗀다', () => {
+  /** 편집 경로 오라클 — 명령을 연이어 적용한 뒤 편집기 구조와 그 직렬화의 렌더가 같다 */
+  function sameAfterEditing(editor: Editor): string {
+    const out = editor.getMarkdown()
+    expect(normalizeBlocks(renderMarkdown(out)), out).toBe(normalizeBlocks(editor.getHTML()))
+    expect(md.roundTrip(out), `멱등 — ${out}`).toBe(out)
+    return out
+  }
+
+  it('코드 "ab" 뒤에 "bc" 굵게 — 굵게는 코드 밖 c 에만 남는다', () => {
+    const editor = openEditor('abc')
+    editor.commands.setTextSelection({ from: 1, to: 3 })
+    editor.commands.toggleCode()
+    editor.commands.setTextSelection({ from: 2, to: 4 })
+    editor.commands.toggleBold()
+    expect(sameAfterEditing(editor)).toBe('`ab`**c**')
+    editor.destroy()
+  })
+
+  it('코드 안에서만 굵게 · 기울임 · 취소선 — 모두 떨어진다(Markdown 코드 스팬에는 서식이 없다)', () => {
+    const editor = openEditor('abc')
+    editor.commands.setTextSelection({ from: 1, to: 4 })
+    editor.commands.toggleCode()
+    editor.commands.setTextSelection({ from: 2, to: 3 })
+    editor.commands.toggleBold()
+    editor.commands.toggleItalic()
+    editor.commands.toggleStrike()
+    expect(sameAfterEditing(editor)).toBe('`abc`')
+    editor.destroy()
+  })
+
+  it('코드 전체를 덮는 굵게 · 링크는 남는다(A3)', () => {
+    const editor = openEditor('abc')
+    editor.commands.setTextSelection({ from: 1, to: 3 })
+    editor.commands.toggleCode()
+    editor.commands.setTextSelection({ from: 1, to: 4 })
+    editor.commands.toggleBold()
+    expect(sameAfterEditing(editor)).toBe('**`ab`c**')
+    editor.commands.setTextSelection({ from: 1, to: 3 })
+    editor.commands.setLink({ href: 'https://example.com' })
+    // 링크 + 굵게 + 코드: 편집기 DOM 은 <a><strong>, markdown-it 은 <strong><a> 로 마크 순서만 다르다(보이는 모양은 같다) —
+    // 구조 오라클 대신 직렬화 · 멱등 · 렌더에 셋이 다 있는지 본다
+    const out = editor.getMarkdown()
+    expect(out).toBe('**[`ab`](https://example.com)c**')
+    expect(md.roundTrip(out)).toBe(out)
+    expect(renderMarkdown(out)).toBe(
+      '<p><strong><a href="https://example.com"><code>ab</code></a>c</strong></p>\n',
+    )
+    editor.destroy()
+  })
+
+  it('굵게가 코드 앞에서 시작해 코드 가운데서 끝나면 — 코드 구간에서는 떨어진다', () => {
+    const editor = openEditor('abcd')
+    editor.commands.setTextSelection({ from: 2, to: 5 })
+    editor.commands.toggleCode()
+    editor.commands.setTextSelection({ from: 1, to: 3 })
+    editor.commands.toggleBold()
+    expect(sameAfterEditing(editor)).toBe('**a**`bcd`')
+    editor.destroy()
+  })
+
+  it('Markdown 에서 읽은 문서는 건드리지 않는다 — 왕복 픽스처가 그대로', () => {
+    for (const source of ['*`x`*', '**굵은 `코드`**', '[`코드 링크`](https://example.com)']) {
+      same(source)
+    }
   })
 })
 
