@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
+import type { Editor } from '@tiptap/vue-3'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { EditorView } from 'codemirror'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, type Component } from 'vue'
 import type { AdminLegalDocument, AdminLegalHistoryItem } from '@ssworks/admin-shared'
 import { ApiError } from '../api/error.js'
 import LegalDocumentEditor from '../components/legal/LegalDocumentEditor.vue'
+import MarkdownEditor from '../components/markdown/MarkdownEditor.vue'
 import { buttonByText, installVisualViewport, vuetify } from '../test/setup.js'
 import {
   useLegalDocuments,
@@ -97,16 +98,23 @@ async function clickInDialog(text: string) {
   await flushPromises()
 }
 
-function editorView(label: string): EditorView {
-  const content = document.querySelector<HTMLElement>(`.cm-content[aria-label="${label}"]`)
+function editorOf(label: string): Editor {
+  const content = document.querySelector<HTMLElement>(`.ProseMirror[aria-label="${label}"]`)
   expect(content, `가드 — "${label}" 편집 영역이 있다`).toBeTruthy()
-  return EditorView.findFromDOM(content!)!
+  const component = wrapper!.findComponent(MarkdownEditor)
+  return (component.vm as unknown as { editor: Editor }).editor
 }
 
-/** 사람이 친 것처럼 문서 끝에 붙인다 */
+/** 사람이 친 것처럼 — 문서 끝에 새 문단으로 글자를 넣고 포커스를 잃는다(emit 디바운스 flush) */
 async function type(label: string, text: string) {
-  const view = editorView(label)
-  view.dispatch({ changes: { from: view.state.doc.length, insert: text }, userEvent: 'input.type' })
+  const editor = editorOf(label)
+  editor
+    .chain()
+    .setTextSelection(editor.state.doc.content.size - 1)
+    .splitBlock()
+    .insertContent(text)
+    .run()
+  editor.view.dom.dispatchEvent(new FocusEvent('blur'))
   await flushPromises()
 }
 
@@ -122,7 +130,7 @@ describe('useLegalDocuments + LegalDocumentEditor', () => {
     const loadCurrent = vi
       .fn<(kind: Kind) => Promise<AdminLegalDocument | null>>()
       .mockResolvedValueOnce(TERMS_12)
-      .mockResolvedValueOnce(doc(13, 'TERMS', '# 이용약관 v12\n제2조'))
+      .mockResolvedValueOnce(doc(13, 'TERMS', '# 이용약관 v12\n\n제2조'))
     const { publish, onDone } = await setup({ loadCurrent })
 
     await type('이용약관 본문', '제2조')
@@ -135,7 +143,7 @@ describe('useLegalDocuments + LegalDocumentEditor', () => {
     await clickInDialog('발행')
     expect(publish).toHaveBeenCalledWith({
       kind: 'TERMS',
-      body: '# 이용약관 v12\n제2조',
+      body: '# 이용약관 v12\n\n제2조',
       baseLegalDocNo: 12n,
     })
     expect(loadCurrent).toHaveBeenCalledTimes(2)
@@ -157,13 +165,14 @@ describe('useLegalDocuments + LegalDocumentEditor', () => {
     expect(activeDialog().textContent).toContain('편집 중인 내용 버리기')
     await clickInDialog('취소')
     expect(selectedTab()).toBe('이용약관')
-    expect(editorView('이용약관 본문').state.doc.toString()).toBe('# 이용약관 v12\n내 편집')
+    expect(editorOf('이용약관 본문').getMarkdown()).toBe('# 이용약관 v12\n\n내 편집')
 
     tab('개인정보처리방침')!.click()
     await flushPromises()
     await clickInDialog('버리고 이동')
     expect(selectedTab()).toBe('개인정보처리방침')
-    expect(editorView('개인정보처리방침 본문').state.doc.toString()).toBe('# 개인정보처리방침 v5\n')
+    // 직렬화는 끝 개행을 적지 않는다(표기 변화 — 건드리지 않은 본문은 emit 되지 않아 초안은 그대로 `…v5\n`)
+    expect(editorOf('개인정보처리방침 본문').getMarkdown()).toBe('# 개인정보처리방침 v5')
   })
 
   it('🔴 revision 충돌 — 안내가 뜨고 편집기 본문은 그대로, 다시 발행할 수 있다', async () => {
@@ -185,7 +194,7 @@ describe('useLegalDocuments + LegalDocumentEditor', () => {
 
     expect(conflict.handled).toBe(true)
     expect(document.body.textContent).toContain('다른 관리자가')
-    expect(editorView('이용약관 본문').state.doc.toString()).toBe('# 이용약관 v12\n내 편집')
+    expect(editorOf('이용약관 본문').getMarkdown()).toBe('# 이용약관 v12\n\n내 편집')
     expect(buttonByText('새 버전 발행')!.disabled).toBe(false)
   })
 })

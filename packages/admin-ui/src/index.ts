@@ -229,6 +229,11 @@ export {
 // ── 마크다운 · 약관 ───────────────────────────────────────────────────
 export { default as MarkdownView } from './components/markdown/MarkdownView.vue'
 export { default as MarkdownEditor } from './components/markdown/MarkdownEditor.vue'
+export {
+  DEFAULT_MARKDOWN_EDITOR_MESSAGES,
+  type MarkdownEditorMode,
+  type MarkdownEditorMessages,
+} from './components/markdown/markdown-editor.js'
 export { default as LegalDocumentEditor } from './components/legal/LegalDocumentEditor.vue'
 export {
   DEFAULT_LEGAL_MESSAGES,

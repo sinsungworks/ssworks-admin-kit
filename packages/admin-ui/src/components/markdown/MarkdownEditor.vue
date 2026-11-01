@@ -1,59 +1,43 @@
-<script lang="ts">
-  import { EditorView as ThemeEditorView } from 'codemirror'
-
-  // 🔴 모듈 수준이어야 한다. `EditorView.theme(...)` 는 부를 때마다 StyleModule 을 문서에 더하고 지우지 않는다 —
-  //    마운트마다 만들면 편집기를 여닫을 때마다 `<style>` 규칙이 쌓인다. 같은 객체를 쓰면 한 번만 더해진다.
-  /** 색은 Vuetify 토큰 — 앱 테마가 바뀌면 CSS 변수가 바뀌어 저절로 따라온다 */
-  const vuetifyTheme = ThemeEditorView.theme({
-    '&': {
-      height: '100%',
-      backgroundColor: 'rgb(var(--v-theme-surface))',
-      color: 'rgb(var(--v-theme-on-surface))',
-      fontSize: '13px',
-    },
-    '&.cm-focused': { outline: 'none' },
-    '.cm-scroller': { overflow: 'auto', fontFamily: 'monospace' },
-    '.cm-content': { caretColor: 'rgb(var(--v-theme-on-surface))' },
-    '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'rgb(var(--v-theme-on-surface))' },
-    '.cm-gutters': {
-      backgroundColor: 'rgba(var(--v-theme-on-surface), 0.04)',
-      color: 'rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity))',
-      border: 'none',
-    },
-    '.cm-activeLine, .cm-activeLineGutter': {
-      backgroundColor: 'rgba(var(--v-theme-on-surface), 0.04)',
-    },
-    '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
-      { backgroundColor: 'rgba(var(--v-theme-primary), 0.2)' },
-  })
-</script>
-
 <script setup lang="ts">
-  import { Annotation, Compartment, EditorState, Transaction } from '@codemirror/state'
-  import { basicSetup, EditorView } from 'codemirror'
-  import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-  import { useTheme } from 'vuetify'
+  import { history } from '@tiptap/pm/history'
+  import { NodeSelection, Plugin } from '@tiptap/pm/state'
+  import { Editor } from '@tiptap/vue-3'
+  import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+  import { VBtn, VBtnToggle, VDivider } from 'vuetify/components'
+  import { createMarkdownEditorExtensions, normalizeLinkHref } from './editor-markdown.js'
+  import {
+    DEFAULT_MARKDOWN_EDITOR_MESSAGES,
+    MARKDOWN_EDITOR_EMIT_DELAY_MS,
+    MARKDOWN_EDITOR_EMIT_MAX_WAIT_MS,
+    type MarkdownEditorMessages,
+    type MarkdownEditorMode,
+  } from './markdown-editor.js'
+  import MarkdownLinkDialog from './MarkdownLinkDialog.vue'
 
-  // 마크다운 본문 편집기 — CodeMirror 6 을 `v-model` 하나로 감싼다.
+  // 마크다운 본문 편집기 — TipTap 3 + @tiptap/markdown WYSIWYG 와 「원문」(Markdown textarea) 전환을 `v-model` 하나로 감싼다.
+  // v-model 은 Markdown 문자열이다(스펙 `docs/superpowers/specs/2026-11-01-admin-ui-wysiwyg-editor-design.md`).
   //
-  // 정본: ssworks-axion-admin packages/frontend/src/pages/settings/legal.vue:152-216
-  //       (= ssworks-gise-home apps/admin/src/pages/settings/legal.vue:252-314 — gise 가 axion 을 옮겼다)
+  // 정본: ssworks-ringside apps/web/app/components/ring/RingMarkdownEditor.vue(Nuxt UI UEditor 조립 · 도구 묶음)
+  //       + 이 파일의 전 판(CodeMirror 6 — 3e D3 · D4 · D5 계약 · Vuetify 토큰 색)
   // 바꾼 점:
-  //  - 색을 Vuetify CSS 변수로 칠한다 — `@codemirror/theme-one-dark` 를 쓰지 않는다(3e ③ C1). 다크 판정
-  //    `EditorView.darkTheme` 은 Vuetify 테마를 따른다(찾기 패널 같은 CodeMirror 기본 요소가 이 판정을 본다).
-  //  - 긴 줄을 줄바꿈한다(`lineWrapping`) — 약관 문단은 한 줄이 아주 길다. 정본은 가로 스크롤이었다(D6).
-  //  - `readonly`(편집만 막음 — 포커스 · 선택 · 복사 · 찾기는 됨, D5) · `label`(aria) · `height` props.
-  //  - 외부 변경 표시를 모듈 플래그(`applyingExternalDraft`) 대신 트랜잭션의 `Annotation` 으로 한다(D4).
+  //  - 엔진 TipTap(`@tiptap/vue-3` Editor 를 호스트 <div> 에 직접 마운트 — `EditorContent` 없이도 vue-3 Editor 의 반응성은 온다).
+  //  - 충실도 어댑터는 editor-markdown.ts(화면과 시험 하니스가 같은 확장 묶음).
+  //  - 「원문」 모드 — 평문 textarea, 같은 v-model, 값 변환 없음(약관 표기 보존 · IME 탈출구 — 결정 ①).
+  //  - emit 디바운스(결정 ③) — 버스트의 첫 변경은 즉시(부모의 더티 판정이 바로 선다), 이어지는 변경은 200ms 멈추면(최대 1초) 나간다.
+  //    포커스 잃음 · 전환 · readonly · 언마운트 · pagehide 에서 flush. `flush()` 를 expose 한다(라우트 가드 · 단축키 저장 전).
+  //  - 링크는 BaseDialog(브라우저 prompt 금지). 도구 막대 문구는 `messages`.
   //
-  // 🔴 받은 값과 문서가 같으면 아무것도 하지 않는다. 입력 → emit → 부모 → prop 으로 돌아온 값이 같아야 한글 조합이
-  //    이어진다. 부모가 값을 고쳐서(트림 · 개행 정규화) 돌려주면 조합 중에 문서가 치환돼 글자가 깨진다(D3).
-  // 🔴 외부 변경은 문서 전체 치환 + 되돌리기 기록 제외다. 전체 치환이 이전 문서의 편집 기록을 흡수해 비우므로
-  //    (`codemirror.render.test.ts`) 다른 종류의 본문으로 바뀐 뒤 Ctrl+Z 가 앞 문서의 편집을 되살리지 않는다(D4).
-  // 🔴 루트 요소가 곧 호스트다. 호스트를 `v-if` 뒤에 두면 `new EditorView({ parent: null })` 이 예외 없이 붙지 않아
-  //    편집기 자리가 조용히 빈다(gise 실측). 쓰는 쪽도 불러오는 동안 숨기지 말고 `readonly` 로 둔다.
-  // 🔴 CodeMirror 는 개행을 `\n` 으로 정규화한다. CRLF 본문은 처음 그릴 때는 그대로 두지만(외부 변경은 emit 하지 않는다)
-  //    첫 입력부터 LF 로 나간다.
-  // Tab 은 묶지 않는다(`indentWithTab` 없음) — 키보드 사용자가 Tab 으로 편집기 밖으로 나갈 수 있어야 한다.
+  // 🔴 받은 값(prop)이 마지막으로 합의한 값(`lastEmitted`)과 같으면 아무것도 하지 않는다(D3). 디바운스 뒤 부모가 돌려준 값은 그 사이 더
+  //    친 글자 때문에 지금 문서와 다를 수 있어 문서와 비교하면 조합 중 치환이 일어난다 — 그래서 `lastEmitted` 와 비교한다(W4).
+  // 🔴 외부 변경은 `setContent` 뒤 history 플러그인을 떼었다 다시 단다 — setContent 만으로는 history 에 남아 Ctrl+Z 가 앞 문서를
+  //    되살린다(D4). `view.updateState(EditorState.create(…))` 로 직접 갈아 끼우면 @tiptap/vue-3 Editor 가 비추는 state(reactiveState)가
+  //    낡아, 다음 dispatch 가 옛 state 에 적용돼 history 가 되살아난다(실측) — 공개 API(`unregisterPlugin` · `registerPlugin`)로만 만진다.
+  // 🔴 도구 막대의 반응성은 `tick`(transaction 마다 +1)으로 — vue-3 Editor 의 reactiveState 는 rAF 두 번 뒤에 트리거되는 디바운스 ref 라
+  //    단추 상태가 한 프레임 늦고 테스트가 잴 수 없다.
+  // 🔴 첫 내용 · 외부 변경 · 모드 전환은 emit 하지 않는다 — 사용자 트랜잭션에서만(W6). StarterKit `trailingNode: false` 가 그 전제다.
+  // 🔴 호스트 <div> 는 v-show 로만 가린다 — 편집기를 매번 새로 만들지 않는다(W2). 쓰는 쪽도 이 컴포넌트를 v-if 뒤에 두지 말고
+  //    불러오는 동안 `readonly` 로 둔다(LegalDocumentEditor).
+  // 개행은 `\n` 으로 정규화된다(marked · ProseMirror) — CRLF 본문은 첫 입력부터 LF 로 나간다(W17).
 
   const props = withDefaults(
     defineProps<{
@@ -61,102 +45,638 @@
       readonly?: boolean
       label?: string
       height?: string
+      /** 처음 보일 편집 방식. 기본 'wysiwyg'(서식). 'source' 는 Markdown 원문 textarea */
+      defaultMode?: MarkdownEditorMode
+      messages?: Partial<MarkdownEditorMessages>
     }>(),
-    { readonly: false, label: '본문', height: '420px' },
+    {
+      readonly: false,
+      label: '본문',
+      height: '420px',
+      defaultMode: 'wysiwyg',
+      messages: () => ({}),
+    },
   )
 
   const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 
-  const host = ref<HTMLElement | null>(null)
-  const theme = useTheme()
-  /** 이 트랜잭션은 바깥(prop)에서 왔다 — 되돌려 emit 하지 않는다 */
-  const external = Annotation.define<boolean>()
-  const readonlyCompartment = new Compartment()
-  const labelCompartment = new Compartment()
-  const darkCompartment = new Compartment()
-  let view: EditorView | null = null
+  const text = computed<MarkdownEditorMessages>(() => ({
+    ...DEFAULT_MARKDOWN_EDITOR_MESSAGES,
+    ...props.messages,
+  }))
 
-  const readonlyExtension = (readonly: boolean) => [
-    EditorState.readOnly.of(readonly),
-    EditorView.contentAttributes.of(readonly ? { 'aria-readonly': 'true' } : {}),
-  ]
-  const labelExtension = (label: string) => EditorView.contentAttributes.of({ 'aria-label': label })
-  const darkExtension = (dark: boolean) => EditorView.darkTheme.of(dark)
+  const host = ref<HTMLElement | null>(null)
+  const editor = shallowRef<Editor>()
+  /** 트랜잭션마다 +1 — 도구 막대 · 링크 상태가 다시 셈하게 하는 반응형 신호 */
+  const tick = ref(0)
+  const mode = ref<MarkdownEditorMode>(props.defaultMode)
+  /** 이 컴포넌트가 마지막으로 부모와 합의한 값 — 초기 prop · emit 한 값 · 외부에서 받은 값 · 원문에서 친 값 */
+  let lastEmitted = props.modelValue
+  /** 원문 모드에서 값이 바뀌어 서식 편집기 문서가 낡았다 — 서식으로 돌아올 때 맞춘다 */
+  let wysiwygStale = false
+  let pending: ReturnType<typeof setTimeout> | null = null
+  /** 지금 버스트에서 마지막으로 emit 한 시각 — maxWait 판정 */
+  let lastEmitAt = 0
+
+  const linkOpen = ref(false)
+  const linkHref = ref('')
+
+  function contentAttributes(): Record<string, string> {
+    const attributes: Record<string, string> = {
+      role: 'textbox',
+      'aria-multiline': 'true',
+      'aria-label': props.label,
+    }
+    if (props.readonly) attributes['aria-readonly'] = 'true'
+    return attributes
+  }
+
+  function cancelPending(): void {
+    if (pending == null) return
+    clearTimeout(pending)
+    pending = null
+  }
+
+  /** 지금 문서를 emit 한다 — 값이 합의한 값과 같으면 보내지 않는다(친 뒤 지운 경우) */
+  function emitNow(): void {
+    const instance = editor.value
+    if (instance == null || instance.isDestroyed) return
+    lastEmitAt = Date.now()
+    const markdown = instance.getMarkdown()
+    if (markdown === lastEmitted) return
+    lastEmitted = markdown
+    emit('update:modelValue', markdown)
+  }
+
+  /** 대기 중인 emit 을 지금 보낸다(라우트 가드 · 단축키 저장 전에 쓰는 쪽이 부를 수 있다 — expose) */
+  function flush(): void {
+    if (pending == null) return
+    cancelPending()
+    emitNow()
+  }
+
+  /**
+   * 사용자 변경마다 — 버스트의 첫 변경은 즉시 emit(부모의 isDirty 가 바로 선다), 그 뒤는 멈춘 뒤 DELAY 에, 쉼 없이 치면 MAX_WAIT 마다.
+   * 🔴 즉시 emit 한 값을 부모가 돌려주는 echo 는 `lastEmitted` 로 가려진다(W4) — 그래서 leading edge 가 D3 를 깨지 않는다
+   */
+  function scheduleEmit(): void {
+    if (pending == null) {
+      emitNow()
+    } else {
+      cancelPending()
+      if (Date.now() - lastEmitAt >= MARKDOWN_EDITOR_EMIT_MAX_WAIT_MS) emitNow()
+    }
+    pending = setTimeout(flush, MARKDOWN_EDITOR_EMIT_DELAY_MS)
+  }
+
+  /** 외부 변경(D4) — 문서 치환 + 되돌리기 기록 비움. emit 하지 않는다 */
+  function replaceExternal(value: string): void {
+    const instance = editor.value
+    if (instance == null) return
+    cancelPending()
+    instance.commands.setContent(value, { contentType: 'markdown', emitUpdate: false })
+    // history 플러그인을 같은 spec 의 새 인스턴스로 — 플러그인 상태가 처음부터 다시 만들어져 되돌리기 기록이 빈다. 키 · 옵션은
+    // 지금 걸린 플러그인 것을 그대로 쓴다(StarterKit undoRedo 옵션을 바꿔도 갈라지지 않는다 — 리뷰 사소 #6)
+    // `Plugin.key`(문자열 — PluginKey 이름 + '$')는 d.ts 에 없다
+    const current = instance.state.plugins.find((plugin) =>
+      (plugin as unknown as { key: string }).key.startsWith('history$'),
+    )
+    instance.unregisterPlugin('history')
+    instance.registerPlugin(current ? new Plugin(current.spec) : history())
+    lastEmitted = value
+    wysiwygStale = false
+  }
+
+  /** 페이지가 사라질 때(새로 고침 · 탭 닫기 · bfcache) 대기 중 emit 을 먼저 보낸다 — 부모의 이탈 확인보다 먼저 선다 */
+  function onPageHide(): void {
+    flush()
+  }
 
   onMounted(() => {
-    view = new EditorView({
-      parent: host.value!,
-      state: EditorState.create({
-        doc: props.modelValue,
-        extensions: [
-          basicSetup,
-          EditorView.lineWrapping,
-          readonlyCompartment.of(readonlyExtension(props.readonly)),
-          labelCompartment.of(labelExtension(props.label)),
-          darkCompartment.of(darkExtension(theme.current.value.dark)),
-          vuetifyTheme,
-          EditorView.updateListener.of((update) => {
-            if (!update.docChanged) return
-            if (update.transactions.some((tr) => tr.annotation(external))) return
-            emit('update:modelValue', update.state.doc.toString())
-          }),
-        ],
-      }),
+    const instance = new Editor({
+      element: host.value!,
+      extensions: createMarkdownEditorExtensions(),
+      content: props.modelValue,
+      contentType: 'markdown',
+      editable: !props.readonly,
+      injectCSS: false,
+      editorProps: { attributes: contentAttributes() },
+      onUpdate: scheduleEmit,
+      onBlur: flush,
+      onTransaction: () => {
+        tick.value += 1
+      },
     })
+    editor.value = instance
+    window.addEventListener('beforeunload', onPageHide)
+    window.addEventListener('pagehide', onPageHide)
+  })
+
+  onBeforeUnmount(() => {
+    window.removeEventListener('beforeunload', onPageHide)
+    window.removeEventListener('pagehide', onPageHide)
+    flush()
+    editor.value?.destroy()
+    editor.value = undefined
   })
 
   watch(
     () => props.modelValue,
     (value) => {
-      if (view == null) return
-      const doc = view.state.doc.toString()
-      if (value === doc) return
-      view.dispatch({
-        changes: { from: 0, to: doc.length, insert: value },
-        annotations: [Transaction.addToHistory.of(false), external.of(true)],
-      })
+      if (value === lastEmitted) return
+      if (mode.value === 'source') {
+        lastEmitted = value
+        wysiwygStale = true
+        return
+      }
+      const instance = editor.value
+      if (instance == null) return
+      if (value === instance.getMarkdown()) {
+        lastEmitted = value
+        return
+      }
+      replaceExternal(value)
     },
   )
 
   watch(
     () => props.readonly,
     (readonly) => {
-      view?.dispatch({ effects: readonlyCompartment.reconfigure(readonlyExtension(readonly)) })
+      if (readonly) flush()
+      editor.value?.setEditable(!readonly, false)
+      editor.value?.setOptions({ editorProps: { attributes: contentAttributes() } })
     },
   )
 
   watch(
     () => props.label,
-    (label) => {
-      view?.dispatch({ effects: labelCompartment.reconfigure(labelExtension(label)) })
-    },
+    () => editor.value?.setOptions({ editorProps: { attributes: contentAttributes() } }),
   )
 
-  watch(
-    () => theme.current.value.dark,
-    (dark) => {
-      view?.dispatch({ effects: darkCompartment.reconfigure(darkExtension(dark)) })
-    },
-  )
+  function setMode(next: unknown): void {
+    if ((next !== 'wysiwyg' && next !== 'source') || next === mode.value) return
+    if (next === 'source') flush()
+    mode.value = next
+    if (next !== 'wysiwyg' || !wysiwygStale) return
+    // 원문에서 고쳤다가 같은 값으로 되돌렸으면 문서도 기록도 그대로 둔다(리뷰 사소 #7)
+    if (lastEmitted === editor.value?.getMarkdown()) wysiwygStale = false
+    else replaceExternal(lastEmitted)
+  }
 
-  onBeforeUnmount(() => {
-    view?.destroy()
-    view = null
+  function onSourceInput(event: Event): void {
+    const value = (event.target as HTMLTextAreaElement).value
+    lastEmitted = value
+    wysiwygStale = true
+    emit('update:modelValue', value)
+  }
+
+  interface Tool {
+    /** 도구 단추의 문구 키 — 모드 · 도구 막대 이름 · 링크 대화상자 문구는 아니다 */
+    key: Exclude<
+      keyof MarkdownEditorMessages,
+      | 'modeWysiwyg'
+      | 'modeSource'
+      | 'modeToggle'
+      | 'toolbar'
+      | 'linkTitle'
+      | 'linkHref'
+      | 'linkApply'
+      | 'linkRemove'
+      | 'linkCancel'
+      | 'linkInvalid'
+    >
+    icon: string
+    active: boolean
+    disabled: boolean
+    /** 토글형(서식 · 블록 · 링크)이면 `aria-pressed` 를 'true' | 'false' 로 — 동작형(구분선 · 되돌리기 · 다시)은 없음 */
+    pressed: 'true' | 'false' | undefined
+    run: () => void
+  }
+
+  type Chain = ReturnType<Editor['chain']>
+
+  interface ToolSpec {
+    key: Tool['key']
+    icon: string
+    /** 실행 · 가능 판정이 같은 체인이다 — `chain().focus()` 뒤에 붙인다 */
+    command: (chain: Chain) => Chain
+    /** 켜진 서식인가(토글형만 — 있으면 `aria-pressed` 를 단다) */
+    active?: (editor: Editor) => boolean
+    /** 기본 가능 판정(`can()`) 대신 쓸 판정(선택) */
+    enabled?: (editor: Editor) => boolean
+    /** 체인 대신 따로 실행할 것(선택 — 링크 대화상자) */
+    run?: () => void
+  }
+
+  /** 도구 묶음 정의(W10) — 편집기가 없어도 단추는 그려진다(잠김). 상태는 `tools` 가 `tick` 마다 다시 셈한다 */
+  const TOOL_GROUPS: readonly (readonly ToolSpec[])[] = [
+    [
+      {
+        key: 'bold',
+        icon: 'mdi-format-bold',
+        command: (c) => c.toggleBold(),
+        active: (e) => e.isActive('bold'),
+      },
+      {
+        key: 'italic',
+        icon: 'mdi-format-italic',
+        command: (c) => c.toggleItalic(),
+        active: (e) => e.isActive('italic'),
+      },
+      {
+        key: 'strike',
+        icon: 'mdi-format-strikethrough-variant',
+        command: (c) => c.toggleStrike(),
+        active: (e) => e.isActive('strike'),
+      },
+    ],
+    [
+      {
+        key: 'heading2',
+        icon: 'mdi-format-header-2',
+        command: (c) => c.toggleHeading({ level: 2 }),
+        active: (e) => e.isActive('heading', { level: 2 }),
+      },
+      {
+        key: 'heading3',
+        icon: 'mdi-format-header-3',
+        command: (c) => c.toggleHeading({ level: 3 }),
+        active: (e) => e.isActive('heading', { level: 3 }),
+      },
+    ],
+    [
+      {
+        key: 'blockquote',
+        icon: 'mdi-format-quote-close',
+        command: (c) => c.toggleBlockquote(),
+        active: (e) => e.isActive('blockquote'),
+      },
+      {
+        key: 'bulletList',
+        icon: 'mdi-format-list-bulleted',
+        command: (c) => c.toggleBulletList(),
+        active: (e) => e.isActive('bulletList'),
+      },
+      {
+        key: 'orderedList',
+        icon: 'mdi-format-list-numbered',
+        command: (c) => c.toggleOrderedList(),
+        active: (e) => e.isActive('orderedList'),
+      },
+    ],
+    [
+      {
+        key: 'link',
+        icon: 'mdi-link-variant',
+        command: (c) => c,
+        active: (e) => e.isActive('link'),
+        // 글자 선택이 있거나 링크 위일 때 — 그림 같은 노드 선택(NodeSelection)에는 링크를 걸 수 없다(리뷰 사소 #9)
+        enabled: (e) =>
+          (!e.state.selection.empty && !(e.state.selection instanceof NodeSelection)) ||
+          e.isActive('link'),
+        run: () => openLink(),
+      },
+      { key: 'horizontalRule', icon: 'mdi-minus', command: (c) => c.setHorizontalRule() },
+    ],
+    [
+      { key: 'undo', icon: 'mdi-undo', command: (c) => c.undo() },
+      { key: 'redo', icon: 'mdi-redo', command: (c) => c.redo() },
+    ],
+  ]
+
+  /** 도구 상태 — `tick`(트랜잭션) · `editor`(마운트) 에 반응한다 */
+  const tools = computed<Tool[][]>(() => {
+    void tick.value
+    const instance = editor.value
+    return TOOL_GROUPS.map((group) =>
+      group.map((spec) => {
+        const pressedOf = (active: boolean): Tool['pressed'] =>
+          spec.active ? (active ? 'true' : 'false') : undefined
+        if (instance == null) {
+          return {
+            key: spec.key,
+            icon: spec.icon,
+            active: false,
+            disabled: true,
+            pressed: pressedOf(false),
+            run: () => {},
+          }
+        }
+        const enabled = spec.enabled
+          ? spec.enabled(instance)
+          : spec.command(instance.can().chain().focus()).run()
+        const active = spec.active?.(instance) ?? false
+        return {
+          key: spec.key,
+          icon: spec.icon,
+          active,
+          disabled: !enabled,
+          pressed: pressedOf(active),
+          run: spec.run ?? (() => spec.command(instance.chain().focus()).run()),
+        }
+      }),
+    )
   })
+
+  const toolsDisabled = computed(() => props.readonly || mode.value === 'source')
+
+  const hasLink = computed(() => {
+    void tick.value
+    return editor.value?.isActive('link') ?? false
+  })
+
+  function openLink(): void {
+    const instance = editor.value
+    if (instance == null) return
+    const href = instance.getAttributes('link').href
+    linkHref.value = typeof href === 'string' ? href : ''
+    linkOpen.value = true
+  }
+
+  /** 적용 — 빈 값이면 링크를 지운다. 링크 확장이 주소를 거부하면(`javascript:` 등) 거짓 → 대화상자가 힌트를 보인다 */
+  function applyLink(input: string): boolean {
+    const instance = editor.value
+    if (instance == null) return false
+    const href = normalizeLinkHref(input)
+    if (href == null) {
+      removeLink()
+      return true
+    }
+    return instance.chain().focus().extendMarkRange('link').setLink({ href }).run()
+  }
+
+  function removeLink(): void {
+    editor.value?.chain().focus().extendMarkRange('link').unsetLink().run()
+  }
+
+  defineExpose({ editor, flush })
 </script>
 
 <template>
-  <div ref="host" class="markdown-editor" :style="{ height }" />
+  <div class="markdown-editor" :style="{ height }">
+    <div :aria-label="text.toolbar(label)" class="markdown-editor__toolbar" role="toolbar">
+      <template v-for="(group, index) in tools" :key="index">
+        <VDivider v-if="index > 0" class="markdown-editor__divider" vertical />
+        <VBtn
+          v-for="tool in group"
+          :key="tool.key"
+          :active="tool.active"
+          :aria-label="text[tool.key]"
+          :aria-pressed="tool.pressed"
+          :disabled="toolsDisabled || tool.disabled"
+          :icon="tool.icon"
+          size="small"
+          :title="text[tool.key]"
+          variant="text"
+          @click="tool.run"
+        />
+      </template>
+      <!-- Vuetify 는 role · aria-pressed 를 달지 않는다 — 묶음 이름과 선택 상태를 직접 노출한다(리뷰 중요 #3) -->
+      <VBtnToggle
+        :aria-label="text.modeToggle"
+        class="markdown-editor__mode"
+        density="compact"
+        mandatory
+        :model-value="mode"
+        role="group"
+        variant="outlined"
+        @update:model-value="setMode"
+      >
+        <VBtn :aria-pressed="mode === 'wysiwyg' ? 'true' : 'false'" size="small" value="wysiwyg">
+          {{ text.modeWysiwyg }}
+        </VBtn>
+        <VBtn :aria-pressed="mode === 'source' ? 'true' : 'false'" size="small" value="source">
+          {{ text.modeSource }}
+        </VBtn>
+      </VBtnToggle>
+    </div>
+    <div class="markdown-editor__body">
+      <div v-show="mode === 'wysiwyg'" ref="host" class="markdown-editor__wysiwyg" />
+      <textarea
+        v-show="mode === 'source'"
+        :aria-label="label"
+        class="markdown-editor__source"
+        :readonly="readonly"
+        spellcheck="false"
+        :value="modelValue"
+        @input="onSourceInput"
+      />
+    </div>
+    <MarkdownLinkDialog
+      v-model="linkOpen"
+      :apply="applyLink"
+      :has-link="hasLink"
+      :href="linkHref"
+      :messages="text"
+      :remove="removeLink"
+    />
+  </div>
 </template>
 
 <style scoped>
   .markdown-editor {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
     overflow: hidden;
     border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
     border-radius: 4px;
+    background: rgb(var(--v-theme-surface));
+    color: rgb(var(--v-theme-on-surface));
   }
 
   .markdown-editor:focus-within {
     border-color: rgb(var(--v-theme-primary));
+  }
+
+  .markdown-editor__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  }
+
+  .markdown-editor__divider {
+    align-self: stretch;
+    height: auto;
+    margin: 4px;
+  }
+
+  .markdown-editor__mode {
+    margin-left: auto;
+  }
+
+  .markdown-editor__body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .markdown-editor__wysiwyg {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+
+  .markdown-editor__source {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 12px 16px;
+    border: 0;
+    outline: none;
+    resize: none;
+    background: transparent;
+    color: inherit;
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* injectCSS: false — ProseMirror 기본 규칙 중 필요한 것만 */
+  .markdown-editor__wysiwyg :deep(.ProseMirror) {
+    flex: 1;
+    padding: 12px 16px;
+    outline: none;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+    caret-color: rgb(var(--v-theme-on-surface));
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror ::selection) {
+    background: rgba(var(--v-theme-primary), 0.2);
+  }
+
+  /* ProseMirror 기본 규칙(injectCSS 를 끈 대신) — 합자 끔 · 노드 선택 중 글자 선택 숨김 · 코드 블록 줄바꿈 */
+  .markdown-editor__wysiwyg :deep(.ProseMirror) {
+    font-variant-ligatures: none;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror-hideselection *::selection) {
+    background: transparent;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror-hideselection) {
+    caret-color: transparent;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror pre) {
+    white-space: pre-wrap;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror-selectednode) {
+    outline: 2px solid rgba(var(--v-theme-primary), 0.6);
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror-gapcursor) {
+    position: relative;
+    display: none;
+    pointer-events: none;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror-gapcursor::after) {
+    content: '';
+    position: absolute;
+    top: -2px;
+    display: block;
+    width: 20px;
+    border-top: 1px solid rgb(var(--v-theme-on-surface));
+    animation: markdown-editor-blink 1.1s steps(2, start) infinite;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror-focused .ProseMirror-gapcursor) {
+    display: block;
+  }
+
+  @keyframes markdown-editor-blink {
+    to {
+      visibility: hidden;
+    }
+  }
+
+  /* 본문 타이포 — MarkdownView 와 같은 규칙 */
+  .markdown-editor__wysiwyg :deep(.ProseMirror :is(h1, h2, h3, h4, h5, h6)) {
+    margin: 1em 0 0.5em;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror h1) {
+    font-size: 1.5rem;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror h2) {
+    font-size: 1.3rem;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror h3) {
+    font-size: 1.15rem;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror :is(h4, h5, h6)) {
+    font-size: 1rem;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror > :first-child) {
+    margin-top: 0;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror :is(p, ul, ol, blockquote, pre)) {
+    margin: 0 0 0.75em;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror :is(ul, ol)) {
+    padding-left: 1.5em;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror li > :is(ul, ol)) {
+    margin-bottom: 0;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror li > p) {
+    margin-bottom: 0;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror blockquote) {
+    padding-left: 12px;
+    border-left: 3px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror code) {
+    padding: 0 4px;
+    border-radius: 4px;
+    background: rgba(var(--v-theme-on-surface), 0.06);
+    font-family: monospace;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror pre) {
+    padding: 8px 12px;
+    border-radius: 4px;
+    background: rgba(var(--v-theme-on-surface), 0.06);
+    overflow-x: auto;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror pre code) {
+    padding: 0;
+    background: none;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror a) {
+    color: rgb(var(--v-theme-primary));
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror img) {
+    display: block;
+    max-width: 100%;
+  }
+
+  .markdown-editor__wysiwyg :deep(.ProseMirror hr) {
+    margin: 1em 0;
+    border: 0;
+    border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   }
 </style>
