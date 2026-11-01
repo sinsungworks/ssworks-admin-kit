@@ -275,3 +275,11 @@ pnpm add @tiptap/core@3.32.0 @tiptap/pm@3.32.0 @tiptap/vue-3@3.32.0 @tiptap/star
 - 어댑터 · 하니스 export(결정 ④ — 나중, 넷째 패키지) · 이미지 업로드 · 외부 이미지 거르기(ringside) · 표 편집 · 할 일 목록 · 밑줄 · 글자 색 · 선택 시 뜨는 막대(bubble) · 슬래시 명령 · 멘션 · 자동 저장.
 - 렌더(`renderMarkdown`) 변경 · `useLegalDocuments` 흐름 변경 · "렌더 같으면 변경 없음" 판정.
 - 템플릿의 밀린 입력(§7-4) · ringside 저장소 · TipTap 버그 보고(ringside 가 정한다) · Node 26.
+
+## 11. 구현 중 정정 (2026-11-01)
+
+- W1: `useEditor` + `EditorContent` 대신 `@tiptap/vue-3` `Editor` 를 호스트 `<div>` 에 직접 마운트한다(`v-show` 와 맞고 테스트가 동기적). vue-3 Editor 의 반응성(reactiveState)은 rAF 두 번 뒤 트리거되는 디바운스 ref 라 도구 막대는 `onTransaction` 카운터로 다시 그린다.
+- W5: `view.updateState(EditorState.create(…))` 로 history 를 비우면 vue-3 Editor 가 비추는 state 가 낡아 다음 dispatch 가 옛 state 에 적용돼 history 가 되살아났다(실측) — `unregisterPlugin('history')` + `registerPlugin(history())` 공개 API 로 비운다.
+- 결정 ② · A4: 기본 `Image` 의 `nodeInputRule` 은 블록 그림을 문단 가운데 넣을 때 친 마지막 글자 `)` 를 그림 뒤 새 문단에 남긴다(happy-dom · Chrome 둘 다) — `EditorImage` 가 입력 규칙만 바꿔 끼운다(`![…](…)` 글자 자리에 그림, 친 글자는 넣지 않음). 입력 규칙은 켠 채다.
+- 소스에 ` ` 를 적으면 편집 도구가 글자(U+00A0)로 써 eslint `no-irregular-whitespace` 에 걸린다 — `String.fromCharCode(160)`.
+- 템플릿(§7-4)은 로컬 tarball(0.9.0 + 3j) overrides 로 install · frontend typecheck · build 를 확인했다(lockfile 은 되돌림).

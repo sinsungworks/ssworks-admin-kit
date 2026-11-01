@@ -1,4 +1,4 @@
-import { Extension, type Content, type JSONContent } from '@tiptap/core'
+import { Extension, InputRule, type Content, type JSONContent } from '@tiptap/core'
 import Code from '@tiptap/extension-code'
 import CodeBlock from '@tiptap/extension-code-block'
 import Document from '@tiptap/extension-document'
@@ -107,6 +107,36 @@ export function markdownOptions(): MarkdownExtensionOptions {
 
 /** 코드 마크가 굵게 · 기울임 · 링크와 겹친다(기본은 `excludes: '_'` — 전부 배제해 `[\`코드\`](url)` 가 링크를 잃었다) */
 export const EditorCode = Code.extend({ excludes: 'code' })
+
+/** TipTap `Image` 의 입력 규칙과 같은 모양 — 앞이 줄머리 · 공백인 `![alt](src "title")` 를 마지막 `)` 까지 쳤을 때 */
+const IMAGE_INPUT = /(?:^|\s)(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/
+
+/**
+ * 그림(A4) — 기본 `Image` 에 입력 규칙만 바꿔 끼운다. 기본 `nodeInputRule` 은 블록 노드를 문단 가운데 넣을 때 친 마지막 글자 `)` 를
+ * 그림 뒤 새 문단(`<p>)</p>`)에 남긴다(TipTap 3.32.0 — happy-dom · 실브라우저 Chrome 둘 다, 2026-11-01). 여기서는 친 글자를 넣지 않고
+ * `![…](…)` 글자 자리에 그림을 넣는다(`insertContentAt` 이 문단을 가른다). 거르기는 없다(결정 ②) — 거르기는 앱 몫
+ */
+export const EditorImage = Image.extend({
+  addInputRules() {
+    return [
+      new InputRule({
+        find: IMAGE_INPUT,
+        handler: ({ range, match, chain }) => {
+          const [whole, markup, alt, src, title] = match
+          if (markup === undefined || src === undefined) return null
+          const from = range.from + (whole.length - markup.length)
+          chain()
+            .deleteRange({ from, to: range.to })
+            .insertContentAt(from, {
+              type: this.name,
+              attrs: { src, alt: alt ?? '', title: title ?? null },
+            })
+            .run()
+        },
+      }),
+    ]
+  },
+})
 
 /**
  * 줄머리 블록 문법 — 앞 공백 0~3칸까지(CommonMark 가 블록 표지로 읽는 들여쓰기 폭). 첫 표지 글자 하나만 `\` 로 이스케이프한다.
@@ -338,7 +368,7 @@ export function createMarkdownEditorExtensions() {
     Markdown.configure(markdownOptions()),
     StarterKit.configure(STARTER_KIT_OPTIONS),
     EditorCode,
-    Image,
+    EditorImage,
     EditorDocument,
     EditorParagraph,
     EditorText,
