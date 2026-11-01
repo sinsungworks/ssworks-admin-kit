@@ -12,6 +12,7 @@ import { AdminSessionsModule } from '../sessions/sessions.module.js'
 import { AdminTeamsModule } from '../teams/teams.module.js'
 import type { AdminUploadsOptions } from '../uploads/options.js'
 import { AdminUploadsModule } from '../uploads/uploads.module.js'
+import { AdminMediaModule } from '../media/media.module.js'
 import { AdminUsersModule } from '../users/users.module.js'
 import { TEST_CATALOG } from './accounts.js'
 import { AuditProbeModule } from './audit-probe.js'
@@ -95,6 +96,7 @@ export function bootAdminApp(
         AdminLegalModule,
         AdminIpAccessModule,
         AdminUploadsModule,
+        AdminMediaModule,
         AuditProbeModule,
       ],
     },
