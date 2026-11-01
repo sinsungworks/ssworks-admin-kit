@@ -1,10 +1,11 @@
+import { once } from 'node:events'
 import { Readable } from 'node:stream'
-import { CommonErrorCodes } from '@ssworks/admin-shared'
+import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
 import type { Request } from 'express'
 import { describe, expect, it } from 'vitest'
 import { failure } from '../test-support/errors.js'
 import { UPLOAD_MESSAGES } from './errors.js'
-import { isUploadContentType, readImageBody } from './read-body.js'
+import { BODY_CONSUMED_MESSAGE, isUploadContentType, readImageBody } from './read-body.js'
 
 /** 요청 흉내 — 본문 조각과 머리글 */
 function fakeRequest(chunks: Buffer[], headers: Record<string, string> = {}): Request {
@@ -96,6 +97,33 @@ describe('readImageBody(스펙 U2)', () => {
     const error = await failure(pending)
     expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_BAD_REQUEST)
     expect(error.message).toBe(UPLOAD_MESSAGES.aborted)
+    expect(error.details).toEqual({ reason: 'closed' })
+  })
+
+  it('🔴 본문이 이미 소비됐으면(전역 파서) 기다리지 않고 일반 Error(500 · 로그 문구) — BusinessError 가 아니다', async () => {
+    const request = fakeRequest([Buffer.from('ab')], { 'content-length': '2' })
+    // image/* 를 먹는 전역 파서 흉내 — 핸들러 전에 끝까지 읽는다
+    request.resume()
+    await once(request, 'end')
+    expect(request.readableEnded).toBe(true)
+    const caught = await readImageBody(request, 100).then(
+      () => null,
+      (error: unknown) => error,
+    )
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught).not.toBeInstanceOf(BusinessError)
+    expect((caught as Error).message).toBe(BODY_CONSUMED_MESSAGE)
+  })
+
+  it('끝나지 않은 채 이미 파기됐으면(핸들러 전에 끊김) 기다리지 않고 400 끊김', async () => {
+    const stream = new Readable({ read() {} })
+    const request = Object.assign(stream, {
+      headers: { 'content-type': 'image/png' },
+    }) as unknown as Request
+    stream.destroy()
+    await once(stream, 'close')
+    const error = await failure(readImageBody(request, 100))
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_BAD_REQUEST)
     expect(error.details).toEqual({ reason: 'closed' })
   })
 

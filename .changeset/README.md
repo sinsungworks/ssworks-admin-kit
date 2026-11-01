@@ -36,10 +36,10 @@
 
 admin-ui · admin-server 는 admin-shared 를 peer 로 둔다. **`workspace:^` 를 쓰지 않는다** — changesets 는 이것을 `^<현재 버전>` 으로 읽는데, 0.x 에서 `^0.2.0` 은 0.3.0 을 덮지 못한다. peer 가 범위를 벗어나면 changesets 는 의존 패키지를 **major** 로 올리므로, admin-shared 의 minor 한 번에 세 패키지가 1.0.0 이 된다(첫 Version Packages PR 에서 실제로 그랬다).
 
-| 패키지       | peer `@ssworks/admin-shared` | 발행 시          |
-| ------------ | ---------------------------- | ---------------- |
-| admin-ui     | `workspace:>=0.4.0 <1.0.0`   | `>=0.4.0 <1.0.0` |
-| admin-server | `workspace:>=0.4.0 <1.0.0`   | `>=0.4.0 <1.0.0` |
+| 패키지       | peer `@ssworks/admin-shared` | 발행 시           |
+| ------------ | ---------------------------- | ----------------- |
+| admin-ui     | `workspace:>=0.4.0 <1.0.0`   | `>=0.4.0 <1.0.0`  |
+| admin-server | `workspace:>=0.10.0 <1.0.0`  | `>=0.10.0 <1.0.0` |
 
 둘 다 0.x 의 모든 minor 를 덮는다 — `config.json` 의 `onlyUpdatePeerDependentsWhenOutOfRange: true` 와 한 벌이다(범위 안이면 changesets 가 의존 패키지를 올리지도, 범위를 다시 쓰지도 않는다). `fixed` 가 세 패키지를 같은 번호로만 내보내므로 소비자는 같은 번호끼리 설치하면 된다. `workspace:` 뒤의 범위는 pnpm 이 pack · publish 때 그대로 꺼내 쓴다.
 

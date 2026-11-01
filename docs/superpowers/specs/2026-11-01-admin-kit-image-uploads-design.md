@@ -366,7 +366,7 @@ docs/superpowers/plans/YYYY-MM-DD-admin-server-uploads.md · YYYY-MM-DD-admin-ui
 
 - **U4 · §4-2 DELETE 경로**: `DELETE /uploads/:purpose/:yyyy/:mm/:file` — 키의 네 조각. Express 5(path-to-regexp v8)는 `:key(*)` 같은 정규식 파라미터가 없다.
 - **U5 CORP**: 중계의 `Cross-Origin-Resource-Policy` 는 `same-site`(ringside 는 `same-origin`) — API 와 웹을 서브도메인으로 나눠 배치해도(`api.example.com` → `www.example.com`) 그림이 보이게. 다른 사이트의 핫링크는 그대로 막는다.
-- **U14 중계 경로**: 컨트롤러 경로는 `media` 고정(데코레이터는 정적)이다 — `mediaPath` 는 `'<앱 전역 접두사>/media'` 이고 `/media` 로 끝나지 않으면 기동에서 멈춘다.
+- **U14 중계 경로**: 컨트롤러 경로는 `media` 고정(데코레이터는 정적)이다 — `mediaPath` 는 `'/<앱 전역 접두사>/media'`(앞 `/` 필수)이고 `/media` 로 끝나지 않으면 기동에서 멈춘다.
 - **§6 413 문구**: `ERR_UPLOAD_TOO_LARGE` 문구에 숫자를 넣지 않는다 — 상한은 정책이라 `details.maxBytes` 로 싣고 화면이 붙인다.
 - **§6 · §9-1 503 문구**: `ERR_UPLOAD_UNAVAILABLE` 의 문구는 서버가 보내지 않는다 — 5xx 는 고정 문구로 가린다(코어 설계, 코드는 남는다). admin-ui 가 코드로 문구를 고른다(PR #3k).
 - **U6 용도 읽기**: 가드는 용도를 `query.purpose` 또는 `params.purpose` **하나**에서 읽는다 — 둘 다 오면 403(가드와 핸들러가 다른 값을 보는 혼동된 대리인을 막는다 · 리뷰).
@@ -385,3 +385,4 @@ docs/superpowers/plans/YYYY-MM-DD-admin-server-uploads.md · YYYY-MM-DD-admin-ui
 - **§7 sharp 로드**: `.` 진입점이 import 때 `sharp` 를 싣는다 — 필수 peer 라 업로드를 안 쓰는 앱도 설치한다. `./runner` 는 싣지 않는다(`s3-isolation.test.ts`).
 - **중계 모듈 주입**: 중계 컨트롤러의 `AdminUploadsService` 주입은 `@Optional()` — 업로드 모듈 없이 `AdminMediaModule` 만 올리면 Nest DI 오류 대신 `onModuleInit` 이 안내 문구로 기동을 멈춘다.
 - **§9-1 HTTP 계약 층**: 업로드 · 중계의 HTTP 계약은 DB 없는 프로브가 아니라 `*.http.db.test.ts` 다(인증 가드가 DB 를 읽는다). 재인코딩 테스트는 실 sharp 로 돈다.
+- **U2 소비된 본문**: 🔴 `image/*` 를 먹는 전역 본문 파서가 요청 스트림을 먼저 다 읽으면 `readImageBody` 가 오지 않을 `end` · `close` 를 영영 기다리던 것을, 리스너를 달기 전에 `req.readableEnded` 를 보고 일반 Error(500 · 서버 로그에 "업로드 본문이 이미 소비됐다 …")로 바로 끝내게 바꿨다 — 운영 설정 오류라 BusinessError 가 아니다. 끝나지 않은 채 이미 파기된 스트림(핸들러 전에 끊김)은 끊김과 같은 400 이다(리뷰 Task 17).

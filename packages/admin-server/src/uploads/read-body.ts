@@ -8,6 +8,13 @@ import { UPLOAD_MESSAGES, uploadTooLarge, uploadUnsupportedType } from './errors
 // 🔴 상한을 넘는 순간 모으기를 멈추고 `resume()` 으로 남은 본문을 버린 뒤 413 을 던진다 — 소켓을 끊지 않아 클라이언트가 413 을 받는다.
 // 🔴 이미지 형식은 CORS 단순 요청 형식이 아니다 — 다른 출처는 사전 요청에서 막힌다(CSRF — 같은 출처 + 비단순 본문 규약).
 // 🔴 본문을 다 받기 전의 스트림 오류 · 연결 끊김은 400 BusinessError(details.reason)다 — 흔들리는 연결이 500 로그가 되지 않게.
+// 🔴 스트림이 이미 끝났으면(readableEnded — image/* 를 먹는 전역 본문 파서가 먼저 읽었다) 'end' · 'close' 가 다시 오지 않아
+//    영영 기다린다 — 일반 Error(500 · 서버 로그에 문구)로 바로 끝낸다. 클라이언트 잘못이 아니라 운영 설정 오류라 BusinessError 가 아니다.
+//    끝나지 않은 채 이미 파기됐으면(핸들러 전에 연결이 끊김) 끊김과 같은 400 이다.
+
+/** 500 문구(서버 로그) — 요청 스트림을 누가 먼저 다 읽었다 */
+export const BODY_CONSUMED_MESSAGE =
+  '업로드 본문이 이미 소비됐다 — image/* 를 먹는 전역 본문 파서(raw · text 등)를 떼라.'
 
 /** 400 — 본문을 다 받기 전에 끊김. reason 은 스트림 오류 문구 또는 'closed' */
 function bodyAborted(reason: string): BusinessError {
@@ -45,6 +52,9 @@ export function readImageBody(req: Request, maxBytes: number): Promise<Buffer> {
   if (Number.isFinite(declared) && declared > maxBytes) {
     return Promise.reject(uploadTooLarge(maxBytes))
   }
+  // 머리글 검사(415 · 413) 뒤 · 리스너 앞 — 클라이언트 잘못은 그대로 4xx 로 두고, 다시 오지 않을 이벤트를 기다리지 않는다
+  if (req.readableEnded) return Promise.reject(new Error(BODY_CONSUMED_MESSAGE))
+  if (req.destroyed) return Promise.reject(bodyAborted('closed'))
   return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = []
     let total = 0

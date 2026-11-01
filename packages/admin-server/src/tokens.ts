@@ -61,7 +61,10 @@ export const ADMIN_IP_ACCESS_CONFIG = Symbol('ADMIN_IP_ACCESS_CONFIG')
 /** 내부 — 쓰는 쪽 문구 덮기 표(기본 글자 → 덮을 글자). 코어 모듈이 `messages` 옵션으로 기동 때 만든다(2g M5). index 에 내지 않는다 */
 export const ADMIN_MESSAGE_OVERRIDES = Symbol('ADMIN_MESSAGE_OVERRIDES')
 
-/** 내부 — 해석된 업로드 설정(`ResolvedUploadsConfig`). `AdminUploadsModule`(전역)이 코어 옵션 `uploads` 로 만들고 내보낸다(2h). 권한 가드가 `@Optional()` 로 받는다 */
+/**
+ * 해석된 업로드 설정(`ResolvedUploadsConfig`). `AdminUploadsModule`(전역)이 코어 옵션 `uploads` 로 만들고 내보낸다(2h). 권한 가드가
+ * `@Optional()` 로 받는다. index 에서도 내보낸다 — 쓰는 쪽이 자기 가드 · 서비스에서 해석된 용도 · 정책 · mediaPath 를 주입받을 수 있게
+ */
 export const ADMIN_UPLOADS_CONFIG = Symbol('ADMIN_UPLOADS_CONFIG')
 /** `@RequireUploadPurpose()` — 전역 권한 가드의 넷째 선언(2h 스펙 U6). 용도는 요청의 `query.purpose` 또는 `params.purpose` */
 export const REQUIRE_UPLOAD_PURPOSE = 'admin-kit:upload-purpose'

@@ -15,7 +15,7 @@
 2. 업로드를 쓰면 `AdminServerModule` 옵션에 `uploads: { storage: createFileSystemStorage({ root }) /* 또는 createS3ObjectStorage(...) */, purposes: { … } }`.
 3. 마이그레이션 폴더에 스텁 `export { up, down } from '@ssworks/admin-server/migrations/0013_uploads'` — 모든 장 필수라 업로드를 안 써도 더한다.
 4. `AppModule` 에 `AdminUploadsModule` · `AdminMediaModule` 을 import 한다 — 🔴 `AdminServerModule.forRootAsync(...)` 를 먼저(종료 때 정리 타이머가 DB 풀보다 먼저 멈춘다).
-5. 앱 전역 접두사가 `api` 가 아니면 `uploads.mediaPath` 를 `'<접두사>/media'` 로.
+5. 앱 전역 접두사가 `api` 가 아니면 `uploads.mediaPath` 를 `'/<접두사>/media'` 로(앞 `/` 필수).
 6. 🔴 코어 유니온이 넓어진다 — `Record<CommonErrorCode, …>` · `Record<CoreAuditAction, …>` · `Record<CoreAuditTarget, …>` 를 자기 표로 둔 앱은 새 키(`ERR_UPLOAD_*` 여섯 · `upload.create` · `upload.delete` · `upload`)를 채운다.
 7. 약관만 쓰는 앱은 발행 감사 meta 에 `attachedUploads: 0` 이 더 실리는 것뿐이다.
 

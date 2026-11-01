@@ -609,12 +609,12 @@ imports: [
 export { up, down } from '@ssworks/admin-server/migrations/0011_legal_documents'
 ```
 
-| 라우트                                     | 슬롯            | 본문 → 응답                                                          | 감사                                                                          |
-| ------------------------------------------ | --------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `GET /admin/legal-documents/current?kind=` | `legal.read`    | → `{ item: AdminLegalDocument \| null }` — 미발행이면 `null`(200)    | —                                                                             |
-| `GET /admin/legal-documents?kind=`         | `legal.read`    | → `{ items: AdminLegalHistoryItem[] }` 최신순 전량, 본문 없음        | —                                                                             |
-| `GET /admin/legal-documents/:legalDocNo`   | `legal.read`    | → `AdminLegalDocument`(문서 그대로) · 없으면 404                     | —                                                                             |
-| `POST /admin/legal-documents`              | `legal.publish` | `{ kind, body, baseLegalDocNo }` → 201 `{ legalDocNo, contentHash }` | `setting.legal.publish`(meta `{ kind, baseLegalDocNo, contentHash, length }`) |
+| 라우트                                     | 슬롯            | 본문 → 응답                                                          | 감사                                                                                           |
+| ------------------------------------------ | --------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `GET /admin/legal-documents/current?kind=` | `legal.read`    | → `{ item: AdminLegalDocument \| null }` — 미발행이면 `null`(200)    | —                                                                                              |
+| `GET /admin/legal-documents?kind=`         | `legal.read`    | → `{ items: AdminLegalHistoryItem[] }` 최신순 전량, 본문 없음        | —                                                                                              |
+| `GET /admin/legal-documents/:legalDocNo`   | `legal.read`    | → `AdminLegalDocument`(문서 그대로) · 없으면 404                     | —                                                                                              |
+| `POST /admin/legal-documents`              | `legal.publish` | `{ kind, body, baseLegalDocNo }` → 201 `{ legalDocNo, contentHash }` | `setting.legal.publish`(meta `{ kind, baseLegalDocNo, contentHash, length, attachedUploads }`) |
 
 - `legal.kinds` 는 비어 있지 않고 원소가 영숫자 · `_` 1~32자 · 겹침 없음이어야 한다 — 어기면 기동에서 멈춘다. 모르는 종류(쿼리 · 본문)는 400 `issues[{ path: ['kind'] }]`. 종류는 대소문자를 가른다.
 - admin-ui `useLegalDocuments` 배선(admin-ui README "약관")이 그대로 맞는다 — 아래 `baseURL: '/api/admin'` 이면 `loadCurrent: (kind) => api.get<AdminLegalCurrent>('/legal-documents/current', { params: { kind } }).then((r) => r.item)` · `loadHistory: (kind) => api.get<AdminLegalHistory>('/legal-documents', { params: { kind } }).then((r) => r.items)` · ``loadOne: (no) => api.get<AdminLegalDocument>(`/legal-documents/${no}`)`` · `publish: (body) => api.post('/legal-documents', body)`. 미발행은 404 가 아니라 `{ item: null }` 이라 어댑터가 404 를 바꿔 읽을 필요가 없다. 탭의 `kinds` 는 위 `LEGAL_KINDS` 에서 만든다.
@@ -662,7 +662,7 @@ export class PublicLegalController {
 
 ## 이미지 업로드
 
-편집기(admin-ui `MarkdownEditor`)가 그림을 올리고 본문에 `![](/api/media/<키>)` 를 넣는다. 서버는 원본을 그대로 두지 않고 WebP 로 다시 만들어(메타데이터 제거) 저장소(파일 시스템 · S3 호환)에 둔다. 올린 그림은 **미첨부**다 — 본문을 저장하는 쓰기(약관 발행 · 앱 라우트)가 같은 트랜잭션에서 문서에 **첨부**하고, 중계(`/api/media/…`)는 첨부된 그림만 내보낸다. 24시간 안에 첨부되지 않은 그림은 정리 잡이 지운다. 설계는 저장소 `docs/superpowers/specs/2026-11-01-admin-kit-image-uploads-design.md`.
+편집기(admin-ui `MarkdownEditor`)가 그림을 올리고 본문에 `![](/api/media/<키>)` 를 넣는다(admin-ui 쪽은 PR #3k — 아직 나오지 않았다. 그 전에는 앱이 `POST /admin/uploads` 를 직접 부른다). 서버는 원본을 그대로 두지 않고 WebP 로 다시 만들어(메타데이터 제거) 저장소(파일 시스템 · S3 호환)에 둔다. 올린 그림은 **미첨부**다 — 본문을 저장하는 쓰기(약관 발행 · 앱 라우트)가 같은 트랜잭션에서 문서에 **첨부**하고, 중계(`/api/media/…`)는 첨부된 그림만 내보낸다. 24시간 안에 첨부되지 않은 그림은 정리 잡이 지운다. 설계는 저장소 `docs/superpowers/specs/2026-11-01-admin-kit-image-uploads-design.md`.
 
 ```ts
 import { createFileSystemStorage } from '@ssworks/admin-server'
@@ -735,17 +735,17 @@ async update(noticeNo: bigint, input: NoticeUpdate, actorUserNo: bigint) {
 }
 ```
 
-- **`mediaPath` 와 전역 접두사**: 중계 컨트롤러 경로는 `media` 로 고정이다 — `mediaPath` 는 `'<앱 전역 접두사>/media'` 이고 `/media` 로 끝나지 않으면 기동에서 멈춘다(`setGlobalPrefix('api')` → 기본 `'/api/media'`). 접두사와 어긋나면 저장은 되는데 그림만 안 보인다. 🔴 운영 중에 바꾸지 않는다 — 옛 본문의 주소를 키로 알아보지 못해 다음 `sync` 가 그 그림들을 지움 표시한다.
-- **공개 API 가 따로일 때**: 그 앱에도 코어 모듈(같은 DB · 같은 `uploads` 옵션 · 같은 저장소) + `AdminUploadsModule` + `AdminMediaModule` 을 올린다 — 업로드 모듈은 `AdminAuthModule` 을 요구하므로 인증 모듈도 함께다(전역 가드가 켜지니 그 앱의 공개 라우트는 `@Public()`). 정리 잡은 두 앱에서 돌아도 된다(멱등) — 한쪽은 `sweep: false` 로 꺼도 된다. 중계는 `Cross-Origin-Resource-Policy: same-site` 라 같은 사이트의 서브도메인(`api.example.com` → `www.example.com`)만 그림을 쓴다.
+- **`mediaPath` 와 전역 접두사**: 중계 컨트롤러 경로는 `media` 로 고정이다 — `mediaPath` 는 `'/<앱 전역 접두사>/media'`(앞 `/` 필수)이고 `/media` 로 끝나지 않으면 기동에서 멈춘다(`setGlobalPrefix('api')` → 기본 `'/api/media'`). 접두사와 어긋나면 저장은 되는데 그림만 안 보인다. 🔴 운영 중에 바꾸지 않는다 — 옛 본문의 주소를 키로 알아보지 못해 다음 `sync` 가 그 그림들을 지움 표시한다.
+- **공개 API 가 따로일 때**: 그 앱에도 코어 모듈(같은 DB · 같은 `uploads` 옵션 · 같은 저장소) + `AdminUploadsModule` + `AdminMediaModule` 을 올린다 — 업로드 모듈은 `AdminAuthModule` 을 요구하므로 인증 모듈도 함께다. 그러면 그 앱에도 코어 옵션 `auth`(비밀키 · 쿠키)가 있어야 하고, `/admin/auth/*` 와 `/admin/uploads` 가 그 앱에도 열리며, 전역 가드가 켜지니 그 앱의 공개 라우트는 모두 `@Public()` 이어야 한다. 정리 잡은 두 앱에서 돌아도 된다(멱등) — 한쪽은 `sweep: false` 로 꺼도 된다. 중계는 `Cross-Origin-Resource-Policy: same-site` 라 같은 사이트의 서브도메인(`api.example.com` → `www.example.com`)만 그림을 쓴다.
 - **중계 캐시**: `Cache-Control: public, max-age=600` + `ETag`(키에서 셈 — 키의 내용은 바뀌지 않고 키는 다시 쓰지 않는다) → `If-None-Match` 면 304. 미첨부 · 지움 · 저장소 오류는 `no-store`. 지운 그림도 공유 캐시(CDN)에는 최대 10분 남는다. `X-Content-Type-Options: nosniff`.
-- **정리 잡**: 주기마다(기본 60분 · `sweep.intervalMinutes` 는 35,791 이하 — Node 타이머 상한) ① 미첨부가 `pendingTtlHours`(기본 24)를 넘으면 지움 표시 ② 지움 표시 행의 객체를 지우고 행을 지운다 — 100개씩, 한 틱에 최대 10묶음(= 1,000행). 앞 회차가 안 끝났으면 그 틱은 건너뛴다. 멱등이라 인스턴스가 여럿이어도 된다. `sweep: false` 면 앱 워커가 `AdminUploadsService.sweep()` 을 부른다. 객체 삭제에 실패한 행은 남아 다음 회차 맨 앞에서 다시 잡힌다 — 실패 행이 100개 이상 쌓이면 뒤 행이 밀리고, 저장소가 돌아오면 따라잡는다.
+- **정리 잡**: 주기마다(기본 60분 · `sweep.intervalMinutes` 는 35,791 이하 — Node 타이머 상한) ① 미첨부가 `policy.pendingTtlHours`(기본 24 — `sweep` 이 아니라 `policy` 아래다)를 넘으면 지움 표시 ② 지움 표시 행의 객체를 지우고 행을 지운다 — 100개씩, 한 틱에 최대 10묶음(= 1,000행). 앞 회차가 안 끝났으면 그 틱은 건너뛴다. 멱등이라 인스턴스가 여럿이어도 된다. `sweep: false` 면 앱 워커가 `AdminUploadsService.sweep()` 을 부른다. 객체 삭제에 실패한 행은 남아 다음 회차 맨 앞에서 다시 잡힌다 — 실패 행이 100개 이상 쌓이면 뒤 행이 밀리고, 저장소가 돌아오면 따라잡는다.
 - **재인코딩**(sharp): 매직 바이트로 형식을 다시 본다(Content-Type 이 아니라) · 픽셀(너비 × 높이 × 프레임) 4천만 · 프레임 100 을 풀기 전에 막는다 · 정지 이미지는 EXIF 방향대로 돌린다 · 긴 변 2048 로 줄인다(키우지 않음) · WebP 품질 82 · 메타데이터(EXIF · GPS · ICC)를 싣지 않는다 — 광색역 이미지는 sRGB 로 변환된 뒤 프로파일이 빠진다 · 움짤 → 움직이는 WebP · 처리 15초 초과는 400. 동시 재인코딩은 2, 대기열 8 — 자리를 5초 넘게 기다리거나 대기열이 차면 503(앱마다 하나 — 프로세스당 앱이 하나면 프로세스당 하나). 최대 메모리 ≈ 동시 수 × 픽셀 상한 × 4바이트. 정책 값은 `uploads.policy`(admin-shared `DEFAULT_UPLOAD_POLICY` — 장당 10MiB · 본문당 20장 · 사람당 미첨부 50장).
-- **본문 읽기**: 원시 이미지 바이트만 받는다(multipart 아님) — 다른 `Content-Type` · `Content-Encoding`(압축) 본문은 415. 크기는 `Content-Length` 를 먼저 보고, 스트림이 상한을 넘는 순간 남은 본문을 버리고 413. 다 받기 전에 연결이 끊기면 400 `ERR_COMMON_BAD_REQUEST`(문구 `messages.uploads.aborted`). 🔴 `image/*` 를 먹는 전역 raw · text 본문 파서를 달지 않는다 — 컨트롤러가 요청 스트림을 직접 읽으므로 파서가 먼저 소비하면 업로드가 끝나지 않는다.
+- **본문 읽기**: 원시 이미지 바이트만 받는다(multipart 아님) — 다른 `Content-Type` · `Content-Encoding`(압축) 본문은 415. 크기는 `Content-Length` 를 먼저 보고, 스트림이 상한을 넘는 순간 남은 본문을 버리고 413. 다 받기 전에 연결이 끊기면 400 `ERR_COMMON_BAD_REQUEST`(문구 `messages.uploads.aborted`). 🔴 `image/*` 를 먹는 전역 raw · text 본문 파서를 달지 않는다 — 컨트롤러가 요청 스트림을 직접 읽으므로 파서가 먼저 소비하면 모든 업로드가 500 이다(서버 로그에 "업로드 본문이 이미 소비됐다 …").
 - **오류 코드 여섯**: 415 `ERR_UPLOAD_UNSUPPORTED_TYPE` · 413 `ERR_UPLOAD_TOO_LARGE`(`details.maxBytes`) · 400 `ERR_UPLOAD_INVALID_IMAGE`(`details.reason` — `unreadable` · `too_many_pixels` · `too_many_frames`) · 409 `ERR_UPLOAD_LIMIT`(`details.limit` — 사람당 미첨부 · 본문당 장수) · 404 `ERR_UPLOAD_NOT_FOUND` · 503 `ERR_UPLOAD_UNAVAILABLE`(저장소 오류 · 재인코딩 대기). 문구는 `messages: { uploads: { … }, uploadsSchema: { purpose } }` 로 덮는다(위 「오류 문구 바꾸기」). 🔴 503 의 문구는 서버가 보내지 않는다(5xx 는 고정 문구 — 코드만 남는다) — 화면은 코드로 문구를 고른다.
 - **저장소**
   - 파일 시스템 `createFileSystemStorage({ root })` — 객체는 `<root>/<키>`. 임시 파일에 쓰고 rename 한다(중계가 반쪽 파일을 읽지 않게). 키가 `root` 밖을 가리키면 던진다 — 심볼릭 링크는 검사하지 않으니 `root` 안에 링크를 두지 않는다. 개발 · 단일 서버용.
   - S3 호환 `createS3ObjectStorage({ bucket, region?, endpoint?, credentials?, forcePathStyle?, prefix?, timeoutMs? })`(`@ssworks/admin-server/storage/s3`) — R2 · MinIO · NCP 같은 공급자는 `endpoint`. 버킷은 비공개로 둔다(중계가 첨부 여부를 보고 내보낸다). 던지는 오류의 문구 · 스택에서 접근 키 · 비밀 키를 가린다. 종료 때 `storage.destroy()`(keep-alive 소켓 — 모듈이 부르지 않는다).
-  - 직접 구현은 `AdminObjectStorage`(`put` · `get` — 없으면 `null` · `delete` — 없어도 성공). 던지면 서비스가 503 `ERR_UPLOAD_UNAVAILABLE` 로 바꾼다.
+  - 직접 구현은 `AdminObjectStorage`(`put` · `get` — 없으면 `null` · `delete` — 없어도 성공). 요청 경로의 `put`(업로드) · `get`(중계)이 던지면 서비스가 503 `ERR_UPLOAD_UNAVAILABLE` 로 바꾼다. `delete` 실패는 정리 잡이 세고 그 행을 남겨 다음 회차에 다시 지우며, 업로드 뒤처리(INSERT 실패 뒤 객체 정리)에서는 경고 로그만 남긴다.
 
 ## IP 접근 제어
 
