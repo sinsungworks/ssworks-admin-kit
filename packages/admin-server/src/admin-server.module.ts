@@ -29,6 +29,7 @@ import { AdminUsersModule } from './users/users.module.js'
 import { AdminTeamsModule } from './teams/teams.module.js'
 import { AdminIpAccessModule } from './ip-access/ip-access.module.js'
 import { AdminLegalModule } from './legal/legal.module.js'
+import { AdminUploadsModule } from './uploads/uploads.module.js'
 
 // 정본: hangang-home apps/api/src/app.module.ts(전역 필터 · 가드를 DI 로) · gise database.module.ts(onModuleDestroy)
 // 바꾼 점: 패키지 코어 모듈이다 — 기능 모듈은 쓰는 쪽 app.module.ts(B)가 골라 import 한다(Phase 2 결정 ④ R2).
@@ -48,6 +49,7 @@ const ADMIN_ROUTE_MODULES: readonly Type[] = [
   AdminTeamsModule,
   AdminLegalModule,
   AdminIpAccessModule,
+  AdminUploadsModule,
 ]
 
 const DEFAULT_ROUTE_PREFIX = 'admin'

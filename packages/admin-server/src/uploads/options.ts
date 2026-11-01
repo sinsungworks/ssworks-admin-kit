@@ -9,6 +9,7 @@ import {
   type AdminPermissionMap,
   type AdminPermissionSlot,
 } from '../auth/permission-slots.js'
+import type { AdminServerOptions } from '../options.js'
 import type { AdminObjectStorage } from '../storage/object-storage.js'
 
 // 정본: 없음 — 2h 스펙 U7 · U14 · S6. 약관 종류 옵션(legal/options.ts)과 같은 방식(문제를 모아 한 번에 · 기동에서 멈춤).
@@ -49,12 +50,6 @@ export interface ResolvedUploadsConfig {
   readonly sweepIntervalMs: number | null
 }
 
-/** 해석에 필요한 코어 옵션 조각 — Task 13 이 AdminServerOptions 에 uploads 를 더하면 Pick 으로 바꾼다 */
-export interface UploadsOptionsInput {
-  uploads?: unknown
-  permissions?: AdminPermissionMap
-}
-
 const MEDIA_PATH = /^(\/[A-Za-z0-9_-]+)*\/media$/
 const POSITIVE_INT = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 1
@@ -66,7 +61,7 @@ function isStorage(value: unknown): value is AdminObjectStorage {
 }
 
 export function resolveUploadsConfig(
-  options: UploadsOptionsInput,
+  options: Pick<AdminServerOptions, 'uploads' | 'permissions'>,
   hasLegalModule: boolean,
   moduleName: string,
 ): ResolvedUploadsConfig {

@@ -8,6 +8,7 @@ import type { AdminClientIpSource } from './auth/request-meta.js'
 import type { AdminDbConnection } from './database/connection.js'
 import type { AdminServerMessages } from './http/messages.js'
 import type { AdminLegalOptions } from './legal/options.js'
+import type { AdminUploadsOptions } from './uploads/options.js'
 
 export interface AdminServerOptions {
   /** DB 접속. 보통 `adminDbConnectionFromEnv()` */
@@ -53,6 +54,12 @@ export interface AdminServerOptions {
    * IP 접근 제어를 우회한다. 세션 행 · 감사 · IP 정책이 같은 값을 본다. 두 값 밖이면 기동에서 멈춘다.
    */
   clientIp?: AdminClientIpSource
+  /**
+   * 편집기 이미지 업로드(2h 스펙 §4-2) — 저장소 · 공개 경로 · 용도 → 권한 · 정책 · 정리. 🔴 `AdminUploadsModule` 을 쓰면 필수 — 없거나
+   * 저장소 모양이 아니거나 `mediaPath` 가 '/media' 로 끝나지 않거나 용도 · 정책이 형식 밖이면 기동에서 멈춘다. `legal` 용도는
+   * `AdminLegalModule` 이 있으면 자동(`legal.publish` 슬롯) — 적으면 멈춘다.
+   */
+  uploads?: AdminUploadsOptions
   /**
    * 서버 오류 문구를 키별로 덮는다(2g M1–M9) — 예: `{ accounts: { noUser: '운영자를 찾을 수 없습니다.' } }`. 키는
    * `ADMIN_SERVER_DEFAULT_MESSAGES`. 🔴 같은 기본 글자는 함께 바뀐다(`accounts.noUser` = `sessions.noUser`). 오타 · 같은 글자를
