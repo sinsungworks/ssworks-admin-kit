@@ -8,12 +8,12 @@
 
 관리자 페이지 공통 코드를 npm 패키지로 꺼낸 **pnpm 모노레포**다. 소비자는 신규 웹 서비스의 관리자 앱(Vue 3 + Vuetify 4 SPA)과 API(NestJS + Kysely)다. 네 참조 프로젝트(kim5257-crm-v5 · ssworks-axion-admin · ssworks-gise-home · hangang-home)에 복사-수정으로 퍼져 있던 코드가 출처다.
 
-| 경로                    | 패키지                  | 성격                                                                                                                                                                                                    |
-| ----------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/admin-shared` | `@ssworks/admin-shared` | 프레임워크 무의존. 브라우저·NestJS 양쪽이 import 한다                                                                                                                                                   |
-| `packages/admin-ui`     | `@ssworks/admin-ui`     | Vue 3 + Vuetify 4 컴포넌트·composable. vue·vuetify 는 peer                                                                                                                                              |
-| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 완료 — 2a 기반 · 2b 인증 · 2c 세션 · 감사 · 2d 역할 · 사용자 · 2e-1 팀 · 2d-3 계정 정리 · 2e-2 약관 · 2f-1 IP 접근 제어 · 2f-2a 인증 경로 · 2f-2b 첫 발행 준비 · 0.4.1 첫 발행) |
-| `docs/`                 | —                       | 검토·Phase 0 대조 보고. **설계 근거는 코드 주석과 이 폴더에 있다**                                                                                                                                      |
+| 경로                    | 패키지                  | 성격                                                                                                                                                                                                                       |
+| ----------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/admin-shared` | `@ssworks/admin-shared` | 프레임워크 무의존. 브라우저·NestJS 양쪽이 import 한다                                                                                                                                                                      |
+| `packages/admin-ui`     | `@ssworks/admin-ui`     | Vue 3 + Vuetify 4 컴포넌트·composable. vue·vuetify 는 peer                                                                                                                                                                 |
+| `packages/admin-server` | `@ssworks/admin-server` | NestJS 12 모듈 (Phase 2 완료 — 2a 기반 · 2b 인증 · 2c 세션 · 감사 · 2d 역할 · 사용자 · 2e-1 팀 · 2d-3 계정 정리 · 2e-2 약관 · 2f-1 IP 접근 제어 · 2f-2a 인증 경로 · 2f-2b 첫 발행 준비 · 0.4.1 첫 발행 · 2h 이미지 업로드) |
+| `docs/`                 | —                       | 검토·Phase 0 대조 보고. **설계 근거는 코드 주석과 이 폴더에 있다**                                                                                                                                                         |
 
 ## 명령어
 
@@ -92,7 +92,7 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 - peer `@ssworks/admin-shared` 는 `workspace:>=<하한> <1.0.0` 이다 — admin-shared 의 새 export 를 쓰기 시작하는 PR 은 하한을 그 export 가 실릴 버전으로 올린다(`.changeset/README.md`). DB 접속은 `adminPoolConfig` 하나(앱 · 러너 공용) — `host` 와 `socketPath` 중 하나만, env 는 검증하는 TLS 둘(`DB_SSL=true` · `DB_SSL_CA`)만 연다.
 - 코어 테이블 타입은 `AdminDatabase` 로 export 하고 소비자가 `interface Database extends AdminDatabase` 로 확장한다.
 - 사용자 테이블 컬럼 차이는 `AUTH_REPOSITORY` 교체로 흡수한다. 컬럼 매핑 옵션을 만들지 않는다.
-- 진입점 셋: `.`(전부) · `./runner`(Nest 무의존 — `runner-graph.test.ts` 가 지킨다) · `./migrations/<id>`(코어 장, 쓰는 쪽 스텁이 가리킨다). 장 파일 이름 = 장 ID.
+- 진입점 넷: `.`(전부) · `./runner`(Nest 무의존 — `runner-graph.test.ts` 가 지킨다) · `./migrations/<id>`(코어 장, 쓰는 쪽 스텁이 가리킨다) · `./storage/s3`(S3 저장소 — 선택 peer `@aws-sdk/client-s3`). 장 파일 이름 = 장 ID.
 - 데코레이터가 붙은 시그니처의 인터페이스 · 타입 별칭은 `import type`(TS1272), DI 로 받는 클래스는 일반 import.
 - 장은 `Kysely<unknown>` 을 받는다. 제약 · 인덱스 이름은 DB 에서 snake_case(`CamelCasePlugin`).
 - 테스트 세 층: 단위 · DB 없는 HTTP(프로브 모듈, `src/test-support/`)는 `pnpm check`, 실 MariaDB(`*.db.test.ts`)는 `pnpm db:test:up` 뒤 `pnpm test:db`(CI 필수 검사 `db` 가 `db (11.4)` · `db (12.3)` 매트릭스를 모은다 — 버전을 바꿔도 ruleset 은 그대로 · 12.3 로컬은 `db:test:up:12.3` · 포트 33307).
@@ -107,6 +107,8 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 - 약관 발행은 `lockGuardRow(trx, GUARD_LOCK_LEGAL_PUBLISH)` 가 트랜잭션 첫 문장이고 시행본 읽기(`publishedAt` DESC, `legalDocNo` DESC)는 `FOR UPDATE` 다 — 비잠금 읽기는 스냅샷 격리 ON 에서 INSERT 의 FK 검사를 1020 으로 만든다(2e 스펙 B15 · §14 R5-5). `legalDocuments` 는 append-only — UPDATE · DELETE 경로를 만들지 않는다(`legal-append-only.test.ts`). 해시는 서버만 셈하고 본문은 감사 meta 에 싣지 않는다.
 - IP 쓰기(만들기 · 수정 · 삭제)는 `withSuperAdminSurvival(trx, { lock, write }, { ipAware: true })` 안이다 — 잠금 단계는 대상 규칙 · 가리키는 팀/사용자 행 FOR UPDATE, 자기 잠금은 쓴 뒤 같은 트랜잭션에서 규칙을 다시 읽어 판정한다. `ipAccessRules` 를 잠그는 곳은 IP 쓰기의 대상 행뿐이다(정책 · 셈 · 팀 삭제 셈 · 미리보기는 비잠금). 층 판정은 admin-shared `applicableIpLayer` · `evaluateIpAccess` 하나, 대표 팀은 `MIN(teamNo)`. 잔존 셈의 `ipAware` 는 표시 토큰 `IP_ACCESS_ENABLED` 유무로만 정한다. 클라이언트 IP 는 코어 옵션 `clientIp` 를 `requestMetaOf(req, source)` 로 읽는다.
 - 인증 경로는 users 를 세션보다 먼저 잡는다 — 로그인 확정은 `lockCredential(trx, userNo, 'update')`, 회전 · 유예 발급은 `lockCredential(trx, userNo, 'share')`(`LOCK IN SHARE MODE` — MariaDB 는 `FOR SHARE` 가 1064)가 트랜잭션 첫 문장이다. IP 로 막힌 로그인은 비밀번호를 보지 않고 같은 401 이고, IP 판정은 `AdminAuthService.ipVerdict` 하나다. 카운터 쓰기는 두 곳뿐이다 — `password-check.ts` 의 `updateLoginState` 도우미와 로그인 확정 트랜잭션의 되돌림(리포지토리는 trx 원시만). 경합 테스트의 `whileHeld` 는 `expectWait` 가 필수다.
+- 업로드 한 건은 트랜잭션이 없다 — 스트림 읽기(`readImageBody`) → 미첨부 셈 → `EncodeGate.run(encodeUpload)` → 저장소 `put` → INSERT(실패면 객체 best-effort 삭제). 저장소 예외는 서비스가 503 `ERR_UPLOAD_UNAVAILABLE` 로 바꾼다. 첨부(`attachUploads`)는 본문을 쓰는 트랜잭션 안 · 자기 문서 행 뒤 · `uploads` 가 잠금 순서의 마지막이고, 키 모으기(`collectKeys` — Markdown 렌더)는 트랜잭션 밖이다. `syncUploads` 는 같은 refType · refId 만 통과(엄격). 미디어 라우트는 첨부됨 · 미삭제 행만 내보내고 신원을 읽지 않는다. `./storage/s3` 서브패스만 `@aws-sdk/client-s3` 를 끌어온다(`s3-isolation.test.ts`).
+- 업로드 권한은 `@RequireUploadPurpose()`(전역 가드의 넷째 선언) — 용도를 `query.purpose` 또는 `params.purpose` 하나에서 읽고 **둘 다 오면 403**, 옵션 `uploads.purposes` 로 푼다. `legal` 용도(`LEGAL_UPLOAD_PURPOSE`)는 `AdminLegalModule` 이 있으면 자동.
 
 ## 변경 흐름
 
@@ -147,6 +149,7 @@ pnpm changeset                          # 공개 API 변경 시 반드시
 | Phase 1 후속 PR #3i — ringside 둘째 보고 반영 UI(`useIpAccessRules` `scopes` · 기본 문구 export · `ReauthDialog` `prompt` · 기본 정렬 열 순환 · 세로 폼 간격 README) | 완료                                                | 스펙 `docs/superpowers/specs/2026-10-20-admin-kit-ringside-feedback-2-design.md` · 플랜 `docs/superpowers/plans/2026-10-20-admin-ui-ringside-feedback-2.md`                                                       |
 | Phase 2 후속 PR 2g — 전권 전용 · 서버 문구(카탈로그 `fullAccessOnly` · 역할 쓰기 400 · IP 슬롯 기동 검사 · `useRoleEditor` 칸 · `messages` 덮어쓰기)                 | 완료                                                | 스펙 `docs/superpowers/specs/2026-10-20-admin-kit-ringside-feedback-2-design.md` · 플랜 `docs/superpowers/plans/2026-10-20-admin-kit-full-access-messages.md`                                                     |
 | Phase 1 후속 PR #3j — `MarkdownEditor` WYSIWYG(TipTap 3 + `@tiptap/markdown` · 「원문」 전환 · 충실도 어댑터 열 · emit 디바운스 · CodeMirror peer 제거)              | 완료                                                | 스펙 `docs/superpowers/specs/2026-11-01-admin-ui-wysiwyg-editor-design.md` · 플랜 `docs/superpowers/plans/2026-11-01-admin-ui-wysiwyg-editor.md` · 검증 `docs/verification/2026-11-01-admin-ui-wysiwyg-editor.md` |
+| Phase 2 후속 PR 2h — 이미지 업로드 서버(`AdminUploadsModule` · `AdminMediaModule` · 저장소 fs/S3 · sharp 재인코딩 · 장 0013 · `@RequireUploadPurpose` · 약관 첨부)   | 완료                                                | 스펙 `docs/superpowers/specs/2026-11-01-admin-kit-image-uploads-design.md` · 플랜 `docs/superpowers/plans/2026-11-01-admin-server-uploads.md`                                                                     |
 | Phase 4 — 첫 신규 프로젝트(ringside) 실전 검증 → 1.0                                                                                                                 | **다음**                                            | `docs/00-admin-common-review.md` §4 · HANDOFF "다음 플랜"                                                                                                                                                         |
 
 `docs/01-phase0.md` §8 표를 단계가 끝날 때마다 갱신한다.

@@ -15,7 +15,7 @@ import { uploadLimit, uploadNotFound } from './errors.js'
 //    Transaction 이라 트랜잭션 밖에서는 부를 수 없다(쓰는 쪽 Transaction<Database> 도 그대로 들어간다).
 
 export interface AttachUploadsInput {
-  /** 저장하려는 본문(Markdown) — 키는 collectUploadKeys 로 모은다 */
+  /** 저장하려는 본문(Markdown) — 키는 collectUploadKeys 로 모은다(keys 가 없을 때) */
   markdown: string
   /**
    * 미리 모은 키 — 주면 markdown 을 렌더하지 않는다(트랜잭션 밖에서 collectKeys 로 모아 넘긴다).

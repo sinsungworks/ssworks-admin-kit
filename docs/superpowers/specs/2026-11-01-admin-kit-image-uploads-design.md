@@ -360,6 +360,28 @@ docs/superpowers/plans/YYYY-MM-DD-admin-server-uploads.md · YYYY-MM-DD-admin-ui
 6. **happy-dom 의 `URL.createObjectURL`**: 없으면 스텁 — 테스트 하니스에 넣는다.
 7. **TipTap `handleDrop` 과 기본 그림 드롭**: ProseMirror 는 파일 드롭을 기본으로 처리하지 않지만 브라우저가 그림을 열지 않도록 `preventDefault` 가 필요 — 실브라우저에서 확인.
 
-## 13. 구현 중 정정
+## 13. 구현 중 정정 (PR 2h — 2026-11-02)
 
-구현 세션이 채운다(#3j §11 과 같은 방식 — 스펙과 다르게 한 것 · 그 이유).
+스펙과 다르게 한 것 · 스펙이 정하지 않아 구현이 정한 것과 그 이유. PR #3k 는 여기부터 읽는다.
+
+- **U4 · §4-2 DELETE 경로**: `DELETE /uploads/:purpose/:yyyy/:mm/:file` — 키의 네 조각. Express 5(path-to-regexp v8)는 `:key(*)` 같은 정규식 파라미터가 없다.
+- **U5 CORP**: 중계의 `Cross-Origin-Resource-Policy` 는 `same-site`(ringside 는 `same-origin`) — API 와 웹을 서브도메인으로 나눠 배치해도(`api.example.com` → `www.example.com`) 그림이 보이게. 다른 사이트의 핫링크는 그대로 막는다.
+- **U14 중계 경로**: 컨트롤러 경로는 `media` 고정(데코레이터는 정적)이다 — `mediaPath` 는 `'<앱 전역 접두사>/media'` 이고 `/media` 로 끝나지 않으면 기동에서 멈춘다.
+- **§6 413 문구**: `ERR_UPLOAD_TOO_LARGE` 문구에 숫자를 넣지 않는다 — 상한은 정책이라 `details.maxBytes` 로 싣고 화면이 붙인다.
+- **§6 · §9-1 503 문구**: `ERR_UPLOAD_UNAVAILABLE` 의 문구는 서버가 보내지 않는다 — 5xx 는 고정 문구로 가린다(코어 설계, 코드는 남는다). admin-ui 가 코드로 문구를 고른다(PR #3k).
+- **U6 용도 읽기**: 가드는 용도를 `query.purpose` 또는 `params.purpose` **하나**에서 읽는다 — 둘 다 오면 403(가드와 핸들러가 다른 값을 보는 혼동된 대리인을 막는다 · 리뷰).
+- **U7 권한 키 검사**: 앱 용도의 `permissions` 키를 권한 카탈로그와 대조하지 않는다 — 슬롯은 `permissions` 맵에 이어졌는지만 본다(그것으로 충분).
+- **U8 · U9 엄격한 sync**: `syncUploads` 는 이미 첨부된 키가 같은 refType **과 refId** 여야 통과한다(`strictRef`). `attachUploads`(약관)는 U8 ② 그대로(같은 refType). 다른 문서의 그림을 적은 저장은 404 — 복사해 쓰려면 다시 올린다. 한 문서의 수정이 다른 문서의 그림을 지우지 못하게.
+- **§4-2 첨부 시그니처**: `attachUploads` 는 `{ attached, keys }` 를 돌려준다(`syncUploads` 는 `detached` 를 더한다). `attach` · `sync` · `attachUploads` · `syncUploads` 의 첫 인자는 `Transaction<AdminDatabase>` — 쓰는 쪽 `Transaction<Database>` 가 그대로 들어가고 트랜잭션 밖 호출은 타입이 막는다.
+- **U10 · §5-2 키 모으기는 트랜잭션 밖**: `AdminUploadsService.collectKeys`(Markdown 렌더 · 본문당 장수 409)를 트랜잭션 밖에서 부르고 안에는 `keys`(`AttachUploadsInput.keys`)를 넘긴다 — 가드를 쥔 채 1,000,000자를 렌더하지 않게(실측 약 0.1~1.2초). 그래서 약관 발행의 `ERR_UPLOAD_LIMIT` 가 기준 판 `REVISION_CONFLICT` 보다 먼저 난다.
+- **U10 `@Optional()`**: Nest 의 `@Optional()` 주입은 모듈이 없으면 null 이 아니라 undefined 다. 모듈을 등록했는데 조용히 첨부를 건너뛰지 않게 `uploads.module.test` 가 약관 서비스에 주입됐음을 단언한다.
+- **§9-2 경합**: 같은 사람의 두 발행이 같은 키를 쓰면 둘 다 성공한다(U8 ② · 가드 행이 직렬화). 새 경합 테스트는 더하지 않았다 — 가드 행과 기존 약관 경합 테스트가 덮는다. 정리 잡의 `markExpiredUploads` 와 발행이 미첨부 키 둘을 반대 순서로 잠그는 교착은 이론상 가능하나 1213 → 409(다시 시도)로 끝난다.
+- **U11 정리 잡**: 한 틱 최대 `SWEEP_MAX_BATCHES`(10)묶음 · `intervalMinutes` 는 35,791 이하(Node 타이머 상한 2^31-1 ms — 넘으면 1 ms 로 떨어진다) · 겹침 방지 플래그 · 타이머는 `onModuleDestroy` 에서도 멈춘다(코어 모듈을 먼저 import 하면 풀보다 먼저). 객체 삭제에 실패한 행이 100개 이상 쌓이면 뒤 행이 밀리는 것은 받아들였다(회차 사이 상태 없음 — 저장소가 돌아오면 따라잡는다).
+- **U2 끊긴 연결**: 본문을 다 받기 전의 스트림 error · 조기 close 는 400 `ERR_COMMON_BAD_REQUEST` + `UPLOAD_MESSAGES.aborted` — 흔들리는 연결이 5xx 로그 소음이 되지 않게.
+- **U3 미등록 용도 방어**: `create` 는 등록되지 않은 용도를 400 검증 오류로 거부한다 — 가드 뒤의 방어(서비스를 직접 부르는 앱 코드용).
+- **S5 재인코딩 문**: `EncodeGate` 는 `useFactory` 로 앱마다 하나다(`useValue` 면 프로세스의 모든 앱이 나눈다) — 프로세스당 앱이 하나면 같다.
+- **S4 색역**: 메타데이터를 싣지 않으므로 광색역(ICC) 이미지는 sRGB 로 변환된 뒤 프로파일이 빠진다 — 색역 손실은 의도다.
+- **§4-1 더한 것**: admin-shared `LEGAL_UPLOAD_PURPOSE = 'legal'`(서버 자동 등록 · admin-ui `?purpose=` 공용) · admin-server `UPLOAD_MESSAGES.aborted`.
+- **§7 sharp 로드**: `.` 진입점이 import 때 `sharp` 를 싣는다 — 필수 peer 라 업로드를 안 쓰는 앱도 설치한다. `./runner` 는 싣지 않는다(`s3-isolation.test.ts`).
+- **중계 모듈 주입**: 중계 컨트롤러의 `AdminUploadsService` 주입은 `@Optional()` — 업로드 모듈 없이 `AdminMediaModule` 만 올리면 Nest DI 오류 대신 `onModuleInit` 이 안내 문구로 기동을 멈춘다.
+- **§9-1 HTTP 계약 층**: 업로드 · 중계의 HTTP 계약은 DB 없는 프로브가 아니라 `*.http.db.test.ts` 다(인증 가드가 DB 를 읽는다). 재인코딩 테스트는 실 sharp 로 돈다.

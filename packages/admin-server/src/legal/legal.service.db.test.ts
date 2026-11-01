@@ -270,7 +270,7 @@ describe('첨부(2h 스펙 U10) — 업로드 모듈이 있을 때', () => {
     expect(await withUploads.current(kind)).toEqual({ item: null })
   })
 
-  it('🔴 본문당 장수 초과 409 ERR_UPLOAD_LIMIT — 키 모으기(트랜잭션 밖)에서 멈추고 판도 들어가지 않는다', async () => {
+  it('🔴 본문당 장수 초과 409 ERR_UPLOAD_LIMIT — 키 모으기가 트랜잭션 밖이라 낡은 기준 판(REVISION 409)보다 먼저 멈추고 판도 들어가지 않는다', async () => {
     const limited = new AdminLegalService(
       t.db,
       new AdminUploadsService(
@@ -288,7 +288,8 @@ describe('첨부(2h 스펙 U10) — 업로드 모듈이 있을 때', () => {
     const kind = 'svc_attach_limit'
     const error = await failure(
       limited.publish(
-        { kind, body: `![](${one.body.url})\n\n![](${two.body.url})`, baseLegalDocNo: null },
+        // 기준 판 999 는 시행본이 아니다(미발행) — 트랜잭션 안의 기준 판 검사까지 갔다면 REVISION_CONFLICT 였다
+        { kind, body: `![](${one.body.url})\n\n![](${two.body.url})`, baseLegalDocNo: 999n },
         actor.userNo,
       ),
     )
