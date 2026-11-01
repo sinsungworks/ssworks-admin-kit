@@ -26,3 +26,6 @@ NUL
 
 # Coverage
 coverage/
+
+# superpowers 워크트리(프로젝트 안 · 숨김)
+.worktrees/
