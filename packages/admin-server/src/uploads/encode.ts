@@ -9,6 +9,7 @@ import {
 
 // 정본: ssworks-ringside apps/api/src/uploads/encode.ts(encodeUpload · EncodeGate · sniffFormat)
 // 바꾼 점: 정책 타입이 admin-shared UploadPolicy, 오류 팩토리가 uploads/errors.ts. 그 밖은 그대로(스펙 S4 · S5).
+// 🔴 메타데이터를 싣지 않으므로 ICC 가 있는 광색역 이미지는 sRGB 로 변환된 뒤 프로파일이 빠진다(색역 손실 — 스펙 S4 의 "메타데이터 제거" 의도) · 동시성 문과 maxInputPixels 는 함께 잡는다(최대 메모리 ≈ 동시 수 × 픽셀 × 4바이트).
 // 🔴 트랜잭션 밖에서 부른다(스트림 읽기 → 재인코딩 → PUT → 짧은 INSERT). 원본 바이트 상한은 readImageBody 가 먼저 본다.
 
 export type UploadInputFormat = 'jpeg' | 'png' | 'webp' | 'gif'
@@ -88,7 +89,11 @@ export async function encodeUpload(input: Buffer, policy: UploadPolicy): Promise
     })
   if (data.length > policy.maxBytes) throw uploadTooLarge(policy.maxBytes)
 
-  const out = await sharp(data, { animated }).metadata()
+  const out = await sharp(data, { animated })
+    .metadata()
+    .catch(() => {
+      throw uploadInvalidImage('unreadable')
+    })
   return {
     data,
     width: out.width ?? 0,

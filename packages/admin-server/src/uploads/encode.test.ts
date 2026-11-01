@@ -66,6 +66,25 @@ describe('encodeUpload(스펙 S4)', () => {
     expect((await sharp(out.data, { animated: true }).metadata()).pages).toBe(2)
   })
 
+  it('WebP 입력도 지난다 — inputFormat webp · 다시 WebP', async () => {
+    const out = await encodeUpload(await webpImage(6, 4), policy)
+    expect(out).toMatchObject({ width: 6, height: 4, isAnimated: false, inputFormat: 'webp' })
+    expect(sniffFormat(out.data)).toBe('webp')
+  })
+
+  it('🔴 400 unreadable — 매직 바이트와 실제 형식이 다르면(PNG 서명 뒤에 JPEG 본문)', async () => {
+    const jpeg = await jpegImage(8, 8)
+    const forged = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      jpeg.subarray(8),
+    ])
+    await expectCode(
+      encodeUpload(forged, policy),
+      CommonErrorCodes.ERR_UPLOAD_INVALID_IMAGE,
+      'unreadable',
+    )
+  })
+
   it('415 — 형식 밖(SVG · BMP · 빈 본문)', async () => {
     for (const input of [SVG, BMP_HEADER, Buffer.alloc(0)]) {
       await expectCode(encodeUpload(input, policy), CommonErrorCodes.ERR_UPLOAD_UNSUPPORTED_TYPE)
@@ -119,13 +138,17 @@ describe('EncodeGate(스펙 S5)', () => {
     const c = gate.run(async () => {
       thirdRan = true
     })
-    await Promise.resolve()
-    expect(thirdRan).toBe(false)
-    first.resolve()
-    await a
-    await c
-    expect(thirdRan).toBe(true)
-    second.resolve()
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(thirdRan).toBe(false)
+      first.resolve()
+      await a
+      await c
+      expect(thirdRan).toBe(true)
+    } finally {
+      first.resolve()
+      second.resolve()
+    }
     await b
   })
 
@@ -133,10 +156,16 @@ describe('EncodeGate(스펙 S5)', () => {
     const gate = new EncodeGate(1, 20, 1)
     const hold = deferred()
     const running = gate.run(() => hold.promise)
-    const waiting = gate.run(async () => 'late')
-    const overflow = gate.run(async () => 'overflow')
-    await expectCode(overflow, CommonErrorCodes.ERR_UPLOAD_UNAVAILABLE)
-    await expectCode(waiting, CommonErrorCodes.ERR_UPLOAD_UNAVAILABLE)
+    const waiting = expectCode(
+      gate.run(async () => 'late'),
+      CommonErrorCodes.ERR_UPLOAD_UNAVAILABLE,
+    )
+    const overflow = expectCode(
+      gate.run(async () => 'overflow'),
+      CommonErrorCodes.ERR_UPLOAD_UNAVAILABLE,
+    )
+    await overflow
+    await waiting
     hold.resolve()
     await running
     expect(await gate.run(async () => 'next')).toBe('next')
