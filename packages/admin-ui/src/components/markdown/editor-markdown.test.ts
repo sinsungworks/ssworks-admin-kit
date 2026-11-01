@@ -603,10 +603,16 @@ describe('Image 입력 규칙 — 켜 둔다(결정 ②): `![alt](src)` 를 치�
     })
     expect(images).toBe(1)
     const written = editor.getMarkdown()
-    // 🔴 기본 nodeInputRule 은 친 `)` 를 그림 뒤 새 문단에 남겼다(`앞 \n\n![x](…)\n\n)` — 실브라우저도 같았다). EditorImage 가 고친다
-    expect(written).toBe(`앞 \n\n![x](${IMG})`)
+    // 🔴 기본 nodeInputRule 은 친 `)` 를 그림 뒤 새 문단에 남겼다(`앞 \n\n![x](…)\n\n)` — 실브라우저도 같았다). EditorImage 가 고친다.
+    //    그림이 문서 끝이라 캐럿을 둘 빈 문단이 뒤에 생긴다(문서 끝 빈 문단은 `""` + 구분자 — A7)
+    expect(written).toBe(`앞 \n\n![x](${IMG})\n\n`)
     expect(renderMarkdown(written)).toContain(`<img src="${IMG}" alt="x">`)
     expect(md.roundTrip(written)).toBe(written)
+    // 🔴 캐럿이 그림 뒤 글자 자리다 — NodeSelection 으로 남으면 다음 타자가 그림을 지운다
+    expect(editor.state.selection.constructor.name).not.toBe('NodeSelection')
+    editor.commands.insertContent('y')
+    editor.state.doc.check()
+    expect(editor.getMarkdown()).toBe(`앞 \n\n![x](${IMG})\n\ny`)
     editor.destroy()
   })
 })

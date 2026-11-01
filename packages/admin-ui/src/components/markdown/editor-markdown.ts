@@ -7,6 +7,7 @@ import { ListItem } from '@tiptap/extension-list'
 import Paragraph from '@tiptap/extension-paragraph'
 import Text from '@tiptap/extension-text'
 import { Markdown, type MarkdownExtensionOptions } from '@tiptap/markdown'
+import { Selection, TextSelection } from '@tiptap/pm/state'
 import StarterKit, { type StarterKitOptions } from '@tiptap/starter-kit'
 import { Marked, Tokenizer, type Tokens } from 'marked'
 import { splitImagesOutOfTextblocks } from './editor-markdown-normalize.js'
@@ -114,7 +115,9 @@ const IMAGE_INPUT = /(?:^|\s)(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/
 /**
  * 그림(A4) — 기본 `Image` 에 입력 규칙만 바꿔 끼운다. 기본 `nodeInputRule` 은 블록 노드를 문단 가운데 넣을 때 친 마지막 글자 `)` 를
  * 그림 뒤 새 문단(`<p>)</p>`)에 남긴다(TipTap 3.32.0 — happy-dom · 실브라우저 Chrome 둘 다, 2026-11-01). 여기서는 친 글자를 넣지 않고
- * `![…](…)` 글자 자리에 그림을 넣는다(`insertContentAt` 이 문단을 가른다). 거르기는 없다(결정 ②) — 거르기는 앱 몫
+ * `![…](…)` 글자 자리에 그림을 넣는다(`insertContentAt` 이 문단을 가른다). 거르기는 없다(결정 ②) — 거르기는 앱 몫.
+ * 🔴 넣은 뒤 캐럿을 그림 **뒤 글자 자리**로 옮긴다 — `insertContentAt` 은 그림을 NodeSelection 으로 남겨 다음 타자가 그림을 지운다
+ *    (ringside C1 과 같은 함정). 뒤에 텍스트 블록이 없으면(그림이 문서 끝) 빈 문단을 만들어 거기에 둔다
  */
 export const EditorImage = Image.extend({
   addInputRules() {
@@ -130,6 +133,19 @@ export const EditorImage = Image.extend({
             .insertContentAt(from, {
               type: this.name,
               attrs: { src, alt: alt ?? '', title: title ?? null },
+            })
+            .command(({ tr }) => {
+              const after = tr.selection.to
+              const next = Selection.findFrom(tr.doc.resolve(after), 1, true)
+              if (next) {
+                tr.setSelection(next)
+                return true
+              }
+              const paragraph = tr.doc.type.schema.nodes.paragraph
+              if (paragraph === undefined) return true
+              tr.insert(after, paragraph.create())
+              tr.setSelection(TextSelection.create(tr.doc, after + 1))
+              return true
             })
             .run()
         },
