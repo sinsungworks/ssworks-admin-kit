@@ -3,6 +3,7 @@ import { CommonErrorCodes } from '@ssworks/admin-shared'
 import type { Request } from 'express'
 import { describe, expect, it } from 'vitest'
 import { failure } from '../test-support/errors.js'
+import { UPLOAD_MESSAGES } from './errors.js'
 import { isUploadContentType, readImageBody } from './read-body.js'
 
 /** 요청 흉내 — 본문 조각과 머리글 */
@@ -94,7 +95,7 @@ describe('readImageBody(스펙 U2)', () => {
     setTimeout(() => stream.destroy(), 5)
     const error = await failure(pending)
     expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_BAD_REQUEST)
-    expect(error.message).toContain('연결이 끊겼습니다')
+    expect(error.message).toBe(UPLOAD_MESSAGES.aborted)
     expect(error.details).toEqual({ reason: 'closed' })
   })
 
@@ -109,6 +110,7 @@ describe('readImageBody(스펙 U2)', () => {
     }) as unknown as Request
     const error = await failure(readImageBody(request, 100))
     expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_BAD_REQUEST)
+    expect(error.message).toBe(UPLOAD_MESSAGES.aborted)
     expect(error.details).toEqual({ reason: 'socket hang up' })
   })
 })

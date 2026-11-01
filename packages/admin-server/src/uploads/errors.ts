@@ -11,6 +11,7 @@ export const UPLOAD_MESSAGES = Object.freeze({
   limit: '이미지 수가 한도를 넘었습니다.',
   notFound: '이미지를 찾을 수 없습니다.',
   unavailable: '이미지 저장소를 사용할 수 없습니다. 잠시 후 다시 시도하세요.',
+  aborted: '업로드 본문을 다 받기 전에 연결이 끊겼습니다.',
 })
 
 export type UploadInvalidReason = 'unreadable' | 'too_many_pixels' | 'too_many_frames'

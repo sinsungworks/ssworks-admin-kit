@@ -1,6 +1,6 @@
 import { BusinessError, CommonErrorCodes, UPLOAD_CONTENT_TYPES } from '@ssworks/admin-shared'
 import type { Request } from 'express'
-import { uploadTooLarge, uploadUnsupportedType } from './errors.js'
+import { UPLOAD_MESSAGES, uploadTooLarge, uploadUnsupportedType } from './errors.js'
 
 // 정본: ssworks-ringside apps/api/src/uploads/upload-body.ts(express.raw 미들웨어 — 이미지 네 형식 · 하드 상한 · inflate:false)
 // 바꾼 점: 미들웨어가 아니라 컨트롤러가 부르는 함수다(스펙 U2) — RouterModule 접두사와 무관하고, JSON 파서는 image/* 를 건드리지
@@ -11,11 +11,9 @@ import { uploadTooLarge, uploadUnsupportedType } from './errors.js'
 
 /** 400 — 본문을 다 받기 전에 끊김. reason 은 스트림 오류 문구 또는 'closed' */
 function bodyAborted(reason: string): BusinessError {
-  return new BusinessError(
-    CommonErrorCodes.ERR_COMMON_BAD_REQUEST,
-    '업로드 본문을 다 받기 전에 연결이 끊겼습니다.',
-    { reason },
-  )
+  return new BusinessError(CommonErrorCodes.ERR_COMMON_BAD_REQUEST, UPLOAD_MESSAGES.aborted, {
+    reason,
+  })
 }
 
 const UPLOAD_TYPES: ReadonlySet<string> = new Set(UPLOAD_CONTENT_TYPES)

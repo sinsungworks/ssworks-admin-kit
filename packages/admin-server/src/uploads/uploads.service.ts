@@ -24,7 +24,13 @@ import { uploadLimit, uploadNotFound, uploadUnavailable } from './errors.js'
 import { newUploadKey } from './keys.js'
 import type { ResolvedUploadsConfig } from './options.js'
 import { readImageBody } from './read-body.js'
-import { markExpiredUploads, purgeDeletedUploads, type SweepResult } from './sweep.js'
+import {
+  SWEEP_BATCH,
+  SWEEP_MAX_BATCHES,
+  markExpiredUploads,
+  purgeDeletedUploads,
+  type SweepResult,
+} from './sweep.js'
 
 // 정본: ssworks-ringside apps/api/src/uploads/uploads.service.ts(create — 미첨부 셈 · 재인코딩 문 · PUT · INSERT · 실패 정리)
 // 바꾼 점(스펙 U3 · U4 · U12): 회원 → 관리자, 정책 · 저장소가 코어 옵션(ResolvedUploadsConfig), release 대신 remove(키 하나) +
@@ -172,20 +178,29 @@ export class AdminUploadsService {
     return this.storageCall('get', () => this.config.storage.get(key))
   }
 
-  /** 정리 잡(스펙 U11) — 미첨부 보관 초과 지움 표시 → 지움 표시 행의 객체 · 행 삭제(묶음). 멱등 */
+  /**
+   * 정리 잡(스펙 U11) — 미첨부 보관 초과 지움 표시 → 지움 표시 행의 객체 · 행 삭제(묶음). 멱등.
+   * 묶음을 가득 지웠으면(더 있을 수 있다) 다음 묶음을 잇는다 — 한 회차 SWEEP_MAX_BATCHES 까지. 실패가 섞인 묶음에서 멈춘다 —
+   * 다음 묶음도 실패한 행부터 다시 잡으니 같은 틱에 장애 난 저장소를 거듭 두드리지 않는다(다음 회차가 잇는다).
+   */
   async sweep(now: Date = new Date()): Promise<SweepResult> {
     const marked = await runQuery(() =>
       markExpiredUploads(this.db, this.config.policy.pendingTtlHours, now),
     )
-    const purged = await runQuery(() =>
-      purgeDeletedUploads(this.db, this.config.storage, (key, reason) =>
-        this.logger.warn(`업로드 객체 삭제 실패(${key}) — ${messageOf(reason)}`),
-      ),
-    )
-    const result = { marked, ...purged }
-    if (marked > 0 || purged.deleted > 0 || purged.failed > 0) {
+    const result: SweepResult = { marked, deleted: 0, failed: 0 }
+    for (let batch = 0; batch < SWEEP_MAX_BATCHES; batch += 1) {
+      const purged = await runQuery(() =>
+        purgeDeletedUploads(this.db, this.config.storage, (key, reason) =>
+          this.logger.warn(`업로드 객체 삭제 실패(${key}) — ${messageOf(reason)}`),
+        ),
+      )
+      result.deleted += purged.deleted
+      result.failed += purged.failed
+      if (purged.deleted < SWEEP_BATCH) break
+    }
+    if (result.marked > 0 || result.deleted > 0 || result.failed > 0) {
       this.logger.log(
-        `업로드 정리 — 지움 표시 ${marked} · 삭제 ${purged.deleted} · 실패 ${purged.failed}`,
+        `업로드 정리 — 지움 표시 ${result.marked} · 삭제 ${result.deleted} · 실패 ${result.failed}`,
       )
     }
     return result

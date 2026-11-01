@@ -84,7 +84,12 @@ export class AdminUploadsModule
     this.timer.unref()
   }
 
-  /** 🔴 코어 모듈의 onModuleDestroy 가 Kysely 풀을 닫는다 — onApplicationShutdown 은 그 뒤라 여기서 먼저 멈춘다 */
+  /**
+   * 🔴 코어 모듈의 onModuleDestroy 가 Kysely 풀을 닫는다 — onApplicationShutdown 은 그 뒤라 여기서 멈춘다.
+   * 앱이 README 순서대로 `AdminServerModule.forRoot(...)` 를 이 모듈보다 먼저 import 하면 타이머가 풀보다 먼저 멈춘다
+   * (둘 다 전역이라 거리가 같고 import 순서가 훅 순서를 정한다 — Nest 12 실측, 거꾸로 import 하면 풀이 먼저 닫힌다).
+   * 순서가 다르면 `db.destroy()` 도중 틱이 돌 수 있다 — 그 sweep 의 실패는 틱의 catch 가 잡아 경고 한 줄로 남는다(멱등이라 다음 기동이 잇는다).
+   */
   onModuleDestroy(): void {
     this.stopSweep()
   }

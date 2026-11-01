@@ -1,6 +1,6 @@
-import type { ModuleMetadata } from '@nestjs/common'
+import { Logger, type ModuleMetadata } from '@nestjs/common'
 import request from 'supertest'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AdminServerModule } from '../admin-server.module.js'
 import { AdminAuditModule } from '../audit/audit.module.js'
 import { AdminAuthModule } from '../auth/admin-auth.module.js'
@@ -9,7 +9,9 @@ import type { AdminServerOptions } from '../options.js'
 import { TEST_JWT_SECRET } from '../test-support/auth.js'
 import { createHttpApp } from '../test-support/http.js'
 import { MemoryObjectStorage } from '../test-support/memory-storage.js'
+import type { SweepResult } from './sweep.js'
 import { AdminUploadsModule } from './uploads.module.js'
+import { AdminUploadsService } from './uploads.service.js'
 
 const unreachable = { host: '127.0.0.1', port: 1, user: 'u', password: 'p', database: 'd' }
 const PERMISSIONS = {
@@ -22,6 +24,8 @@ const apps: { close(): Promise<void> }[] = []
 
 afterEach(async () => {
   while (apps.length > 0) await apps.pop()?.close()
+  vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
 async function boot(imports: ModuleMetadata['imports'], options: Partial<AdminServerOptions> = {}) {
@@ -108,5 +112,64 @@ describe('AdminUploadsModule 배선(스펙 U7 · §4-2)', () => {
     await expect(
       boot([AdminAuthModule, AdminAuditModule, AdminUploadsModule]),
     ).resolves.toBeDefined()
+  })
+})
+
+describe('AdminUploadsModule 정리 주기(스펙 U11)', () => {
+  const EMPTY_SWEEP: SweepResult = { marked: 0, deleted: 0, failed: 0 }
+
+  it('정리 주기 — sweep: false 면 타이머가 없고, 켜면 onApplicationBootstrap 에서 걸리고 close 에서 풀린다', async () => {
+    const off = await boot([AdminAuthModule, AdminUploadsModule])
+    expect((off.get(AdminUploadsModule) as unknown as { timer: unknown }).timer).toBeNull()
+    const on = await boot([AdminAuthModule, AdminUploadsModule], {
+      uploads: { storage, sweep: { intervalMinutes: 60 } },
+    })
+    const module = on.get(AdminUploadsModule) as unknown as { timer: unknown }
+    expect(module.timer).not.toBeNull()
+    await on.close()
+    apps.splice(apps.indexOf(on), 1)
+    expect(module.timer).toBeNull()
+  })
+
+  it('🔴 정리 틱이 겹치면 건너뛴다(running) — sweep 이 끝나기 전 두 번째 틱은 sweep 을 다시 부르지 않는다', async () => {
+    // 가짜는 setInterval · clearInterval 만 — 부팅 · 풀의 setTimeout · 마이크로태스크는 그대로 돈다
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const app = await boot([AdminAuthModule, AdminUploadsModule], {
+      uploads: { storage, sweep: { intervalMinutes: 1 } },
+    })
+    const module = app.get(AdminUploadsModule) as unknown as { running: boolean }
+    const settles: ((error?: Error) => void)[] = []
+    const sweep = vi.spyOn(app.get(AdminUploadsService), 'sweep').mockImplementation(
+      () =>
+        new Promise<SweepResult>((resolve, reject) => {
+          settles.push((error) => (error ? reject(error) : resolve(EMPTY_SWEEP)))
+        }),
+    )
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+    /** finally 까지 — setImmediate 는 가짜가 아니라 마이크로태스크를 다 비운 뒤에 온다 */
+    const drain = () => new Promise((resolve) => setImmediate(resolve))
+
+    vi.advanceTimersByTime(60_000)
+    expect(sweep).toHaveBeenCalledTimes(1)
+    expect(module.running).toBe(true)
+    vi.advanceTimersByTime(60_000)
+    vi.advanceTimersByTime(60_000)
+    expect(sweep).toHaveBeenCalledTimes(1)
+
+    settles[0]?.()
+    await drain()
+    expect(module.running).toBe(false)
+    vi.advanceTimersByTime(60_000)
+    expect(sweep).toHaveBeenCalledTimes(2)
+
+    // 실패한 회차도 플래그를 푼다 — 경고 한 줄, 다음 틱은 다시 돈다
+    settles[1]?.(new Error('풀 고갈'))
+    await drain()
+    expect(module.running).toBe(false)
+    expect(warn.mock.calls).toEqual([['업로드 정리 실패 — 풀 고갈']])
+    vi.advanceTimersByTime(60_000)
+    expect(sweep).toHaveBeenCalledTimes(3)
+    settles[2]?.()
+    await drain()
   })
 })
