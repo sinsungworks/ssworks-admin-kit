@@ -58,7 +58,7 @@ describe('createFileSystemStorage(스펙 S2)', () => {
 
   it('🔴 root 밖을 가리키는 키는 세 동작 모두 던진다(경로 탐색)', async () => {
     const storage = createFileSystemStorage({ root })
-    for (const bad of ['../outside.webp', 'legal/../../x.webp', '/etc/passwd']) {
+    for (const bad of ['../outside.webp', 'legal/../../x.webp', '/etc/passwd', '.', 'a/..']) {
       await expect(storage.put(bad, Buffer.from('x'), 'image/webp')).rejects.toThrow('root 밖')
       await expect(storage.get(bad)).rejects.toThrow('root 밖')
       await expect(storage.delete(bad)).rejects.toThrow('root 밖')
