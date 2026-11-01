@@ -106,8 +106,8 @@ function cookieHeader(response: Response): string {
   return (setCookie ?? []).map((cookie) => cookie.split(';')[0]).join('; ')
 }
 
-/** chunked 업로드가 응답을 못 받고 보낼 수 있는 최대 — 여기까지 응답이 없으면 본문을 끝낸다(그러면 테스트가 빨개진다) */
-const CHUNKED_MAX_BYTES = 20_000
+/** chunked 업로드가 응답을 못 받고 보낼 수 있는 최대 — 여기까지 응답이 없으면 본문을 끝낸다(그러면 테스트가 빨개진다). 응답이 오면 보내기를 멈추므로 크게 잡아도 비용이 없다 — 4 워커 DB 부하에서 인증 · 가드가 늦어도 본문이 먼저 끝나지 않게 */
+const CHUNKED_MAX_BYTES = 200_000
 
 interface ChunkedResult {
   status: number
