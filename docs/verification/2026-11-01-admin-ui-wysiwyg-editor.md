@@ -4,8 +4,8 @@
 
 ## 1. 저장소
 
-- 브랜치 `feat/admin-ui-wysiwyg-editor` · 끝 커밋 `(마지막 절에 적는다)`
-- `pnpm check` 초록(lint → typecheck → test → build → check:dts) — admin-ui 1399 테스트(81 파일) · 워크스페이스 2293 테스트(172 파일)
+- 브랜치 `feat/admin-ui-wysiwyg-editor` · 끝 커밋 `20e247f`(최종 리뷰 반영 — 이 기록 커밋 직전)
+- `pnpm check` 초록(lint → typecheck → test → build → check:dts) — 리뷰 반영 뒤 admin-ui 1412 테스트 · 워크스페이스 2306 테스트(172 파일). 리뷰 전 1399 · 2293
 - `pnpm format:check` 통과
 - `changeset status --verbose` — minor: admin-ui → fixed 라 admin-shared · admin-server · admin-ui 모두 0.10.0, major 없음
 - 어댑터를 끄면 빨개지는 건수(왕복 픽스처 189건 중): ⑥ 줄머리 이스케이프 28 · ⑨ 문단 관용 읽기 5 · ⑩ 읽기 정규화 22(`editor-markdown.test.ts` 머리)
@@ -45,6 +45,9 @@
 | 실제 키: 같은 것(`EditorImage` 뒤, 재빌드 · 재설치)                     | 그림 노드 · 꼬리 없음 · 미리보기 img                     | 값 `… 정한다. \n\n![x](…)\n\n- 하나…` · img 1 · 꼬리 문단 없음 · 미리보기 img · emits 1 — 캐럿은 NodeSelection 이라 캐럿 이동을 더함(§5)                    |
 | 실제 키: ` ![x](…)뒤글`(캐럿 이동 뒤, 재빌드 · 재설치 — 4402b92)       | 그림 뒤 글자 자리에서 타자가 이어진다 · 그림 안 지워짐    | img 1 · NodeSelection 아님 · `뒤글` 이 다음 텍스트 블록(첫 목록 항목 「뒤글하나」)에 들어감 · 값 `…정한다. \n\n![x](…)\n\n- 뒤글하나…` · 미리보기 img |
 | 콘솔                                                                    | 오류 없음                                                | 오류 · 예외 없음(네 번 확인)                                                                                                                               |
+| (리뷰 반영 뒤 20e247f 재빌드 · 재설치) 첫 변경 즉시 emit                | 첫 글자 뒤 60ms 안에 emits +1 · 둘째는 대기 · 멈추면 +1   | `A` 뒤 60ms emits 1(값 `…A`) · `B` 뒤 60ms 그대로 1 · 300ms 뒤 2(값 `…AB`)                                                                                 |
+| (같은 판) 접근성 속성                                                   | 모드 토글 group + pressed · 토글형 true/false · 동작형 없음 | `[role=group][aria-label=편집 방식]` · 서식 true / 원문 false · 굵게 'false' → 누르면 'true' · 구분선 속성 없음                                           |
+| (같은 판) 콘솔                                                          | 오류 없음                                                | 오류 · 예외 없음                                                                                                                                           |
 
 ## 5. 최종 리뷰(opus · `superpowers:code-reviewer`, 766f368..82fc1e1)
 
