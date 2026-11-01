@@ -43,10 +43,11 @@
 | 실제 키: `A` Shift+Enter `B` Enter `C`                                  | `A  \nB\n\nC`                                            | `새 본문A  \nB\n\nC ` · 미리보기 `<br>`                                                                                                                    |
 | 실제 키: ` ![x](https://cdn.example.com/a.png)`(기본 Image 입력 규칙)   | 그림 노드                                                | 그림 노드 + **`<p>)</p>` 꼬리**(TipTap nodeInputRule) → `EditorImage` 로 고침                                                                              |
 | 실제 키: 같은 것(`EditorImage` 뒤, 재빌드 · 재설치)                     | 그림 노드 · 꼬리 없음 · 미리보기 img                     | 값 `… 정한다. \n\n![x](…)\n\n- 하나…` · img 1 · 꼬리 문단 없음 · 미리보기 img · emits 1 — 캐럿은 NodeSelection 이라 캐럿 이동을 더함(§5)                    |
-| 콘솔                                                                    | 오류 없음                                                | 오류 · 예외 없음(세 번 확인)                                                                                                                               |
+| 실제 키: ` ![x](…)뒤글`(캐럿 이동 뒤, 재빌드 · 재설치 — 4402b92)       | 그림 뒤 글자 자리에서 타자가 이어진다 · 그림 안 지워짐    | img 1 · NodeSelection 아님 · `뒤글` 이 다음 텍스트 블록(첫 목록 항목 「뒤글하나」)에 들어감 · 값 `…정한다. \n\n![x](…)\n\n- 뒤글하나…` · 미리보기 img |
+| 콘솔                                                                    | 오류 없음                                                | 오류 · 예외 없음(네 번 확인)                                                                                                                               |
 
 ## 5. 남은 것
 
-- `EditorImage` 의 캐럿 이동(그림 뒤 글자 자리 · 문서 끝이면 빈 문단)은 단위 테스트로 고정했고 브라우저 재확인은 마지막 절에 적는다.
+- 그림 입력 규칙 뒤 캐럿은 그림 뒤 **첫 글자 자리**(다음 텍스트 블록의 첫머리 — ringside 넣기 도우미와 같은 선택)다. 그림 바로 뒤에 새 문단을 원하면 Enter 한 번(사람 확인에서 어색하면 빈 문단을 늘 만드는 쪽으로 바꾼다 — 가운데 빈 문단은 `&nbsp;` 로 렌더되는 대가가 있다).
 - 한글 IME(데스크톱 Chrome · Android Chrome · iOS Safari) · 붙여넣기(스크린숏 · Word · 한글 문서) · 도구 막대 클릭 뒤 포커스 · 되돌리기 범위 — 사람 확인(HANDOFF 「PR #3j 가 넘긴 것」).
 - 스모크 앱(`$LOCALAPPDATA/Temp/aksj`)은 남겨 두었다 — 사람 확인에 쓰고 지운다. `pnpm install` 이 `file:` tarball 을 lockfile 의 integrity 로 재사용하므로 tarball 을 다시 만들면 `pnpm-lock.yaml` 을 지우고 설치한다.
