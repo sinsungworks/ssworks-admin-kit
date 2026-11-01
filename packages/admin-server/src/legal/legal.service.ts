@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
+import { CoreAuditTargets } from '@ssworks/admin-shared'
 import type {
   AdminLegalDocument,
   AdminLegalHistoryItem,
@@ -10,6 +11,7 @@ import { GUARD_LOCK_LEGAL_PUBLISH, lockGuardRow } from '../database/guard-locks.
 import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { KYSELY } from '../tokens.js'
+import { AdminUploadsService } from '../uploads/uploads.service.js'
 import { legalContentHash } from './content-hash.js'
 import { legalNotFound, legalRevisionConflict, legalSameContent } from './errors.js'
 
@@ -20,6 +22,8 @@ import { legalNotFound, legalRevisionConflict, legalSameContent } from './errors
 //  - 🔴 발행은 한 트랜잭션이다 — guardLocks 행 legalPublish 가 첫 문장(⑩ L1), 시행본 잠금 읽기(B15), 기준 판 검사(3e ⑤ V2 —
 //    두 정본에 없었다) → 같은 본문 검사 → INSERT. gise 는 트랜잭션 없이 검사 · 삽입이라 동시 발행 둘이 모두 들어갔다.
 //  - 리포지토리 층을 두지 않는다(팀 · 역할 서비스와 같은 모양) — 테이블 교체 지점이 필요 없다.
+//  - 2h: 업로드 모듈이 있으면 INSERT 뒤 같은 트랜잭션에서 본문 속 우리 그림을 새 판에 붙인다(attach — 스펙 U10). 잠금 순서 가드 행 →
+//    legalDocuments → uploads. 모듈이 없으면(@Optional undefined) 건너뛴다 — 우리 경로가 본문에 있어도 평범한 링크다.
 // 🔴 append-only — 수정 · 삭제 메서드를 만들지 않는다(legal-append-only.test.ts 가 소스 전체를 본다).
 // 🔴 시행본 = 종류별 (publishedAt DESC, legalDocNo DESC) 첫 행. publishedAt 은 초 단위라 같은 초 발행이 실제로 난다 — 두 키 중
 //    하나라도 빠지면 "현재본" 이 요청마다 달라진다(gise). 현재본 · 이력 · 발행의 읽기가 같은 두 키다.
@@ -35,9 +39,16 @@ type HistoryRow = {
 
 type DocumentRow = HistoryRow & { body: string }
 
+/** 발행 결과 + 이번에 붙인 그림 수 — 컨트롤러가 감사 meta 에 싣고 응답에서는 뺀다 */
+export type LegalPublishOutcome = AdminLegalPublishResult & { attachedUploads: number }
+
 @Injectable()
 export class AdminLegalService {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<AdminDatabase>) {}
+  constructor(
+    @Inject(KYSELY) private readonly db: Kysely<AdminDatabase>,
+    // 🔴 @Optional — 업로드 모듈을 쓰지 않는 앱에서도 약관은 뜬다. Nest 는 미해결 provider 를 undefined 로 준다
+    @Optional() private readonly uploads?: AdminUploadsService,
+  ) {}
 
   /** 시행본 — 미발행이면 { item: null }(3e D15) */
   async current(kind: string): Promise<{ item: AdminLegalDocument | null }> {
@@ -78,7 +89,7 @@ export class AdminLegalService {
    * 새 판을 낸다 — 기준 판이 지금 시행본이 아니면 409 REVISION_CONFLICT, 시행본과 본문이 같으면 409 CONFLICT(3e §9 의 순서).
    * 🔴 해시는 서버만 셈한다 — 클라이언트 해시를 믿으면 동의 기록의 스냅샷을 위조할 수 있다.
    */
-  async publish(body: AdminLegalPublish, actorUserNo: bigint): Promise<AdminLegalPublishResult> {
+  async publish(body: AdminLegalPublish, actorUserNo: bigint): Promise<LegalPublishOutcome> {
     // 트랜잭션 밖에서 — 1,000,000자 본문의 sha256 이 가드를 쥔 채 돌지 않게
     const contentHash = legalContentHash(body.body)
     return runWriteTransaction(this.db, async (trx) => {
@@ -112,7 +123,17 @@ export class AdminLegalService {
       if (legalDocNo === undefined) {
         throw new Error('legalDocuments INSERT 가 insertId 를 돌려주지 않았다.')
       }
-      return { legalDocNo, contentHash }
+      // 🔴 INSERT 뒤 · 같은 트랜잭션 — uploads 는 잠금 순서의 마지막(2h 스펙 §5-6). 첨부가 던지면 판도 롤백된다
+      const attached = this.uploads
+        ? await this.uploads.attach(trx, {
+            markdown: body.body,
+            purpose: 'legal',
+            refType: CoreAuditTargets.LEGAL_DOCUMENT,
+            refId: legalDocNo,
+            actorUserNo,
+          })
+        : { attached: 0 }
+      return { legalDocNo, contentHash, attachedUploads: attached.attached }
     })
   }
 

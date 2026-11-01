@@ -4,12 +4,19 @@ import {
   adminLegalCurrentSchema,
   adminLegalDocumentSchema,
   adminLegalHistorySchema,
+  uploadUrl,
 } from '@ssworks/admin-shared'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { transactionOnly } from '../test-support/accounts.js'
 import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
+import { failure } from '../test-support/errors.js'
+import { pngImage } from '../test-support/images.js'
+import { MemoryObjectStorage } from '../test-support/memory-storage.js'
+import { imageRequest, seedUpload, testUploadsConfig } from '../test-support/uploads.js'
+import { EncodeGate } from '../uploads/encode.js'
+import { AdminUploadsService } from '../uploads/uploads.service.js'
 import { legalContentHash } from './content-hash.js'
 import { LEGAL_MESSAGES } from './errors.js'
 import { AdminLegalService } from './legal.service.js'
@@ -204,5 +211,81 @@ describe('발행', () => {
   it('실패는 BusinessError 로 — 드라이버 오류가 아니다', async () => {
     const error = await publishAs('svc_err', '본문', 1n).catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(BusinessError)
+  })
+})
+
+describe('첨부(2h 스펙 U10) — 업로드 모듈이 있을 때', () => {
+  const storage = new MemoryObjectStorage()
+  let uploads: AdminUploadsService
+  let withUploads: AdminLegalService
+
+  beforeAll(() => {
+    uploads = new AdminUploadsService(t.db, testUploadsConfig(storage), new EncodeGate())
+    withUploads = new AdminLegalService(t.db, uploads)
+  })
+
+  it('본문의 우리 그림을 새 판에 붙인다 — refType legalDocument · refId 새 판 번호 · attachedUploads', async () => {
+    const created = await uploads.create(actor.userNo, 'legal', imageRequest(await pngImage()))
+    const kind = 'svc_attach'
+    const result = await withUploads.publish(
+      { kind, body: `본문\n\n![](${created.body.url})`, baseLegalDocNo: null },
+      actor.userNo,
+    )
+    expect(result.attachedUploads).toBe(1)
+    const row = await t.db
+      .selectFrom('uploads')
+      .select(['refType', 'refId'])
+      .where('uploadNo', '=', created.uploadNo)
+      .executeTakeFirstOrThrow()
+    expect(row).toEqual({ refType: 'legalDocument', refId: result.legalDocNo })
+
+    // 새 판이 앞 판 그림을 그대로 쓴다 — 통과 · refId 그대로 · 이번 첨부 0
+    const second = await withUploads.publish(
+      { kind, body: `고친 본문\n\n![](${created.body.url})`, baseLegalDocNo: result.legalDocNo },
+      actor.userNo,
+    )
+    expect(second.attachedUploads).toBe(0)
+    expect(
+      (
+        await t.db
+          .selectFrom('uploads')
+          .select('refId')
+          .where('uploadNo', '=', created.uploadNo)
+          .executeTakeFirstOrThrow()
+      ).refId,
+    ).toBe(result.legalDocNo)
+  })
+
+  it('🔴 남의 미첨부 키가 본문에 있으면 404 — 판도 들어가지 않는다(롤백)', async () => {
+    const other = await seedUser(t.db, { roleNo: role, userId: 'legal-other' })
+    const theirs = await seedUpload(t.db, { uploadedByUserNo: other.userNo })
+    const kind = 'svc_attach_fail'
+    const error = await failure(
+      withUploads.publish(
+        { kind, body: `![](${uploadUrl(theirs.key, '/media')})`, baseLegalDocNo: null },
+        actor.userNo,
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_NOT_FOUND)
+    expect(await withUploads.current(kind)).toEqual({ item: null })
+  })
+
+  it('그림 없는 본문 · 업로드 모듈 없는 서비스는 attachedUploads 0', async () => {
+    expect(
+      (
+        await withUploads.publish(
+          { kind: 'svc_attach_none', body: '글자뿐', baseLegalDocNo: null },
+          actor.userNo,
+        )
+      ).attachedUploads,
+    ).toBe(0)
+    expect(
+      (
+        await service.publish(
+          { kind: 'svc_attach_off', body: '글자뿐', baseLegalDocNo: null },
+          actor.userNo,
+        )
+      ).attachedUploads,
+    ).toBe(0)
   })
 })
