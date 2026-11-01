@@ -127,4 +127,25 @@ describe('GET /media/:purpose/:yyyy/:mm/:file', () => {
     expect((await anonymous().get('/media/legal/2026/11/short.webp')).status).toBe(404)
     expect((await anonymous().get(`/media/${orphanRow.key}?x=1`)).status).toBe(200)
   })
+
+  it('🔴 낡은 ETag 는 200, 미첨부 키는 ETag 가 맞아도 304 가 아니라 404(열거 방어 §9-4)', async () => {
+    const attached = await seedUpload(t.db, {
+      uploadedByUserNo: publisher.userNo,
+      refType: 'legalDocument',
+      refId: 1n,
+    })
+    await storage.put(attached.key, Buffer.from('webp'), 'image/webp')
+    const stale = await binary(
+      anonymous().get(`/media/${attached.key}`).set('If-None-Match', '"0000000000000000"'),
+    )
+    expect(stale.status).toBe(200)
+    const pending = await seedUpload(t.db, { uploadedByUserNo: publisher.userNo })
+    const hidden = await anonymous()
+      .get(`/media/${pending.key}`)
+      .set('If-None-Match', mediaEtag(pending.key))
+    expect(hidden.status).toBe(404)
+    expect(hidden.headers['cache-control']).toBe('no-store')
+    // Express 가 오류 JSON 본문에 붙이는 약한 ETag 는 있을 수 있다 — 중계 ETag 만 아니면 된다
+    expect(hidden.headers.etag).not.toBe(mediaEtag(pending.key))
+  })
 })

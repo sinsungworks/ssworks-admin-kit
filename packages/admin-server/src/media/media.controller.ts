@@ -73,7 +73,12 @@ export class AdminMediaController {
       disposition: 'inline',
     }).setErrorHandler((error) => {
       this.logger.warn(`미디어 스트림 오류(${key}) — ${error.message}`)
-      if (!res.headersSent) res.status(503)
+      if (!res.headersSent) {
+        // 🔴 성공 머리글(public · ETag)이 이미 올라가 있다 — 503 이 공유 캐시에 10분 남지 않게
+        res.setHeader('Cache-Control', 'no-store')
+        res.removeHeader('ETag')
+        res.status(503)
+      }
       res.end()
     })
   }

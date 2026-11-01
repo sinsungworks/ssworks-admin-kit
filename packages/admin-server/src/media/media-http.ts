@@ -9,7 +9,7 @@ export const MEDIA_CONTROLLER_PATH = 'media'
 /** 캐시 수명(초) — 지움 표시가 공유 캐시에서 이 안에 사라진다 */
 export const MEDIA_MAX_AGE_SECONDS = 600
 
-/** ETag — 키의 sha256 앞 16자(따옴표). 키의 내용은 바뀌지 않는다(새 그림은 새 키) */
+/** ETag — 키의 sha256 앞 16자(따옴표). 키의 내용은 바뀌지 않는다(새 그림은 새 키). 키는 지운 뒤 다시 쓰지 않는다(무작위 24바이트 · 정리 잡이 객체까지 지움) */
 export function mediaEtag(key: string): string {
   return `"${createHash('sha256').update(key).digest('hex').slice(0, 16)}"`
 }
