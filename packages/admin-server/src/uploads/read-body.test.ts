@@ -59,11 +59,40 @@ describe('readImageBody(스펙 U2)', () => {
 
     const chunks = [Buffer.alloc(60), Buffer.alloc(60), Buffer.alloc(60)]
     const request = fakeRequest(chunks)
+    const drained = new Promise<void>((resolve) => request.on('end', resolve).on('close', resolve))
     const streamed = await failure(readImageBody(request, 100))
     expect(streamed.code).toBe(CommonErrorCodes.ERR_UPLOAD_TOO_LARGE)
     // 남은 본문은 버린다(소켓을 닫지 않는다) — 스트림이 흐르는 상태로 끝까지 간다
-    await new Promise<void>((resolve) => request.on('end', resolve).on('close', resolve))
+    await drained
     expect(request.destroyed === true || request.readableEnded === true).toBe(true)
+  })
+
+  it('경계 — Content-Length 가 상한과 같거나 본문이 정확히 상한이면 받는다(초과만 413)', async () => {
+    const exact = Buffer.alloc(100)
+    expect(
+      (await readImageBody(fakeRequest([exact], { 'content-length': '100' }), 100)).length,
+    ).toBe(100)
+    expect(
+      (await readImageBody(fakeRequest([Buffer.alloc(50), Buffer.alloc(50)]), 100)).length,
+    ).toBe(100)
+  })
+
+  it('415 — Content-Encoding 이 여럿(gzip, identity)이어도 identity 하나가 아니면 거부', async () => {
+    const error = await failure(
+      readImageBody(fakeRequest([Buffer.from('x')], { 'content-encoding': 'gzip, identity' }), 100),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_UNSUPPORTED_TYPE)
+  })
+
+  it('연결이 끊기면(close · end 없음) 매달리지 않고 던진다', async () => {
+    const stream = new Readable({ read() {} })
+    const request = Object.assign(stream, {
+      headers: { 'content-type': 'image/png' },
+    }) as unknown as Request
+    const pending = readImageBody(request, 100)
+    stream.push(Buffer.from('ab'))
+    setTimeout(() => stream.destroy(), 5)
+    await expect(pending).rejects.toThrow('연결이 끊겼다')
   })
 
   it('스트림 오류는 그대로 던진다', async () => {

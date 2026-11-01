@@ -47,6 +47,7 @@ export function readImageBody(req: Request, maxBytes: number): Promise<Buffer> {
       req.off('data', onData)
       req.off('end', onEnd)
       req.off('error', onError)
+      req.off('close', onClose)
       done()
     }
     const onData = (chunk: Buffer) => {
@@ -54,6 +55,8 @@ export function readImageBody(req: Request, maxBytes: number): Promise<Buffer> {
       if (total > maxBytes) {
         finish(() => {
           // 남은 본문은 버린다 — 응답을 보낼 수 있게 소켓은 그대로
+          // 버리는 동안 중단돼도 'error' 가 처리 안 된 이벤트가 되지 않게 — Node 는 리스너가 있을 때만 error 를 내보낸다(본문은 이제 상관없다)
+          req.on('error', () => {})
           req.resume()
           reject(uploadTooLarge(maxBytes))
         })
@@ -63,8 +66,11 @@ export function readImageBody(req: Request, maxBytes: number): Promise<Buffer> {
     }
     const onEnd = () => finish(() => resolve(Buffer.concat(chunks)))
     const onError = (error: Error) => finish(() => reject(error))
+    const onClose = () =>
+      finish(() => reject(new Error('업로드 본문을 다 받기 전에 연결이 끊겼다')))
     req.on('data', onData)
     req.on('end', onEnd)
     req.on('error', onError)
+    req.on('close', onClose)
   })
 }
