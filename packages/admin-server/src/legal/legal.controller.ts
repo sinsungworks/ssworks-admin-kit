@@ -19,8 +19,8 @@ import { AdminLegalService } from './legal.service.js'
 //   발행 감사 setting.legal.publish(공통 2).
 // 🔴 `current` 를 `:legalDocNo` 보다 먼저 선언한다 — 뒤집히면 'current' 가 번호 경로로 잡혀 ParseBigIntPipe 400 이 난다(gise).
 // 🔴 수정 · 삭제 라우트가 없다 — append-only(공통 11).
-// 🔴 감사 meta 에 본문을 싣지 않는다(공통 12) — 종류 · 기준 판 · 해시 · 길이만. 감사 행은 가방에 붙인 값만 기록하고 요청
-//    본문을 담지 않는다(2c 인터셉터).
+// 🔴 감사 meta 에 본문을 싣지 않는다(공통 12) — 종류 · 기준 판 · 해시 · 길이 · 붙인 그림 수만. 감사 행은 가방에 붙인 값만
+//    기록하고 요청 본문을 담지 않는다(2c 인터셉터). 붙인 그림 수(2h)는 감사 meta 에만 싣고 응답에서는 뺀다(3e §9 계약 그대로).
 
 @Controller('legal-documents')
 export class AdminLegalController {
@@ -55,13 +55,14 @@ export class AdminLegalController {
     @CurrentAdmin() admin: AdminPrincipal,
     @Req() req: Request,
   ) {
-    const result = await this.legal.publish(body, admin.userNo)
+    const { attachedUploads, ...result } = await this.legal.publish(body, admin.userNo)
     attachAuditTarget(req, result.legalDocNo)
     attachAuditMeta(req, {
       kind: body.kind,
       baseLegalDocNo: body.baseLegalDocNo,
       contentHash: result.contentHash,
       length: body.body.length,
+      attachedUploads,
     })
     return result
   }

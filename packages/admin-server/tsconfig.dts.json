@@ -9,6 +9,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "files": ["dist/index.d.ts", "dist/runner.d.ts"],
+  "files": ["dist/index.d.ts", "dist/runner.d.ts", "dist/storage/s3.d.ts"],
   "include": ["dist/database/migrations/*.d.ts"]
 }

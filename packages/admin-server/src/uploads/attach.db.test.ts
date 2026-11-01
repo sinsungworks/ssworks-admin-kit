@@ -1,0 +1,396 @@
+import { CommonErrorCodes, uploadUrl } from '@ssworks/admin-shared'
+import type { Generated, Kysely, Transaction } from 'kysely'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { AdminDatabase, AdminUploadsTable } from '../database/types.js'
+import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
+import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
+import { failure } from '../test-support/errors.js'
+import { seedUpload } from '../test-support/uploads.js'
+import { attachUploads, syncUploads } from './attach.js'
+import type { AdminUploadsService } from './uploads.service.js'
+
+// 첨부 도우미(스펙 U8 · U9) — 트랜잭션 안에서 부른다. 잠금 순서의 마지막.
+
+let t: TestDatabase
+let me: SeededUser
+let other: SeededUser
+const MEDIA = '/media'
+const img = (key: string) => `![](${uploadUrl(key, MEDIA)})`
+
+beforeAll(async () => {
+  t = await createTestDatabase()
+  const role = await seedRole(t.db, { roleName: '첨부', permissions: [] })
+  me = await seedUser(t.db, { roleNo: role, userId: 'attach-me' })
+  other = await seedUser(t.db, { roleNo: role, userId: 'attach-other' })
+})
+
+afterAll(async () => {
+  await t?.drop()
+})
+
+const inTrx = <T>(fn: (trx: Transaction<AdminDatabase>) => Promise<T>) =>
+  t.db.transaction().execute(fn)
+
+async function rowOf(key: string) {
+  return t.db
+    .selectFrom('adminUploads')
+    .select(['refType', 'refId', 'attachedAt', 'deletedAt'])
+    .where('storageKey', '=', key)
+    .executeTakeFirstOrThrow()
+}
+
+describe('attachUploads', () => {
+  it('본인 미첨부 키를 그 문서에 붙인다 — refType · refId · attachedAt, 본문에 없는 키는 그대로', async () => {
+    const a = await seedUpload(t.db, { uploadedByUserNo: me.userNo })
+    const b = await seedUpload(t.db, { uploadedByUserNo: me.userNo })
+    const result = await inTrx((trx) =>
+      attachUploads(
+        trx,
+        {
+          markdown: `${img(a.key)}\n\n${img(a.key)}`,
+          purpose: 'legal',
+          refType: 'legalDocument',
+          refId: 7n,
+          actorUserNo: me.userNo,
+        },
+        { mediaPath: MEDIA },
+      ),
+    )
+    expect(result).toEqual({ attached: 1, keys: [a.key] })
+    expect(await rowOf(a.key)).toMatchObject({ refType: 'legalDocument', refId: 7n })
+    expect((await rowOf(a.key)).attachedAt).toBeInstanceOf(Date)
+    expect(await rowOf(b.key)).toMatchObject({ refType: null, refId: null, attachedAt: null })
+  })
+
+  it('이미 같은 refType 에 붙은 키는 통과하고 refId 는 그대로(약관 새 판이 앞 판 그림을 다시 씀)', async () => {
+    const a = await seedUpload(t.db, {
+      uploadedByUserNo: other.userNo,
+      refType: 'legalDocument',
+      refId: 1n,
+    })
+    const result = await inTrx((trx) =>
+      attachUploads(
+        trx,
+        {
+          markdown: img(a.key),
+          purpose: 'legal',
+          refType: 'legalDocument',
+          refId: 2n,
+          actorUserNo: me.userNo,
+        },
+        { mediaPath: MEDIA },
+      ),
+    )
+    expect(result.attached).toBe(0)
+    expect(await rowOf(a.key)).toMatchObject({ refType: 'legalDocument', refId: 1n })
+  })
+
+  it('그림 없는 본문 · 우리 경로가 아닌 그림은 아무것도 하지 않는다', async () => {
+    expect(
+      await inTrx((trx) =>
+        attachUploads(
+          trx,
+          {
+            markdown: '글자뿐 ![x](https://example.com/a.png)',
+            purpose: 'legal',
+            refType: 'legalDocument',
+            refId: 1n,
+            actorUserNo: me.userNo,
+          },
+          { mediaPath: MEDIA },
+        ),
+      ),
+    ).toEqual({ attached: 0, keys: [] })
+  })
+
+  it('🔴 미리 모은 keys 가 있으면 markdown 을 렌더하지 않고 그 키를 쓴다(약관 발행 — 렌더는 트랜잭션 밖)', async () => {
+    const a = await seedUpload(t.db, { uploadedByUserNo: me.userNo })
+    const result = await inTrx((trx) =>
+      attachUploads(
+        trx,
+        {
+          markdown: '글자뿐',
+          keys: [a.key, a.key],
+          purpose: 'legal',
+          refType: 'legalDocument',
+          refId: 9n,
+          actorUserNo: me.userNo,
+        },
+        { mediaPath: MEDIA },
+      ),
+    )
+    expect(result).toEqual({ attached: 1, keys: [a.key] })
+    expect(await rowOf(a.key)).toMatchObject({ refType: 'legalDocument', refId: 9n })
+  })
+
+  it('🔴 404 — 남의 미첨부 · 지움 표시 · 다른 용도 · 다른 refType 에 첨부됨 · 없는 키. 트랜잭션은 롤백(아무 행도 안 바뀐다)', async () => {
+    const mine = await seedUpload(t.db, { uploadedByUserNo: me.userNo })
+    const cases = [
+      await seedUpload(t.db, { uploadedByUserNo: other.userNo }),
+      await seedUpload(t.db, { uploadedByUserNo: me.userNo, deletedAt: new Date() }),
+      await seedUpload(t.db, { uploadedByUserNo: me.userNo, purpose: 'notice' }),
+      await seedUpload(t.db, { uploadedByUserNo: me.userNo, refType: 'notice', refId: 3n }),
+      { key: 'legal/2026/11/' + 'Z'.repeat(32) + '.webp' },
+    ]
+    for (const bad of cases) {
+      const error = await failure(
+        inTrx((trx) =>
+          attachUploads(
+            trx,
+            {
+              markdown: `${img(mine.key)}\n\n${img(bad.key)}`,
+              purpose: 'legal',
+              refType: 'legalDocument',
+              refId: 9n,
+              actorUserNo: me.userNo,
+            },
+            { mediaPath: MEDIA },
+          ),
+        ),
+      )
+      expect(error.code, bad.key).toBe(CommonErrorCodes.ERR_UPLOAD_NOT_FOUND)
+      expect(await rowOf(mine.key)).toMatchObject({ refType: null })
+    }
+  })
+
+  it('🔴 본문당 장수 초과는 409 ERR_UPLOAD_LIMIT(details.limit) — 잠그기 전에', async () => {
+    const keys = await Promise.all(
+      [1, 2, 3].map(() => seedUpload(t.db, { uploadedByUserNo: me.userNo })),
+    )
+    const error = await failure(
+      inTrx((trx) =>
+        attachUploads(
+          trx,
+          {
+            markdown: keys.map((k) => img(k.key)).join('\n\n'),
+            purpose: 'legal',
+            refType: 'legalDocument',
+            refId: 1n,
+            actorUserNo: me.userNo,
+          },
+          { mediaPath: MEDIA, maxPerBody: 2 },
+        ),
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_LIMIT)
+    expect(error.details).toEqual({ limit: 2 })
+  })
+})
+
+describe('syncUploads(제자리 수정 문서)', () => {
+  it('붙이고, 이 문서에 붙어 있었는데 본문에서 빠진 키는 지움 표시 — 남은 키 · 다른 문서 키는 그대로', async () => {
+    const kept = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 10n,
+    })
+    const dropped = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 10n,
+    })
+    const elsewhere = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 11n,
+    })
+    const fresh = await seedUpload(t.db, { uploadedByUserNo: me.userNo, purpose: 'notice' })
+    const result = await inTrx((trx) =>
+      syncUploads(
+        trx,
+        {
+          markdown: `${img(kept.key)}\n\n${img(fresh.key)}`,
+          purpose: 'notice',
+          refType: 'notice',
+          refId: 10n,
+          actorUserNo: me.userNo,
+        },
+        { mediaPath: MEDIA },
+      ),
+    )
+    expect(result).toEqual({ attached: 1, detached: 1, keys: [kept.key, fresh.key] })
+    expect((await rowOf(dropped.key)).deletedAt).toBeInstanceOf(Date)
+    expect((await rowOf(kept.key)).deletedAt).toBeNull()
+    expect((await rowOf(elsewhere.key)).deletedAt).toBeNull()
+    expect(await rowOf(fresh.key)).toMatchObject({ refType: 'notice', refId: 10n })
+  })
+
+  it('🔴 다른 문서(같은 refType · 다른 refId)에 붙은 키는 404 — 아무 행도 안 바뀐다(엄격 — 리뷰 Important 3)', async () => {
+    const own = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 20n,
+    })
+    const foreign = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 21n,
+    })
+    const error = await failure(
+      inTrx((trx) =>
+        syncUploads(
+          trx,
+          {
+            markdown: img(foreign.key),
+            purpose: 'notice',
+            refType: 'notice',
+            refId: 20n,
+            actorUserNo: me.userNo,
+          },
+          { mediaPath: MEDIA },
+        ),
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_NOT_FOUND)
+    expect(await rowOf(foreign.key)).toMatchObject({
+      refType: 'notice',
+      refId: 21n,
+      deletedAt: null,
+    })
+    expect(await rowOf(own.key)).toMatchObject({ refType: 'notice', refId: 20n, deletedAt: null })
+  })
+
+  it('빈 본문은 그 문서에 붙은 키를 모두 지움 표시 — detached 는 그 수, 다른 문서는 그대로', async () => {
+    const one = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 30n,
+    })
+    const two = await seedUpload(t.db, {
+      uploadedByUserNo: other.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 30n,
+    })
+    const neighbor = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 31n,
+    })
+    const result = await inTrx((trx) =>
+      syncUploads(
+        trx,
+        { markdown: '', purpose: 'notice', refType: 'notice', refId: 30n, actorUserNo: me.userNo },
+        { mediaPath: MEDIA },
+      ),
+    )
+    expect(result).toEqual({ attached: 0, detached: 2, keys: [] })
+    expect((await rowOf(one.key)).deletedAt).toBeInstanceOf(Date)
+    expect((await rowOf(two.key)).deletedAt).toBeInstanceOf(Date)
+    expect((await rowOf(neighbor.key)).deletedAt).toBeNull()
+  })
+
+  it('🔴 같은 refId 라도 다른 refType 에 붙은 키는 404', async () => {
+    const post = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'post',
+      refId: 40n,
+    })
+    const error = await failure(
+      inTrx((trx) =>
+        syncUploads(
+          trx,
+          {
+            markdown: img(post.key),
+            purpose: 'notice',
+            refType: 'notice',
+            refId: 40n,
+            actorUserNo: me.userNo,
+          },
+          { mediaPath: MEDIA },
+        ),
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_NOT_FOUND)
+    expect(await rowOf(post.key)).toMatchObject({ refType: 'post', refId: 40n, deletedAt: null })
+  })
+})
+
+describe('🔴 제자리 편집 문서는 만들기 · 고치기 · 지우기 모두 sync(최종 리뷰)', () => {
+  const sync = (markdown: string, refId: bigint) =>
+    inTrx((trx) =>
+      syncUploads(
+        trx,
+        { markdown, purpose: 'notice', refType: 'notice', refId, actorUserNo: me.userNo },
+        { mediaPath: MEDIA },
+      ),
+    )
+
+  it('만들기 sync(새 refId) — 같은 refType 의 다른 문서에 붙은 키는 404, 아무 행도 안 바뀐다(attach 였다면 통과해 빌려 쓴다)', async () => {
+    const first = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 50n,
+    })
+    const error = await failure(sync(img(first.key), 51n))
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_NOT_FOUND)
+    expect(await rowOf(first.key)).toMatchObject({ refType: 'notice', refId: 50n, deletedAt: null })
+  })
+
+  it('만들기 sync(새 refId) 가 새 미첨부 키를 붙이고 → 지우기 sync(빈 본문)가 떼어 지움 표시한다', async () => {
+    const fresh = await seedUpload(t.db, { uploadedByUserNo: me.userNo, purpose: 'notice' })
+    expect(await sync(img(fresh.key), 60n)).toEqual({ attached: 1, detached: 0, keys: [fresh.key] })
+    expect(await rowOf(fresh.key)).toMatchObject({ refType: 'notice', refId: 60n, deletedAt: null })
+    expect(await sync('', 60n)).toEqual({ attached: 0, detached: 1, keys: [] })
+    expect((await rowOf(fresh.key)).deletedAt).toBeInstanceOf(Date)
+  })
+
+  it('섞으면 사고 — attach 로 만든 둘째 문서가 첫 문서의 그림을 빌리고, 첫 문서의 sync 가 그 그림을 지움 표시한다', async () => {
+    const shared = await seedUpload(t.db, {
+      uploadedByUserNo: me.userNo,
+      purpose: 'notice',
+      refType: 'notice',
+      refId: 70n,
+    })
+    const borrowed = await inTrx((trx) =>
+      attachUploads(
+        trx,
+        {
+          markdown: img(shared.key),
+          purpose: 'notice',
+          refType: 'notice',
+          refId: 71n,
+          actorUserNo: me.userNo,
+        },
+        { mediaPath: MEDIA },
+      ),
+    )
+    expect(borrowed).toEqual({ attached: 0, keys: [shared.key] })
+    expect(await sync('', 70n)).toMatchObject({ detached: 1 })
+    // 둘째 문서(71) 본문에는 아직 그 그림이 있는데 행은 지움 표시 — 중계가 404 를 낸다
+    expect((await rowOf(shared.key)).deletedAt).toBeInstanceOf(Date)
+  })
+})
+
+// 🔴 컴파일 회귀 — 쓰는 쪽 Database(README 모양: 코어 표 넓히기 + 자기 표)의 Transaction 이 그대로 들어가야 한다(리뷰 Important 1).
+//    트랜잭션 밖(Kysely)은 타입이 막는다.
+interface ConsumerDatabase extends AdminDatabase {
+  adminUploads: AdminUploadsTable & { note: string | null }
+  notices: { noticeNo: Generated<bigint>; body: string }
+}
+export function consumerTransactionCompiles(
+  trx: Transaction<ConsumerDatabase>,
+  db: Kysely<ConsumerDatabase>,
+  service: AdminUploadsService,
+) {
+  const input = { markdown: '', purpose: 'notice', refType: 'notice', refId: 1n, actorUserNo: 1n }
+  // @ts-expect-error — 트랜잭션 밖 호출은 타입 오류다(attach · sync 의 첫 인자는 Transaction). input 은 아래에서 통과한다
+  void attachUploads(db, input)
+  // @ts-expect-error — 서비스도 같다
+  void service.sync(db, input)
+  return Promise.all([
+    attachUploads(trx, input),
+    syncUploads(trx, input),
+    service.attach(trx, input),
+    service.sync(trx, input),
+  ])
+}

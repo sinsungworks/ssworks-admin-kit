@@ -3,6 +3,8 @@ import type { ExecutionContext } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
 import { describe, expect, it } from 'vitest'
+import { REQUIRE_UPLOAD_PURPOSE } from '../tokens.js'
+import type { ResolvedUploadsConfig } from '../uploads/options.js'
 import {
   AllowDuringPasswordChange,
   Public,
@@ -15,6 +17,7 @@ import { resolveAuthConfig } from './options.js'
 import { AdminPermissionGuard } from './permission.guard.js'
 import { RequirePermissionSlot } from './permission-slots.js'
 import type { AdminPrincipal } from './principal.js'
+import { RequireUploadPurpose } from './upload-purpose.js'
 
 class Routes {
   @Public()
@@ -68,13 +71,14 @@ function context(
   method: string,
   admin: AdminPrincipal | undefined,
   type = 'http',
+  request: { query?: unknown; params?: unknown } = {},
 ): ExecutionContext {
   const handler = (target as Record<string, unknown>)[method] as () => void
   return {
     getType: () => type,
     getHandler: () => handler,
     getClass: () => (target as { constructor: unknown }).constructor,
-    switchToHttp: () => ({ getRequest: () => ({ admin }) }),
+    switchToHttp: () => ({ getRequest: () => ({ ...request, admin }) }),
   } as unknown as ExecutionContext
 }
 
@@ -301,5 +305,160 @@ describe('AdminPermissionGuard — 권한 슬롯(2c 스펙 ① P1)', () => {
     expect(
       resolveAuthConfig({ jwtSecret: 's'.repeat(32) }, undefined, undefined, undefined).permissions,
     ).toEqual({})
+  })
+})
+
+class UploadRoutes {
+  @RequireUploadPurpose()
+  upload() {}
+
+  @RequireUploadPurpose()
+  @RequirePermissions('x:y')
+  withPermission() {}
+
+  undeclared() {}
+}
+
+@SelfOnly()
+class SelfOnlyUploadRoutes {
+  @RequireUploadPurpose()
+  upload() {}
+}
+
+const uploadRoutes = new UploadRoutes()
+const selfOnlyUploadRoutes = new SelfOnlyUploadRoutes()
+
+describe('@RequireUploadPurpose(2h 스펙 U6)', () => {
+  const uploads = {
+    purposes: new Map([['legal', { slot: 'legal.publish', permissions: [] }]]),
+  } as unknown as ResolvedUploadsConfig
+
+  /** null = 업로드 모듈이 없는 앱(셋째 인자 생략) */
+  function uploadGuard(config: ResolvedUploadsConfig | null = uploads): AdminPermissionGuard {
+    const auth = resolveAuthConfig(
+      { jwtSecret: 's'.repeat(32) },
+      undefined,
+      { 'legal.publish': 'setting.legal:publish' },
+      undefined,
+    )
+    return config === null
+      ? new AdminPermissionGuard(new Reflector(), auth)
+      : new AdminPermissionGuard(new Reflector(), auth, config)
+  }
+
+  function forbiddenBy(run: () => unknown): void {
+    const error = rejection(run)
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+    expect(error.message).toBe(AUTH_MESSAGES.forbidden)
+  }
+
+  it('용도의 권한이 있으면 통과 — query.purpose · params.purpose', () => {
+    expect(new Reflector().get(REQUIRE_UPLOAD_PURPOSE, uploadRoutes.upload)).toBe(true)
+    expect(
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'upload', principal(['setting.legal:publish']), 'http', {
+          query: { purpose: 'legal' },
+        }),
+      ),
+    ).toBe(true)
+    // DELETE /uploads/:purpose/... — params.purpose
+    expect(
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'upload', principal(['setting.legal:publish']), 'http', {
+          params: { purpose: 'legal' },
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('🔴 권한 없음 · 모르는 용도 · 업로드 설정 없음은 403', () => {
+    const cases: [ResolvedUploadsConfig | null, string[], string | undefined][] = [
+      [uploads, ['setting.legal:read'], 'legal'],
+      [uploads, ['*'], 'nope'],
+      [uploads, ['*'], undefined],
+      [null, ['*'], 'legal'],
+    ]
+    for (const [config, granted, purpose] of cases) {
+      const error = rejection(() =>
+        uploadGuard(config).canActivate(
+          context(uploadRoutes, 'upload', principal(granted), 'http', {
+            query: purpose === undefined ? {} : { purpose },
+          }),
+        ),
+      )
+      expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+      expect(error.message).toBe(AUTH_MESSAGES.forbidden)
+    }
+  })
+
+  it('@RequirePermissions 와 함께면 AND — 하나라도 모자라면 403', () => {
+    forbiddenBy(() =>
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'withPermission', principal(['setting.legal:publish']), 'http', {
+          query: { purpose: 'legal' },
+        }),
+      ),
+    )
+    forbiddenBy(() =>
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'withPermission', principal(['x:y']), 'http', {
+          query: { purpose: 'legal' },
+        }),
+      ),
+    )
+    expect(
+      uploadGuard().canActivate(
+        context(
+          uploadRoutes,
+          'withPermission',
+          principal(['setting.legal:publish', 'x:y']),
+          'http',
+          { query: { purpose: 'legal' } },
+        ),
+      ),
+    ).toBe(true)
+  })
+
+  it('🔴 클래스 @SelfOnly 여도 용도 선언은 지켜진다(스펙 §14 R3)', () => {
+    forbiddenBy(() =>
+      uploadGuard().canActivate(
+        context(selfOnlyUploadRoutes, 'upload', principal(['setting.legal:read']), 'http', {
+          query: { purpose: 'legal' },
+        }),
+      ),
+    )
+  })
+
+  it('🔴 쿼리 · 경로 용도가 둘 다면 403 — 가드와 핸들러가 다른 용도를 볼 수 없다', () => {
+    forbiddenBy(() =>
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'upload', principal(['setting.legal:publish']), 'http', {
+          query: { purpose: 'legal' },
+          params: { purpose: 'notice' },
+        }),
+      ),
+    )
+  })
+
+  it('경로의 모르는 용도는 403 — params.purpose', () => {
+    forbiddenBy(() =>
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'upload', principal(['*']), 'http', {
+          params: { purpose: 'nope' },
+        }),
+      ),
+    )
+  })
+
+  it('선언 없는 라우트의 fail-closed 는 그대로(회귀)', () => {
+    const error = rejection(() =>
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'undeclared', principal(['*']), 'http', {
+          query: { purpose: 'legal' },
+        }),
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+    expect(error.message).toBe(AUTH_MESSAGES.noPermissionDeclared)
   })
 })

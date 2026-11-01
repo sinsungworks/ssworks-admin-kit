@@ -10,13 +10,17 @@ import { AdminLegalModule } from '../legal/legal.module.js'
 import { AdminRolesModule } from '../roles/roles.module.js'
 import { AdminSessionsModule } from '../sessions/sessions.module.js'
 import { AdminTeamsModule } from '../teams/teams.module.js'
+import type { AdminUploadsOptions } from '../uploads/options.js'
+import { AdminUploadsModule } from '../uploads/uploads.module.js'
+import { AdminMediaModule } from '../media/media.module.js'
 import { AdminUsersModule } from '../users/users.module.js'
 import { TEST_CATALOG } from './accounts.js'
 import { AuditProbeModule } from './audit-probe.js'
 import { TEST_JWT_SECRET } from './auth.js'
 import { createHttpApp } from './http.js'
+import { MemoryObjectStorage } from './memory-storage.js'
 
-// 테스트 전용 — 인증 · 감사 · 세션까지 붙인 앱(2c · 2d 역할 · 사용자 · 2e-1 팀 · 2e-2 약관 · 2f-1 IP). 운영 main.ts 와 같은 배선(configureAdminApp). 🔴 빌드에서 빠진다.
+// 테스트 전용 — 인증 · 감사 · 세션까지 붙인 앱(2c · 2d 역할 · 사용자 · 2e-1 팀 · 2e-2 약관 · 2f-1 IP · 2h 업로드). 운영 main.ts 와 같은 배선(configureAdminApp). 🔴 빌드에서 빠진다.
 
 export const TEST_PERMISSIONS = Object.freeze({
   'sessions.read': 'org.users:read',
@@ -54,6 +58,8 @@ export interface AdminAppOptions {
   jsonLimit?: string
   /** 클라이언트 IP 출처(2f-1 ④ C1). 기본 req.ip — supertest 는 ::ffff:127.0.0.1(정규화 뒤 127.0.0.1) */
   clientIp?: AdminClientIpSource
+  /** 업로드(2h). 기본 메모리 저장소 · mediaPath '/media'(테스트 서버는 전역 접두사가 없다) · 정리 끔 · 앱 용도 notice(board.posts:write) */
+  uploads?: Partial<AdminUploadsOptions>
 }
 
 export function bootAdminApp(
@@ -73,6 +79,13 @@ export function bootAdminApp(
           audit: { catalog: TEST_AUDIT_CATALOG, secretKeys: ['apiKey'] },
           legal: { kinds: TEST_LEGAL_KINDS },
           ...(options.clientIp === undefined ? {} : { clientIp: options.clientIp }),
+          uploads: {
+            storage: new MemoryObjectStorage(),
+            mediaPath: '/media',
+            sweep: false,
+            purposes: { notice: { permissions: ['board.posts:write'] } },
+            ...options.uploads,
+          },
         }),
         AdminAuthModule,
         AdminAuditModule,
@@ -82,6 +95,8 @@ export function bootAdminApp(
         AdminTeamsModule,
         AdminLegalModule,
         AdminIpAccessModule,
+        AdminUploadsModule,
+        AdminMediaModule,
         AuditProbeModule,
       ],
     },

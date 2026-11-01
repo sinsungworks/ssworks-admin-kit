@@ -1,4 +1,10 @@
-import { Inject, Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common'
+import {
+  Inject,
+  Injectable,
+  Optional,
+  type CanActivate,
+  type ExecutionContext,
+} from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import {
   BusinessError,
@@ -9,17 +15,21 @@ import {
 import type { Request } from 'express'
 import {
   ADMIN_AUTH_CONFIG,
+  ADMIN_UPLOADS_CONFIG,
   ALLOW_PASSWORD_CHANGE,
   ANY_PERMISSIONS,
   IS_PUBLIC,
   IS_SELF_ONLY,
   PERMISSION_SLOT,
+  REQUIRE_UPLOAD_PURPOSE,
   REQUIRED_PERMISSIONS,
 } from '../tokens.js'
+import type { ResolvedUploadsConfig } from '../uploads/options.js'
 import { AUTH_MESSAGES } from './errors.js'
 import type { ResolvedAuthConfig } from './options.js'
 import type { AdminPermissionSlot } from './permission-slots.js'
 import { getAdminPrincipal } from './principal.js'
+import { grantsUploadPurpose, requestedUploadPurpose } from './upload-purpose.js'
 
 // 정본: hangang-home apps/api/src/core/guards/permission.guard.ts(fail-closed · @SelfOnly 명시 통과 · AND/OR)
 // 바꾼 점:
@@ -30,12 +40,15 @@ import { getAdminPrincipal } from './principal.js'
 //  - failClosed: false 과도기 옵션(Phase 0 §4 #5). rpc · ws 만 통과, 그 밖의 비HTTP 는 401(스펙 §14 R4 · R10).
 //  - 패키지 라우트의 권한 슬롯(2c 스펙 ① P1)은 권한 선언과 같은 층이다 — 슬롯 · @RequirePermissions 가 함께면 AND.
 //  - 슬롯 여럿은 "하나라도"(2d 스펙 B13).
+//  - 2h: 넷째 선언 @RequireUploadPurpose — 용도 → 권한(auth/upload-purpose.ts). 업로드 설정은 @Optional.
 
 @Injectable()
 export class AdminPermissionGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     @Inject(ADMIN_AUTH_CONFIG) private readonly config: ResolvedAuthConfig,
+    // 🔴 @Optional — 업로드 모듈이 없는 앱에서도 가드는 뜬다. 그때 @RequireUploadPurpose 라우트는 403 이다(2h 스펙 U6)
+    @Optional() @Inject(ADMIN_UPLOADS_CONFIG) private readonly uploads?: ResolvedUploadsConfig,
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
@@ -52,7 +65,8 @@ export class AdminPermissionGuard implements CanActivate {
 
     if (flag(IS_PUBLIC)) return true
 
-    const principal = getAdminPrincipal(context.switchToHttp().getRequest<Request>())
+    const req = context.switchToHttp().getRequest<Request>()
+    const principal = getAdminPrincipal(req)
     if (principal == null) {
       throw new BusinessError(CommonErrorCodes.ERR_COMMON_UNAUTHORIZED, AUTH_MESSAGES.unauthorized)
     }
@@ -76,8 +90,9 @@ export class AdminPermissionGuard implements CanActivate {
     const hasSlots = slots != null && slots.length > 0
     const hasRequired = required != null && required.length > 0
     const hasAnyOf = anyOf != null && anyOf.length > 0
+    const purposeDeclared = flag(REQUIRE_UPLOAD_PURPOSE)
 
-    if (hasSlots || hasRequired || hasAnyOf) {
+    if (hasSlots || hasRequired || hasAnyOf || purposeDeclared) {
       // 🔴 이어지지 않은 슬롯은 '*' 도 거짓 — 기동 검사(assertPermissionSlots)를 피한 조합의 방어선이다(2c 스펙 §4-1).
       //    여럿이면 하나라도 이어져 있고 그 키를 가져야 통과다(2d 스펙 B13).
       if (hasSlots && !slots.some((slot) => this.grantsSlot(principal.permissions, slot))) {
@@ -85,6 +100,20 @@ export class AdminPermissionGuard implements CanActivate {
       }
       if (hasRequired && !hasPermission(principal.permissions, ...required)) throw forbidden()
       if (hasAnyOf && !hasAnyPermission(principal.permissions, ...anyOf)) throw forbidden()
+      // 넷째 선언(2h 스펙 U6) — 용도(query.purpose · params.purpose)가 가리키는 권한. 모르는 용도 · 설정 없음은 403
+      if (purposeDeclared) {
+        const purpose = requestedUploadPurpose(req)
+        if (
+          !grantsUploadPurpose(
+            this.uploads?.purposes,
+            this.config.permissions,
+            principal.permissions,
+            purpose,
+          )
+        ) {
+          throw forbidden()
+        }
+      }
       return true
     }
 

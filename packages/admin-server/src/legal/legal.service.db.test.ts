@@ -4,12 +4,19 @@ import {
   adminLegalCurrentSchema,
   adminLegalDocumentSchema,
   adminLegalHistorySchema,
+  uploadUrl,
 } from '@ssworks/admin-shared'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { transactionOnly } from '../test-support/accounts.js'
 import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
+import { failure } from '../test-support/errors.js'
+import { pngImage } from '../test-support/images.js'
+import { MemoryObjectStorage } from '../test-support/memory-storage.js'
+import { imageRequest, seedUpload, testUploadsConfig } from '../test-support/uploads.js'
+import { EncodeGate } from '../uploads/encode.js'
+import { AdminUploadsService } from '../uploads/uploads.service.js'
 import { legalContentHash } from './content-hash.js'
 import { LEGAL_MESSAGES } from './errors.js'
 import { AdminLegalService } from './legal.service.js'
@@ -204,5 +211,118 @@ describe('발행', () => {
   it('실패는 BusinessError 로 — 드라이버 오류가 아니다', async () => {
     const error = await publishAs('svc_err', '본문', 1n).catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(BusinessError)
+  })
+})
+
+describe('첨부(2h 스펙 U10) — 업로드 모듈이 있을 때', () => {
+  const storage = new MemoryObjectStorage()
+  let uploads: AdminUploadsService
+  let withUploads: AdminLegalService
+
+  beforeAll(() => {
+    uploads = new AdminUploadsService(t.db, testUploadsConfig(storage), new EncodeGate())
+    withUploads = new AdminLegalService(t.db, uploads)
+  })
+
+  it('본문의 우리 그림을 새 판에 붙인다 — refType legalDocument · refId 새 판 번호 · attachedUploads', async () => {
+    const created = await uploads.create(actor.userNo, 'legal', imageRequest(await pngImage()))
+    const kind = 'svc_attach'
+    const result = await withUploads.publish(
+      { kind, body: `본문\n\n![](${created.body.url})`, baseLegalDocNo: null },
+      actor.userNo,
+    )
+    expect(result.attachedUploads).toBe(1)
+    const row = await t.db
+      .selectFrom('adminUploads')
+      .select(['refType', 'refId'])
+      .where('uploadNo', '=', created.uploadNo)
+      .executeTakeFirstOrThrow()
+    expect(row).toEqual({ refType: 'legalDocument', refId: result.legalDocNo })
+
+    // 새 판이 앞 판 그림을 그대로 쓴다 — 통과 · refId 그대로 · 이번 첨부 0
+    const second = await withUploads.publish(
+      { kind, body: `고친 본문\n\n![](${created.body.url})`, baseLegalDocNo: result.legalDocNo },
+      actor.userNo,
+    )
+    expect(second.attachedUploads).toBe(0)
+    expect(
+      (
+        await t.db
+          .selectFrom('adminUploads')
+          .select('refId')
+          .where('uploadNo', '=', created.uploadNo)
+          .executeTakeFirstOrThrow()
+      ).refId,
+    ).toBe(result.legalDocNo)
+  })
+
+  it('🔴 남의 미첨부 키가 본문에 있으면 404 — 판도 들어가지 않는다(롤백)', async () => {
+    const other = await seedUser(t.db, { roleNo: role, userId: 'legal-other' })
+    const theirs = await seedUpload(t.db, { uploadedByUserNo: other.userNo })
+    const kind = 'svc_attach_fail'
+    const error = await failure(
+      withUploads.publish(
+        { kind, body: `![](${uploadUrl(theirs.key, '/media')})`, baseLegalDocNo: null },
+        actor.userNo,
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_NOT_FOUND)
+    expect(await withUploads.current(kind)).toEqual({ item: null })
+  })
+
+  it('🔴 본문당 장수 초과 409 ERR_UPLOAD_LIMIT — 키 모으기가 트랜잭션 밖이라 낡은 기준 판(REVISION 409)보다 먼저 멈추고 판도 들어가지 않는다', async () => {
+    const limited = new AdminLegalService(
+      t.db,
+      new AdminUploadsService(
+        t.db,
+        testUploadsConfig(storage, { policy: { maxPerBody: 1 } }),
+        new EncodeGate(),
+      ),
+    )
+    const one = await uploads.create(actor.userNo, 'legal', imageRequest(await pngImage()))
+    const two = await uploads.create(
+      actor.userNo,
+      'legal',
+      imageRequest(await pngImage(8, 8, '#000000')),
+    )
+    const kind = 'svc_attach_limit'
+    const error = await failure(
+      limited.publish(
+        // 기준 판 999 는 시행본이 아니다(미발행) — 트랜잭션 안의 기준 판 검사까지 갔다면 REVISION_CONFLICT 였다
+        { kind, body: `![](${one.body.url})\n\n![](${two.body.url})`, baseLegalDocNo: 999n },
+        actor.userNo,
+      ),
+    )
+    expect(error.code).toBe(CommonErrorCodes.ERR_UPLOAD_LIMIT)
+    expect(await limited.current(kind)).toEqual({ item: null })
+  })
+
+  it('그림 없는 본문은 attachedUploads 0 · 🔴 업로드 모듈 없는 서비스는 본문에 우리 경로가 있어도 건너뛴다(행 그대로)', async () => {
+    expect(
+      (
+        await withUploads.publish(
+          { kind: 'svc_attach_none', body: '글자뿐', baseLegalDocNo: null },
+          actor.userNo,
+        )
+      ).attachedUploads,
+    ).toBe(0)
+    // 본인의 미첨부 그림 — 모듈이 있었다면 붙었을 것이다
+    const pending = await seedUpload(t.db, { uploadedByUserNo: actor.userNo })
+    const off = await service.publish(
+      {
+        kind: 'svc_attach_off',
+        body: `평범한 링크\n\n![](${uploadUrl(pending.key, '/media')})`,
+        baseLegalDocNo: null,
+      },
+      actor.userNo,
+    )
+    expect(off.attachedUploads).toBe(0)
+    expect(
+      await t.db
+        .selectFrom('adminUploads')
+        .select(['refType', 'refId', 'attachedAt'])
+        .where('uploadNo', '=', pending.uploadNo)
+        .executeTakeFirstOrThrow(),
+    ).toEqual({ refType: null, refId: null, attachedAt: null })
   })
 })

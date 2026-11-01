@@ -1,4 +1,4 @@
-import { IP_ACCESS_SCHEMA_MESSAGES } from '@ssworks/admin-shared'
+import { IP_ACCESS_SCHEMA_MESSAGES, UPLOAD_SCHEMA_MESSAGES } from '@ssworks/admin-shared'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import { AUDIT_MESSAGES } from '../audit/errors.js'
 import { AUTH_MESSAGES } from '../auth/errors.js'
@@ -6,6 +6,7 @@ import { IP_ACCESS_MESSAGES } from '../ip-access/errors.js'
 import { LEGAL_MESSAGES } from '../legal/errors.js'
 import { SESSION_MESSAGES } from '../sessions/errors.js'
 import { TEAM_MESSAGES } from '../teams/errors.js'
+import { UPLOAD_MESSAGES } from '../uploads/errors.js'
 import type { ErrorBody } from './error-response.js'
 
 // 정본: 없음 — 2g 스펙 M1–M10(ringside 보고 §2). 서버 오류 문구를 쓰는 쪽 용어로 덮는다. 문구를 쓰는 곳(26곳 · 순수 판정
@@ -27,6 +28,9 @@ export const ADMIN_SERVER_DEFAULT_MESSAGES = Object.freeze({
   ipAccess: IP_ACCESS_MESSAGES,
   /** admin-shared 스키마 문구 — 서버 검증 400 의 칸 오류로 나간다 */
   ipAccessSchema: IP_ACCESS_SCHEMA_MESSAGES,
+  uploads: UPLOAD_MESSAGES,
+  /** admin-shared 업로드 스키마 문구 — 서버 검증 400 의 칸 오류로 나간다 */
+  uploadsSchema: UPLOAD_SCHEMA_MESSAGES,
 })
 
 type DefaultMessages = typeof ADMIN_SERVER_DEFAULT_MESSAGES

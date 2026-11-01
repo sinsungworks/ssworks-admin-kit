@@ -1,5 +1,6 @@
 // @ssworks/admin-server — 관리자 API 공통 NestJS 모듈 (Phase 2).
-// 진입점: `.`(전부) · `./runner`(Nest 무의존) · `./migrations/<id>`(코어 장 하나 — 스텁이 가리킨다).
+// 진입점: `.`(전부) · `./runner`(Nest 무의존) · `./migrations/<id>`(코어 장 하나 — 스텁이 가리킨다) ·
+//   `./storage/s3`(S3 호환 저장소 — 선택 peer `@aws-sdk/client-s3`).
 
 export * from './runner.js'
 
@@ -70,3 +71,28 @@ export type { AdminLegalOptions } from './legal/options.js'
 
 // IP 접근 제어(PR 2f-1)
 export { AdminIpAccessModule } from './ip-access/ip-access.module.js'
+
+// 이미지 업로드(PR 2h)
+// 🔴 ./storage/s3.js 는 여기서 내보내지 않는다 — 서브패스 `@ssworks/admin-server/storage/s3` 만 SDK 를 끌어온다(s3-isolation.test.ts)
+export { AdminUploadsModule } from './uploads/uploads.module.js'
+export { AdminMediaModule } from './media/media.module.js'
+export { AdminUploadsService, type CreatedUpload } from './uploads/uploads.service.js'
+export type {
+  AdminUploadsOptions,
+  AdminUploadPurposeOptions,
+  ResolvedUploadsConfig,
+} from './uploads/options.js'
+export {
+  attachUploads,
+  syncUploads,
+  type AttachUploadsInput,
+  type AttachUploadsOptions,
+  type AttachUploadsResult,
+  type SyncUploadsResult,
+} from './uploads/attach.js'
+// 정리 단계 함수(markExpiredUploads · purgeDeletedUploads · SWEEP_BATCH)는 내보내지 않는다 — 공개 경로는 AdminUploadsService.sweep()
+export type { SweepResult } from './uploads/sweep.js'
+export { RequireUploadPurpose } from './auth/upload-purpose.js'
+export type { AdminObjectStorage, StoredObject } from './storage/object-storage.js'
+export { createFileSystemStorage, type FileSystemStorageOptions } from './storage/file-system.js'
+export { ADMIN_UPLOADS_CONFIG } from './tokens.js'

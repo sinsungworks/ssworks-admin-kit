@@ -6,16 +6,19 @@ import {
   adminLegalDocumentSchema,
   adminLegalHistorySchema,
   adminLegalPublishResultSchema,
+  adminUploadCreatedSchema,
   errorRespSchema,
   parseJSON,
   stringifyJSON,
 } from '@ssworks/admin-shared'
 import request, { type Response } from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { mediaEtag } from '../media/media-http.js'
 import { bootAdminApp } from '../test-support/admin-app.js'
 import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { testDbServer } from '../test-support/db-url.js'
+import { pngImage } from '../test-support/images.js'
 import { legalContentHash } from './content-hash.js'
 import { LEGAL_MESSAGES } from './errors.js'
 
@@ -175,6 +178,7 @@ describe('PRIVACY — 이 파일에서 처음 발행하는 종류', () => {
       baseLegalDocNo: null,
       contentHash: created.contentHash,
       length: body.length,
+      attachedUploads: 0,
     })
   })
 })
@@ -397,7 +401,7 @@ describe('발행 — 3e §9', () => {
 })
 
 describe('감사', () => {
-  it('🔴 발행 행 — 대상 legalDocument · 번호 · meta 원문 { kind, baseLegalDocNo, contentHash, length }, 본문 없음(공통 12)', async () => {
+  it('🔴 발행 행 — 대상 legalDocument · 번호 · meta 원문 { kind, baseLegalDocNo, contentHash, length, attachedUploads }, 본문 없음(공통 12)', async () => {
     const agent = await signIn(publisher)
     const base = await currentNo(agent, 'TERMS')
     const body = '감사 표식 본문 AUDIT-BODY-MARKER'
@@ -421,6 +425,7 @@ describe('감사', () => {
       baseLegalDocNo: base === null ? null : String(base),
       contentHash: created.contentHash,
       length: body.length,
+      attachedUploads: 0,
     })
     expect(plain(row)).not.toContain('AUDIT-BODY-MARKER')
   })
@@ -457,5 +462,56 @@ describe('감사', () => {
       .where('action', '=', CoreAuditActions.LEGAL_PUBLISH)
       .execute()
     expect(plain(rows)).not.toContain('FAIL-BODY-MARKER')
+  })
+})
+
+// 🔴 PRIVACY 를 쓴다 — 첫 describe 뒤로 PRIVACY 를 발행하는 테스트가 없어 기준 판이 TERMS 테스트들과 엉키지 않는다. 기준은
+//    그래도 그때의 현재본에서 읽는다(currentNo).
+describe('그림 첨부(2h) — 업로드 → 발행 → 중계', () => {
+  it('🔴 올린 그림은 미첨부라 중계 404 → 본문에 넣어 발행하면 새 판에 붙고(감사 attachedUploads 1 · 응답에는 없음) 중계 200 image/webp · ETag', async () => {
+    const agent = await signIn(publisher)
+    const anonymous = () => request(app.getHttpServer())
+    const created = adminUploadCreatedSchema.parse(
+      data(
+        await agent
+          .post('/admin/uploads?purpose=legal')
+          .set('Content-Type', 'image/png')
+          .send(await pngImage())
+          .expect(201),
+      ),
+    )
+    // 미첨부는 어떤 경로로도 보이지 않는다
+    expect((await anonymous().get(created.url)).status).toBe(404)
+
+    const base = await currentNo(agent, 'PRIVACY')
+    const body = `그림이 든 개인정보처리방침\n\n![](${created.url})`
+    const response = await sendJson(agent.post(LEGAL_PATH), {
+      kind: 'PRIVACY',
+      body,
+      baseLegalDocNo: base,
+    }).expect(201)
+    // 🔴 응답은 3e §9 그대로 { legalDocNo, contentHash } — attachedUploads 는 감사 meta 에만 싣는다
+    envelope(response, ['contentHash', 'legalDocNo'])
+    const published = adminLegalPublishResultSchema.parse(data(response))
+    expect((await auditRowOf(published.legalDocNo)).meta).toEqual({
+      kind: 'PRIVACY',
+      baseLegalDocNo: base === null ? null : String(base),
+      contentHash: published.contentHash,
+      length: body.length,
+      attachedUploads: 1,
+    })
+    expect(
+      await t.db
+        .selectFrom('adminUploads')
+        .select(['refType', 'refId'])
+        .where('storageKey', '=', created.key)
+        .executeTakeFirstOrThrow(),
+    ).toEqual({ refType: 'legalDocument', refId: published.legalDocNo })
+
+    const served = await anonymous().get(created.url)
+    expect(served.status).toBe(200)
+    expect(served.headers['content-type']).toBe('image/webp')
+    expect(served.headers.etag).toBe(mediaEtag(created.key))
+    expect(Number(served.headers['content-length'])).toBe(created.bytes)
   })
 })
