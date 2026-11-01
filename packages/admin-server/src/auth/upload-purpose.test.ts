@@ -9,12 +9,12 @@ const table = new Map<string, UploadPurposeGrant>([
 const permissions = { 'legal.publish': 'setting.legal:publish' }
 
 describe('requestedUploadPurpose(스펙 U6)', () => {
-  it('query.purpose 가 먼저, 없으면 params.purpose — 문자열 하나 · 형식 안일 때만', () => {
+  it('query.purpose 또는 params.purpose 하나 — 🔴 둘 다면 null · 문자열 하나 · 형식 안일 때만', () => {
     expect(requestedUploadPurpose({ query: { purpose: 'legal' }, params: {} })).toBe('legal')
     expect(requestedUploadPurpose({ query: {}, params: { purpose: 'notice' } })).toBe('notice')
     expect(
       requestedUploadPurpose({ query: { purpose: 'legal' }, params: { purpose: 'notice' } }),
-    ).toBe('legal')
+    ).toBeNull()
     expect(requestedUploadPurpose({ query: { purpose: ['a', 'b'] }, params: {} })).toBeNull()
     expect(requestedUploadPurpose({ query: { purpose: 'bad kind' }, params: {} })).toBeNull()
     expect(requestedUploadPurpose({ query: {}, params: {} })).toBeNull()
@@ -42,5 +42,9 @@ describe('grantsUploadPurpose', () => {
     expect(grantsUploadPurpose(table, permissions, ['*'], 'nope')).toBe(false)
     expect(grantsUploadPurpose(table, permissions, ['*'], null)).toBe(false)
     expect(grantsUploadPurpose(undefined, permissions, ['*'], 'legal')).toBe(false)
+    // 빈 권한 목록 — hasPermission(['*']) 은 요구가 없어도 참이라 여기서 막는다(심층 방어)
+    expect(
+      grantsUploadPurpose(new Map([['x', { slot: null, permissions: [] }]]), {}, ['*'], 'x'),
+    ).toBe(false)
   })
 })

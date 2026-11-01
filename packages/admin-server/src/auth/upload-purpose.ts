@@ -13,17 +13,20 @@ export function RequireUploadPurpose(): CustomDecorator<string> {
   return SetMetadata(REQUIRE_UPLOAD_PURPOSE, true)
 }
 
-/** 요청의 용도 — query.purpose 가 먼저, 없으면 params.purpose. 문자열 하나가 아니거나 형식 밖이면 null */
+/** 요청의 용도 — query.purpose 또는 params.purpose 하나 — 둘 다면 null. 문자열 하나가 아니거나 형식 밖이면 null */
 export function requestedUploadPurpose(req: { query?: unknown; params?: unknown }): string | null {
   const fromQuery = (req.query as Record<string, unknown> | undefined)?.purpose
   const fromParams = (req.params as Record<string, unknown> | undefined)?.purpose
+  // 🔴 둘 다 있으면 거부 — 가드가 핸들러와 다른 값을 볼 수 없게(POST 는 쿼리만 · DELETE 는 경로만 보낸다)
+  if (fromQuery !== undefined && fromParams !== undefined) return null
   const raw = fromQuery ?? fromParams
   return typeof raw === 'string' && UPLOAD_PURPOSE_PATTERN.test(raw) ? raw : null
 }
 
 /**
  * 용도의 권한을 가졌는가 — 슬롯이면 permissions 맵의 키(hasPermission — '*' 는 정확 일치), 아니면 적힌 키 전부(AND).
- * 🔴 모르는 용도 · 이어지지 않은 슬롯 · 표 없음 · null 은 거짓 — 가드의 fail-closed 를 그대로 잇는다
+ * 🔴 모르는 용도 · 이어지지 않은 슬롯 · 표 없음 · null · 빈 권한 목록은 거짓 — 가드의 fail-closed 를 그대로 잇는다.
+ *    빈 목록은 해석이 이미 막지만 여기서도 막는다 — hasPermission(['*']) 은 요구가 없어도 참이다
  */
 export function grantsUploadPurpose(
   table: ReadonlyMap<string, UploadPurposeGrant> | undefined,

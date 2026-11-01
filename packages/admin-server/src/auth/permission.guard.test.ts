@@ -312,10 +312,21 @@ class UploadRoutes {
   @RequireUploadPurpose()
   upload() {}
 
+  @RequireUploadPurpose()
+  @RequirePermissions('x:y')
+  withPermission() {}
+
   undeclared() {}
 }
 
+@SelfOnly()
+class SelfOnlyUploadRoutes {
+  @RequireUploadPurpose()
+  upload() {}
+}
+
 const uploadRoutes = new UploadRoutes()
+const selfOnlyUploadRoutes = new SelfOnlyUploadRoutes()
 
 describe('@RequireUploadPurpose(2h 스펙 U6)', () => {
   const uploads = {
@@ -335,7 +346,13 @@ describe('@RequireUploadPurpose(2h 스펙 U6)', () => {
       : new AdminPermissionGuard(new Reflector(), auth, config)
   }
 
-  it('용도의 권한이 있으면 통과 — query.purpose', () => {
+  function forbiddenBy(run: () => unknown): void {
+    const error = rejection(run)
+    expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
+    expect(error.message).toBe(AUTH_MESSAGES.forbidden)
+  }
+
+  it('용도의 권한이 있으면 통과 — query.purpose · params.purpose', () => {
     expect(new Reflector().get(REQUIRE_UPLOAD_PURPOSE, uploadRoutes.upload)).toBe(true)
     expect(
       uploadGuard().canActivate(
@@ -372,6 +389,65 @@ describe('@RequireUploadPurpose(2h 스펙 U6)', () => {
       expect(error.code).toBe(CommonErrorCodes.ERR_COMMON_FORBIDDEN)
       expect(error.message).toBe(AUTH_MESSAGES.forbidden)
     }
+  })
+
+  it('@RequirePermissions 와 함께면 AND — 하나라도 모자라면 403', () => {
+    forbiddenBy(() =>
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'withPermission', principal(['setting.legal:publish']), 'http', {
+          query: { purpose: 'legal' },
+        }),
+      ),
+    )
+    forbiddenBy(() =>
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'withPermission', principal(['x:y']), 'http', {
+          query: { purpose: 'legal' },
+        }),
+      ),
+    )
+    expect(
+      uploadGuard().canActivate(
+        context(
+          uploadRoutes,
+          'withPermission',
+          principal(['setting.legal:publish', 'x:y']),
+          'http',
+          { query: { purpose: 'legal' } },
+        ),
+      ),
+    ).toBe(true)
+  })
+
+  it('🔴 클래스 @SelfOnly 여도 용도 선언은 지켜진다(스펙 §14 R3)', () => {
+    forbiddenBy(() =>
+      uploadGuard().canActivate(
+        context(selfOnlyUploadRoutes, 'upload', principal(['setting.legal:read']), 'http', {
+          query: { purpose: 'legal' },
+        }),
+      ),
+    )
+  })
+
+  it('🔴 쿼리 · 경로 용도가 둘 다면 403 — 가드와 핸들러가 다른 용도를 볼 수 없다', () => {
+    forbiddenBy(() =>
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'upload', principal(['setting.legal:publish']), 'http', {
+          query: { purpose: 'legal' },
+          params: { purpose: 'notice' },
+        }),
+      ),
+    )
+  })
+
+  it('경로의 모르는 용도는 403 — params.purpose', () => {
+    forbiddenBy(() =>
+      uploadGuard().canActivate(
+        context(uploadRoutes, 'upload', principal(['*']), 'http', {
+          params: { purpose: 'nope' },
+        }),
+      ),
+    )
   })
 
   it('선언 없는 라우트의 fail-closed 는 그대로(회귀)', () => {
