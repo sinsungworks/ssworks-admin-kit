@@ -14,6 +14,7 @@ const CORE_TABLES = [
   'team_closure',
   'team_user_map',
   'teams',
+  'uploads',
   'user_employment_periods',
   'users',
 ]
@@ -156,6 +157,8 @@ describe('코어 마이그레이션(실 MariaDB)', () => {
         'sessions.uq_sessions_refresh_token_hash',
         'sessions.fk_sessions_user',
         'legal_documents.fk_legal_documents_published_by',
+        'uploads.uq_uploads_storage_key',
+        'uploads.fk_uploads_uploaded_by',
       ].sort(),
     )
   })
@@ -194,6 +197,9 @@ describe('코어 마이그레이션(실 MariaDB)', () => {
       'idx_audit_logs_action',
       'idx_legal_documents_kind_published',
       'idx_ip_access_rules_scope',
+      'idx_uploads_uploader',
+      'idx_uploads_ref',
+      'idx_uploads_deleted',
     ]) {
       expect(names).toContain(expected)
     }
