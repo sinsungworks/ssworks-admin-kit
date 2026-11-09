@@ -1,8 +1,8 @@
 import type { ColumnType, Generated } from 'kysely'
 
 // 정본: hangang-home apps/api/src/core/database/tables/roles.table.ts
-// 바꾼 점: `revision` 추가. `permissions` 의 읽기 타입을 unknown 으로 — 드라이버 autoJsonMap 이 파싱된 값과 문자열 둘 다
-//   줄 수 있어 `readJsonColumn` + zod 를 거치게 한다(gise). 프로젝트 권한 타입은 패키지가 모른다.
+// 바꾼 점: `revision` 추가. `permissions` 의 읽기 타입을 unknown 으로 — 풀(`autoJsonMap: false`)은 원문 글자를 주지만 형태는
+//   `readJsonColumn` + zod 가 정한다(gise). 프로젝트 권한 타입은 패키지가 모른다.
 
 export interface AdminRolesTable {
   roleNo: Generated<bigint>

@@ -16,6 +16,7 @@ import {
 } from '@ssworks/admin-shared'
 import request, { type Response } from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { readJsonColumn } from '../database/json.js'
 import { GENERIC_5XX_MESSAGE } from '../http/error-response.js'
 import { bootAdminApp } from '../test-support/admin-app.js'
 import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
@@ -92,12 +93,13 @@ function expectError(response: Response, status: number, code: string, message?:
 }
 
 async function auditRows(action: string) {
-  return t.db
+  const rows = await t.db
     .selectFrom('auditLogs')
     .selectAll()
     .where('action', '=', action)
     .orderBy('logNo', 'desc')
     .execute()
+  return rows.map((row) => ({ ...row, meta: readJsonColumn(row.meta) }))
 }
 
 /** 로그인 응답의 Set-Cookie → 요청 Cookie 머리글 */

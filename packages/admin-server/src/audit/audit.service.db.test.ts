@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { readJsonColumn } from '../database/json.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import { AdminAuditService } from './audit.service.js'
 import type { AuditInsert } from './entry.js'
@@ -37,7 +38,7 @@ const ENTRY: AuditInsert = {
 }
 
 describe('AdminAuditService.insert', () => {
-  it('한 행을 넣는다 — meta 는 드라이버가 파싱해 돌려준다(2c 스펙 §14 R1-4)', async () => {
+  it('한 행을 넣는다 — meta 는 넣은 원문 글자로 온다(풀 autoJsonMap: false · 2c 스펙 §14 R1-4)', async () => {
     await new AdminAuditService(t.db).insert(ENTRY)
     const row = await t.db.selectFrom('auditLogs').selectAll().executeTakeFirstOrThrow()
     expect(row).toMatchObject({
@@ -47,8 +48,9 @@ describe('AdminAuditService.insert', () => {
       targetRefNo: 12n,
       statusCode: 200,
       errorCode: null,
-      meta: { revokedCount: 1, note: '비밀 아님' },
+      meta: ENTRY.meta,
     })
+    expect(readJsonColumn(row.meta)).toEqual({ revokedCount: 1, note: '비밀 아님' })
     expect(row.createAt).toBeInstanceOf(Date)
   })
 

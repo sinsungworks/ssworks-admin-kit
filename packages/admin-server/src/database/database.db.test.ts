@@ -91,6 +91,48 @@ describe('왕복', () => {
     expect(readJsonColumn(row.payload)).toEqual({ inner_key: { deep_key: 1 } })
   })
 
+  it('🔴 JSON 컬럼은 값 모양 · 쿼리 모양과 상관없이 원문 글자로 온다(autoJsonMap: false)', async () => {
+    await sql`create table json_text_probe (probe_key varchar(16) primary key, payload json not null)`.execute(
+      t.db,
+    )
+    const probe = t.db.withTables<{ jsonTextProbe: { probeKey: string; payload: unknown } }>()
+    const stored = {
+      object: '{"userNo":"BigInt(9007199254740993)"}',
+      text: '"reject"',
+      digits: '"123"',
+      nil: 'null',
+    }
+    await probe
+      .insertInto('jsonTextProbe')
+      .values(Object.entries(stored).map(([probeKey, payload]) => ({ probeKey, payload })))
+      .execute()
+
+    // autoJsonMap(드라이버 기본)이면 '"reject"' 가 JS 문자열 reject 로 와 원문과 구분되지 않는다 — readJsonColumn 이
+    // 다시 파싱하다 던지고, '"123"' 은 숫자 123 이 된다. 객체는 표준 JSON.parse 로 풀려 쓰는 쪽 BigInt 코덱을 지나지 못한다.
+    const rows = await probe.selectFrom('jsonTextProbe').selectAll().execute()
+    expect(Object.fromEntries(rows.map((row) => [row.probeKey, row.payload]))).toEqual(stored)
+    expect(
+      Object.fromEntries(rows.map((row) => [row.probeKey, readJsonColumn(row.payload)])),
+    ).toEqual({
+      object: { userNo: 'BigInt(9007199254740993)' },
+      text: 'reject',
+      digits: '123',
+      nil: null,
+    })
+
+    // autoJsonMap 이면 쿼리 모양마다 갈린다 — 열 그대로 · JSON_EXTRACT 는 파싱된 값, COALESCE 로 감싸면 글자.
+    const shapes = await sql<{ direct: unknown; wrapped: unknown; extracted: unknown }>`
+      select payload as direct, coalesce(payload, '{}') as wrapped,
+             json_extract(payload, '$.userNo') as extracted
+      from json_text_probe where probe_key = 'object'
+    `.execute(t.db)
+    expect(shapes.rows[0]).toEqual({
+      direct: stored.object,
+      wrapped: stored.object,
+      extracted: '"BigInt(9007199254740993)"',
+    })
+  })
+
   it('세션 — loginAt 을 넣을 수 있고 폐기 UPDATE 가 lastAccessAt 을 바꾸지 않는다', async () => {
     const roleNo = await insertRole('세션 확인')
     const userNo = await insertUser(roleNo, 'session-check')
