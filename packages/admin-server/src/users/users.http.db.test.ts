@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { addDays, todayIn } from '../accounts/calendar.js'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import { AUTH_MESSAGES } from '../auth/errors.js'
+import { readJsonColumn } from '../database/json.js'
 import { bootAdminApp } from '../test-support/admin-app.js'
 import { addToTeam, seedRole, seedTeam, seedUser, type SeededUser } from '../test-support/auth.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
@@ -564,13 +565,14 @@ describe('재인증', () => {
 
 describe('감사', () => {
   async function auditRows(action: string, targetRefNo: bigint) {
-    return t.db
+    const rows = await t.db
       .selectFrom('auditLogs')
       .selectAll()
       .where('action', '=', action)
       .where('targetRefNo', '=', targetRefNo)
       .orderBy('logNo', 'asc')
       .execute()
+    return rows.map((row) => ({ ...row, meta: readJsonColumn(row.meta) }))
   }
 
   it('쓰기 일곱이 행으로 — 대상 user · diff · meta', async () => {

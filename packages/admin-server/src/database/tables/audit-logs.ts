@@ -20,7 +20,7 @@ export interface AdminAuditLogsTable {
   errorCode: AppendOnly<string | null>
   ip: AppendOnly<string | null>
   userAgent: AppendOnly<string | null>
-  /** 쓰기는 JSON 문자열, 읽기는 드라이버가 파싱한 값 — `readJsonColumn` 을 거친다(2c 스펙 §14 R1-4) */
+  /** 쓰기는 JSON 문자열, 읽기는 원문 글자(풀 `autoJsonMap: false`) — `readJsonColumn` 을 거친다(2c 스펙 §14 R1-4) */
   meta: ColumnType<unknown, string | null, never>
   createAt: ColumnType<Date, never, never>
 }

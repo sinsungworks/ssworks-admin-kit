@@ -175,6 +175,13 @@ export function adminPoolConfig(connection: AdminDbConnection): PoolConfig {
     decimalAsNumber: false,
     insertIdAsNumber: false,
     checkNumberRange: true,
+    // 🔴 JSON 컬럼은 원문 글자로 받는다. 기본 true 면 드라이버가 표준 JSON.parse 로 풀어 ① 최상위 JSON 문자열
+    //    '"reject"' 를 JS 문자열 reject 로 줘 원문과 구분할 수 없고(readJsonColumn 이 다시 파싱하다 던진다 · '"123"' 은
+    //    숫자가 된다) ② 쿼리 모양마다 갈리며(열 그대로는 객체, COALESCE 로 감싸면 글자) ③ 쓰는 쪽 BigInt 코덱을 끼울
+    //    자리가 없다("BigInt(n)" 이 문자열로 남는다). MariaDB 는 JSON 타입(245)을 보내지 않고 LONGTEXT + 확장 메타데이터
+    //    'json' 으로 보내므로 이 옵션 하나가 가른다(드라이버의 jsonStrings 는 245 갈래용이고 타입 정의에 없다).
+    //    MariaDB 12.3.3 · 11.4 실측(database.db.test.ts).
+    autoJsonMap: false,
     // 🔴 드라이버가 SQL 과 바인딩 값을 오류 메시지에 붙이지 않게 한다(hangang 최종 수정 A2). 기본 true 면 argon2 해시와
     //    refresh 토큰 해시가 5xx 로그로 나간다. 진단은 오류 `code` 와 스택이면 된다.
     logParam: false,

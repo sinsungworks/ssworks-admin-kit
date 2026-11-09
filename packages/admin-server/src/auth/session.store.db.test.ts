@@ -359,7 +359,8 @@ describe('findLiveOwner · findUserTarget(2d 스펙 §5-5)', () => {
     expect(await store.findLiveOwner(live, new Date())).toEqual({
       userNo: user.userNo,
       roleNo: role,
-      permissions: ['org.users:read'],
+      // 원문 글자(풀 autoJsonMap: false) — 판정은 readPermissionsColumn 이 읽는다
+      permissions: JSON.stringify(['org.users:read']),
     })
     expect(await store.findLiveOwner(dead, new Date())).toBeNull()
     expect(await store.findLiveOwner(999_999n, new Date())).toBeNull()
@@ -371,7 +372,7 @@ describe('findLiveOwner · findUserTarget(2d 스펙 §5-5)', () => {
     expect(await store.findUserTarget(user.userNo)).toEqual({
       userNo: user.userNo,
       roleNo: role,
-      permissions: ['*'],
+      permissions: JSON.stringify(['*']),
     })
     expect(await store.findUserTarget(999_999n)).toBeNull()
   })

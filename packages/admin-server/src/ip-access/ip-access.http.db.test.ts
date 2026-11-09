@@ -12,6 +12,7 @@ import {
 } from '@ssworks/admin-shared'
 import request, { type Response } from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { readJsonColumn } from '../database/json.js'
 import { TEAM_MESSAGES } from '../teams/errors.js'
 import { bootAdminApp } from '../test-support/admin-app.js'
 import { seedRole, seedTeam, seedUser, type SeededUser } from '../test-support/auth.js'
@@ -117,12 +118,13 @@ async function signIn(user: SeededUser, target: NestExpressApplication = app): P
 }
 
 async function auditRows(action: string) {
-  return t.db
+  const rows = await t.db
     .selectFrom('auditLogs')
     .selectAll()
     .where('action', '=', action)
     .orderBy('logNo', 'desc')
     .execute()
+  return rows.map((row) => ({ ...row, meta: readJsonColumn(row.meta) }))
 }
 
 describe('목록 · 슬롯', () => {

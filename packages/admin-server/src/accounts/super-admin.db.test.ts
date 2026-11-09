@@ -2,6 +2,7 @@ import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
 import { createConnection } from 'mariadb'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { GUARD_MESSAGES } from '../database/guard-locks.js'
+import { readJsonColumn } from '../database/json.js'
 import { seedRole, seedUser } from '../test-support/auth.js'
 import { whileHeld } from '../test-support/concurrency.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
@@ -191,7 +192,7 @@ describe('withSuperAdminSurvival', () => {
       .select('permissions')
       .where('roleNo', '=', role)
       .executeTakeFirstOrThrow()
-    expect(after.permissions).toEqual(['*'])
+    expect(readJsonColumn(after.permissions)).toEqual(['*'])
   })
 
   it('하나가 남으면 통과하고 결과를 돌려준다 — lock() 의 값이 write 의 인자다', async () => {
@@ -316,6 +317,6 @@ describe('withSuperAdminSurvival 경합', () => {
       .select('permissions')
       .where('roleNo', '=', roleB)
       .executeTakeFirstOrThrow()
-    expect(b.permissions).toEqual(['*'])
+    expect(readJsonColumn(b.permissions)).toEqual(['*'])
   })
 })

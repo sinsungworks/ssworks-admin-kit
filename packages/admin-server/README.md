@@ -226,7 +226,7 @@ export interface Database extends AdminDatabase {
 
 - 코어 테이블에 컬럼을 더하려면 `users: AdminUsersTable & { email: string | null }` 와 프로젝트 ALTER 장. 🔴 패키지 코드는 더한 컬럼을 모르므로 NOT NULL 확장 컬럼은 DEFAULT 를 둔다.
 - 제약 · 인덱스 이름은 DB 에서 snake_case 다(`uq_users_user_id`) — `CamelCasePlugin` 이 바꾼다.
-- JSON 컬럼(`roles.permissions`)은 `readJsonColumn()` + zod 로 읽는다.
+- JSON 컬럼(`roles.permissions`)은 `readJsonColumn()` + zod 로 읽는다. 풀(`adminPoolConfig`)이 `autoJsonMap: false` 라 드라이버는 JSON 컬럼을 늘 **원문 글자**로 준다 — 쿼리 모양(열 그대로 · `COALESCE` · `JSON_EXTRACT`)이나 최상위 값(문자열 · 숫자 · `null`)과 상관없이 같다. 값에 bigint(`"BigInt(n)"`)가 들어 있으면 글자를 admin-shared `parseJSON` 에 넘긴다(`readJsonColumn` 은 표준 `JSON.parse` 다).
 
 ## 인증
 

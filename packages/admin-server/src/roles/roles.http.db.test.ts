@@ -10,6 +10,7 @@ import request, { type Response } from 'supertest'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
+import { readJsonColumn } from '../database/json.js'
 import { bootAdminApp } from '../test-support/admin-app.js'
 import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
@@ -521,13 +522,14 @@ describe('재인증(reauth: true)', () => {
 
 describe('감사', () => {
   async function auditRows(action: string, targetRefNo: bigint) {
-    return t.db
+    const rows = await t.db
       .selectFrom('auditLogs')
       .selectAll()
       .where('action', '=', action)
       .where('targetRefNo', '=', targetRefNo)
       .orderBy('logNo', 'asc')
       .execute()
+    return rows.map((row) => ({ ...row, meta: readJsonColumn(row.meta) }))
   }
 
   it('기본 역할을 켜서 꺼진 역할은 meta.clearedDefaults 로 남는다(§14 R5-3) — 꺼진 것이 없으면 키도 없다', async () => {

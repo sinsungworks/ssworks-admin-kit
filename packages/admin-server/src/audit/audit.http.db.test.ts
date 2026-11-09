@@ -10,6 +10,7 @@ import {
 import request, { type Response } from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { readJsonColumn } from '../database/json.js'
 import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
 import { bootAdminApp } from '../test-support/admin-app.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
@@ -71,7 +72,8 @@ async function auditRows(where: { actorUserNo?: bigint; action?: string; path?: 
   if (where.actorUserNo !== undefined) query = query.where('actorUserNo', '=', where.actorUserNo)
   if (where.action !== undefined) query = query.where('action', '=', where.action)
   if (where.path !== undefined) query = query.where('path', '=', where.path)
-  return query.execute()
+  const rows = await query.execute()
+  return rows.map((row) => ({ ...row, meta: readJsonColumn(row.meta) }))
 }
 
 describe('세션 끊기 감사', () => {

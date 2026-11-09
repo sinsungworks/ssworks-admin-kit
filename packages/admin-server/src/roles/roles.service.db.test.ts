@@ -2,6 +2,7 @@ import { BusinessError, CommonErrorCodes } from '@ssworks/admin-shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ACCOUNT_MESSAGES } from '../accounts/errors.js'
 import type { AdminReauthService } from '../auth/reauth.service.js'
+import { readJsonColumn } from '../database/json.js'
 import { seedRole, seedUser } from '../test-support/auth.js'
 import {
   FakeReauth,
@@ -35,11 +36,12 @@ async function rejection(run: () => Promise<unknown>): Promise<BusinessError> {
 }
 
 async function stored(roleNo: bigint) {
-  return t.db
+  const row = await t.db
     .selectFrom('roles')
     .select(['roleName', 'permissions', 'displayOrder', 'isDefault', 'revision'])
     .where('roleNo', '=', roleNo)
     .executeTakeFirstOrThrow()
+  return { ...row, permissions: readJsonColumn(row.permissions) }
 }
 
 describe('list', () => {

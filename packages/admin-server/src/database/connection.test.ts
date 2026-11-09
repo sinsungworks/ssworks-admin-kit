@@ -67,7 +67,7 @@ describe('adminDbConnectionFromEnv', () => {
 describe('adminPoolConfig', () => {
   const connection: AdminDbConnection = { host: 'h', user: 'u', password: 'p', database: 'd' }
 
-  it('🔴 안전 옵션을 고정한다 — timezone Z · 숫자 옵션 넷 · logParam false', () => {
+  it('🔴 안전 옵션을 고정한다 — timezone Z · 숫자 옵션 넷 · JSON 원문 글자 · logParam false', () => {
     expect(adminPoolConfig(connection)).toEqual({
       host: 'h',
       port: 3306,
@@ -79,6 +79,7 @@ describe('adminPoolConfig', () => {
       decimalAsNumber: false,
       insertIdAsNumber: false,
       checkNumberRange: true,
+      autoJsonMap: false,
       logParam: false,
       connectionLimit: 10,
       acquireTimeout: 10_000,
@@ -120,7 +121,12 @@ describe('adminPoolConfig — 접속 대상 · TLS(2f-2b)', () => {
     expect(config.socketPath).toBe('/run/mysqld/mysqld.sock')
     expect(config).not.toHaveProperty('host')
     expect(config).not.toHaveProperty('port')
-    expect(config).toMatchObject({ timezone: 'Z', logParam: false, bigIntAsNumber: false })
+    expect(config).toMatchObject({
+      timezone: 'Z',
+      logParam: false,
+      bigIntAsNumber: false,
+      autoJsonMap: false,
+    })
   })
 
   it('Review Focus 4 — 빈 host 는 없는 것이다(소켓 모드)', () => {

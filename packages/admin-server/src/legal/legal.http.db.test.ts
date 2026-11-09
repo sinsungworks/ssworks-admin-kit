@@ -13,6 +13,7 @@ import {
 } from '@ssworks/admin-shared'
 import request, { type Response } from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { readJsonColumn } from '../database/json.js'
 import { mediaEtag } from '../media/media-http.js'
 import { bootAdminApp } from '../test-support/admin-app.js'
 import { seedRole, seedUser, type SeededUser } from '../test-support/auth.js'
@@ -136,16 +137,17 @@ async function publish(
 }
 
 async function auditRowOf(legalDocNo: bigint) {
-  return t.db
+  const row = await t.db
     .selectFrom('auditLogs')
     .selectAll()
     .where('action', '=', CoreAuditActions.LEGAL_PUBLISH)
     .where('targetRefNo', '=', legalDocNo)
     .executeTakeFirstOrThrow()
+  return { ...row, meta: readJsonColumn(row.meta) }
 }
 
 async function lastFailedRow(statusCode: number) {
-  return t.db
+  const row = await t.db
     .selectFrom('auditLogs')
     .selectAll()
     .where('action', '=', CoreAuditActions.LEGAL_PUBLISH)
@@ -153,6 +155,7 @@ async function lastFailedRow(statusCode: number) {
     .orderBy('logNo', 'desc')
     .limit(1)
     .executeTakeFirstOrThrow()
+  return { ...row, meta: readJsonColumn(row.meta) }
 }
 
 describe('PRIVACY — 이 파일에서 처음 발행하는 종류', () => {
