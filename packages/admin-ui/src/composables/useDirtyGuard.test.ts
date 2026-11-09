@@ -6,14 +6,14 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import AdminConfirm from '../confirm/AdminConfirm.vue'
 import { createConfirm } from '../confirm/confirm.js'
 import { buttonByText, installVisualViewport, vuetify } from '../test/setup.js'
-import { useDirtyGuard } from './useDirtyGuard.js'
+import { useDirtyGuard, type DirtyGuardOptions } from './useDirtyGuard.js'
 
 installVisualViewport()
 
 const mounted: { unmount: () => void }[] = []
 
 /** README 최소 배선처럼 App 에 RouterView 와 `<AdminConfirm />` 을 함께 둔다 */
-async function setupWithKitDialog(options?: { message?: string }) {
+async function setupWithKitDialog(options?: DirtyGuardOptions) {
   const dirty = ref(false)
   const Form = defineComponent({
     setup() {
@@ -43,7 +43,7 @@ async function setupWithKitDialog(options?: { message?: string }) {
 
 const dialog = () => document.querySelector<HTMLElement>('.v-overlay--active')
 
-async function setup(options?: { message?: string }) {
+async function setup(options?: DirtyGuardOptions) {
   const dirty = ref(false)
   const Form = defineComponent({
     setup() {
@@ -180,5 +180,23 @@ describe('useDirtyGuard', () => {
 
     dirty.value = true
     expect(fireUnload().defaultPrevented).toBe(false)
+  })
+  it('beforeUnload: false 면 dirty 여도 beforeunload 를 막지 않고 수신기도 달지 않는다', async () => {
+    const add = vi.spyOn(window, 'addEventListener')
+    const { dirty } = await setup({ beforeUnload: false })
+    dirty.value = true
+    expect(fireUnload().defaultPrevented).toBe(false)
+    expect(add.mock.calls.some(([type]) => type === 'beforeunload')).toBe(false)
+  })
+
+  it('beforeUnload: false 여도 라우트 이탈은 그대로 묻는다 — 킷 확인 창에서 머물기면 그대로', async () => {
+    const { dirty, router } = await setupWithKitDialog({ beforeUnload: false })
+    dirty.value = true
+    const navigation = router.push('/other')
+    await flushPromises()
+    expect(dialog()?.textContent).toContain('화면 떠나기')
+    buttonByText('머물기', dialog()!)!.click()
+    await navigation
+    expect(router.currentRoute.value.path).toBe('/form')
   })
 })

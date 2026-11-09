@@ -13,6 +13,12 @@ export interface DirtyGuardOptions {
   message?: string
   /** 킷 확인 창의 제목. 기본 '화면 떠나기'. 브라우저 기본 창에는 제목이 없다. */
   title?: string
+  /**
+   * 새로고침 · 탭 닫기 · 주소창 이동 때 브라우저 기본 경고(beforeunload)를 띄우는가. 기본 true.
+   * false 면 수신기를 달지 않는다 — 저장하지 않은 변경이 묻지 않고 버려진다. 브라우저가 이 창의 문구 · 모양을 바꾸지 못하게 막아
+   * 기본 창을 원하지 않는 앱의 길은 끄는 것뿐이다. 라우트 이탈 확인(킷 확인 창 · window.confirm)은 그대로다.
+   */
+  beforeUnload?: boolean
 }
 
 /**
@@ -21,6 +27,7 @@ export interface DirtyGuardOptions {
  *    앱은 바뀌지 않는다). 플러그인만 있고 자리를 안 둔 앱도 기본 창으로 떨어진다 — 아무도 그리지 않는 창을 기다리며
  *    이동이 멈추지 않게(`createConfirm` 이 자리 수를 센다).
  * 🔴 `beforeunload`(새로고침 · 탭 닫기)는 어느 쪽이든 브라우저 기본 경고다 — 브라우저가 모양 · 문구를 바꾸지 못하게 막는다.
+ *    원하지 않으면 `beforeUnload: false`(그때는 묻지 않고 버린다 — 라우트 이탈 확인은 그대로).
  * 🔴 페이지 컴포넌트의 setup 에서만 호출한다 (onBeforeRouteLeave 제약).
  */
 export function useDirtyGuard(isDirty: () => boolean, options: DirtyGuardOptions = {}): void {
@@ -33,8 +40,11 @@ export function useDirtyGuard(isDirty: () => boolean, options: DirtyGuardOptions
     event.preventDefault()
     event.returnValue = ''
   }
-  onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
-  onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+  // 끄면 달지 않는다 — 달아 두고 안에서 거르면 다른 수신기와 순서가 얽힐 일만 남는다
+  if (options.beforeUnload !== false) {
+    onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
+    onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
+  }
   onBeforeRouteLeave(() => {
     if (!isDirty()) return true
     if (confirm == null) return window.confirm(message)
