@@ -224,7 +224,19 @@ ringside 기획서(`docs/ringside-dev-plan.html`) 15.7 「킷 저장소 선행 �
   - 킷이 정한 것(스펙 §15): 되돌림을 기다리지 않는다(`handled` 계약) · 업로드 실패 문구는 같은 ApiError 의 message 를 코드로 바꾼다(503 · 413 상한) · 끌어 놓기는 `handleDOMEvents.drop` · 붙여넣기는 글자 없이 파일만 · 그림 단추는 원문에서도 · 약관도 발행 뒤 초안을 치환본으로 · 기준 판은 확인한 번호로 · `dispose()` 뒤 `commit` 은 던진다 · 포커스를 받은 적 없는 서식 편집기는 문서 끝에 넣는다 · 등록에 없는 `blob:` 은 저장하지 않는다(`strays` · `commit` 거부 · 약관 `'strayImages'` — I2).
   - **sseng-home 적용(0.14.0 공개 하루 뒤 설치)**: 자기 설계서 §6-5 를 고쳐 잇는다 — 사례 · 공지 본문은 레지스트리 하나 + `room: () => 20 − (사진 키 + 본문들의 올라간 그림 키, 겹침 없이) − attachments.count([본문])`(🔴 `room` 은 킷 셈 전체를 대신하니 올라간 그림도 앱이 센다 — README 「그림 첨부」) + `messages.rejectedFull`(합 한도 문구), 사업영역 카드는 카드마다 레지스트리 하나를 편집기 여럿에 넘기고 `commit([설명들], save)`. 🔴 저장 전 `strays(본문들)` 로 칸 오류(카드 사이 · 저장 뒤 다시 붙인 그림은 등록에 없다 — `commit` 은 평범한 Error 로 거부한다). 🔴 `save` 안에서 받은 `finals` 로 초안 · 바뀜 기준을 바꾼다(C14 — 초안은 저장 시작 때와 같을 때만, 저장 중에는 편집기를 잠근다). 자기 원시 업로드(`postRaw`)는 `api.uploadFile` 로 바꿀 수 있다(같은 원시 바이트 · Content-Type). 앱 테스트의 `URL.createObjectURL` 대역은 같은 길이의 주소를 돌려준다.
   - **ringside · 템플릿 입력**: ringside 는 자기 즉시 업로드 큐를 둘지 킷 레지스트리(저장 시점)로 갈지 정한다 — 킷은 정본(`upload-queue.ts`)과 달리 고른 즉시 올리지 않는다. 템플릿 `preset/admin` 약관 페이지에 `useImageAttachments`(용도 `LEGAL_UPLOAD_PURPOSE`) 한 벌 — 서버 쪽 입력은 「작업 폴더 밖에 남은 것」 의 PR 2h 줄.
-  - 사람이 확인할 것: OS 클립보드 스크린숏 붙여넣기 · 탐색기에서 끌어 놓기 · 한글 조합 중 붙여넣기(ProseMirror 는 조합 중 붙여넣기를 브라우저에 맡긴다) · 모바일 · 편집 영역 밖(도구 막대 · 페이지) 드롭(브라우저가 파일을 연다 — 킷 범위 밖). 실브라우저 결과는 검증 기록.
+  - **ringside 메모(0.14.0)**: 올리면 ringside `apps/admin/src/admin/kit-messages.test.ts` 의 「킷 화면 문구 묶음은 쓰는 묶음과 안 쓰는 묶음으로 남김없이 나뉜다」 가 깨진다 — 새 export `DEFAULT_IMAGE_ATTACHMENT_MESSAGES` · `DEFAULT_UPLOAD_ERROR_MESSAGES` 가 `/^DEFAULT_\w+_MESSAGES$/` 에 걸린다. 그림 첨부를 쓰지 않으면 `UNUSED_BUNDLES` 에 둘을 더한다(둘 다 「사용자」 가 없어 `BUNDLES` 로 옮겨도 초록 — 2026-11-12 확인).
+  - **넘긴 Minor**(태스크 리뷰 T1 ~ T6 · 최종 리뷰 — 고치지 않았다):
+    - T1 `uploadFile`: 호출자가 `'content-type'`(소문자)을 주면 머리글 대소문자 충돌 · `formatMegabytes` 는 50KiB 미만이 0MB · 문구 옵션에 `undefined` 를 직접 넣으면 기본을 덮는다(킷 공통 꼴) · 호출자 머리글 보존 테스트 없음.
+    - T2: `maxBytes` 가 NaN 이면 크기 검사가 꺼진다(정책값 전제).
+    - T3: 되돌림 DELETE 가 병렬(태스크 리뷰 M3 — 순차화 가능, 기다리지 않음 P1 은 유지) · 테스트 공백(commit 중 add · `ApiError` 아닌 Error 를 던지는 upload · remove 동기 throw).
+    - T4: 코드 블록 안에 넣으면 코드 블록이 둘로 나뉜다 · `insertContentAt` 반환값 미확인 · `pastedFiles` 는 공백뿐인 text/plain 도 글자로 본다 · `sourceWithImages` 는 빈 urls 에 빈 줄 · 한 번 undo 단언 없음 · 목록 항목 안 그림이 항목 글자 바로 아래 줄.
+    - T5: 도구 단추 `aria-label` 과 `title` 중복(기존 꼴). 원문 undo 는 아래 최종 M3.
+    - T6: 약관 `tooLong` 판정은 `blob:` 초안 길이(치환본과 몇 글자 차이 — 경계에서 서버 400 또는 과잉 차단) · 성공 뒤 `draft !== drafted` 갈래는 지금 도달 불가(잠금) — 주석만.
+    - 최종 M2: `commit` 이 `ApiError` 아닌 것을 던지면 `void flow.run(…)` 이 미처리 거부가 된다(`useWriteFlow` 가 그대로 거부 — 기존 꼴). I2 의 `strays` 거부도 이 길이라 앱의 저장 전 선검사(admin-ui README 저장 예시)가 막는다.
+    - 최종 M3(T5 와 같다): 원문 모드에 넣은 그림은 브라우저 Ctrl+Z 로 되돌리지 못한다(textarea `value` 대입이 undo 기록을 끊는다 — `execCommand` 는 deprecated).
+    - 최종 M7: `onError` 타이밍(`handled` 계약 — 처리한 409 는 전역 토스트 없음 · 업로드 503 은 토스트 하나)의 단위 테스트가 없다 — 실브라우저 V8 · V9 가 덮는다.
+    - 선택: `LegalDocumentEditor` 의 `messages.blocked` 를 깊게 합치기(지금은 얕게 — 통째로 덮는 앱이 새 막힘 키를 더해야 한다, changeset 호환 주의).
+  - 사람이 확인할 것: 「이미지 넣기」 가 OS 파일 창을 실제로 연다(도구로는 클릭 배선만 봤다) · OS 클립보드 스크린숏 붙여넣기 · 탐색기에서 끌어 놓기 · 편집 영역 밖 드롭(도구 막대는 아무것도 넣지 않고 페이지도 떠나지 않는다 — `5666aad` · 편집기 밖 페이지는 브라우저가 파일을 연다 — 앱 몫) · readonly 편집기 위 드롭(넣지 않고 페이지도 떠나지 않는다 — `5666aad`) · 한글 조합 중 붙여넣기(ProseMirror 는 조합 중 붙여넣기를 브라우저에 맡긴다) · 모바일. 실브라우저 결과는 검증 기록(I1 · M1 · I2 고침은 브라우저가 아니라 테스트 · 탐침으로 확인).
 
 ## 작업 폴더 밖에 남은 것
 

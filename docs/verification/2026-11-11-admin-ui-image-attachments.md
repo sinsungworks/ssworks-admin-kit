@@ -39,6 +39,18 @@ b0fdd3d docs: PR #3k 실브라우저 확인 — 확인용 앱 aksu(실서버 · 
 
 - `0af195c` 뒤 admin-ui 85 파일 · 1494 테스트(D1 렌더 테스트 +2)
 
+최종 리뷰(§4) 고침 뒤 커밋:
+
+```
+28ecc61 feat(admin-ui): 등록에 없는 blob: 그림을 저장하지 않는다 — strays · commit 거부 · 약관 발행 막기(최종 리뷰 I2)
+5666aad fix(admin-ui): 포커스한 적 없는 편집기의 끝 자리를 최상위로(목록 · 인용 안으로 들어가지 않게) · 편집기 뿌리에서 파일 드롭이 페이지를 떠나지 않게
+ce70186 docs: PR #3k 실브라우저 재확인 — D1 고침(0af195c) 뒤 V1 · V11
+```
+
+- `28ecc61` 에서 `pnpm check` · `pnpm format:check` 둘 다 **종료 코드 0** — admin-ui 85 파일 · 1508 테스트 · 워크스페이스 189 파일 · 2499 테스트
+- 플랜이 적은 수(admin-ui 1486 · 워크스페이스 2477)보다 **+22** — 리뷰 뒤 고칠 때 더한 테스트: 태스크 리뷰 +6(위) · D1 +2(`0af195c`) · I1 · M1 +4(`5666aad` — 1498) · I2 +10(`28ecc61` — 1508)
+- 이 기록을 마감한 커밋은 문서와 주석 한 곳(`useLegalDocuments.ts`)만 고쳐 수가 같다 — 바꾼 파일 `prettier --check`(changeset · README · HANDOFF · `useLegalDocuments.ts` — 이 기록은 `.prettierignore` 의 `docs/verification/`) · 그 파일 `eslint` · `changeset status --verbose`(admin-ui minor → fixed 라 세 패키지 0.14.0 · major 없음)를 다시 돌려 모두 종료 코드 0
+
 ## 2. 확인용 앱(`$LOCALAPPDATA/Temp/aksu` — Task 9)
 
 2026-11-11 · 워크트리 `4834b83` 에서 `pnpm build` 뒤 pack.
@@ -98,12 +110,22 @@ Chrome(claude-in-chrome) 새 탭 하나 · `http://localhost:5181` · admin 로�
 
 ## 4. 최종 리뷰(Task 10)
 
-(Task 10 에서)
+opus whole-branch 리뷰(`bc5f238..ce70186`) — **Critical 0 · Important 2**. 둘 다 고친 뒤 같은 리뷰어(opus)가 다시 리뷰해 해소를 확인했다.
+
+| # | 지적 | 고침 |
+| --- | --- | --- |
+| I1 | D1 고침(`0af195c` — `Selection.atEnd(doc).to`)이 덜 됐다 — 마지막 블록이 목록 · 인용이면 가장 깊은 글 블록으로 들어가 그림이 그 안에 갇힌다 | `5666aad` — 최상위 맨 끝, 마지막 블록이 빈 글 블록이면 그 안(그림이 대신한다). 렌더 테스트 |
+| M1 | readonly 편집기 · 도구 막대에 놓은 파일을 브라우저가 열어 SPA 를 떠난다(약관은 발행 중 readonly — 초안 유실) | `5666aad` — `attachments` 가 있으면 편집기 뿌리가 파일 끌기(`dragover` · `drop`)의 기본 동작만 막는다(넣지 않는다). 렌더 테스트 |
+| README 셋(Minor) | CSP `img-src blob:` · 스코프 밖에서 만든 레지스트리는 `dispose()` 직접 · `commit` 에 `string \| string[]` 유니온은 좁힌 뒤 | `5666aad` README 「그림 첨부」 |
+| I2 | 등록에 없는 `blob:` 그림(다른 편집기 · 레지스트리에서 복사 · 저장 뒤 다시 붙임 · 「원문」 에서 고친 주소)은 올라가지 않고 그대로 저장돼 공개 화면에서 깨진다 | 사용자 결정 「킷이 저장 때 막는다」 → `28ecc61` — `strays(본문 \| 본문들)` · `commit` 이 업로드 전에 `Error(messages.stray(n))` · 약관 `'strayImages'` · 문구 `ImageAttachmentMessages.stray` · `blocked.strayImages`. 마감 커밋에서 changeset · README 저장 예시(`strays` 선검사)를 맞췄다 |
+| M2 · M3 · M7 | 넘김 — `docs/HANDOFF.md` 「PR #3k 가 넘긴 것」 | — |
+
+- Sonnet 5.5 서브에이전트가 이 작업에서 안전장치 API 오류로 두 번 멈췄다(그중 하나가 I2 고침) — 사용자 결정으로 opus 가 다시 했다.
 
 ## 5. 남은 것
 
 - ~~D1~~ — `0af195c` 로 고쳐 V1 · V11 재확인 통과(§3)
-- 최종 리뷰(Task 10)
-- 사람이 눈으로 볼 것(도구로 못 한 것): 「이미지 넣기」 가 OS 파일 창을 실제로 연다 · OS 클립보드 붙여넣기(스크린숏 · 이미지 복사) · 탐색기에서 끌어 놓기 · 편집 영역 밖(도구 막대 · 페이지)에 놓은 파일은 브라우저 기본(P12) · readonly 편집기 위 드롭은 브라우저가 파일을 연다(킷이 받지 않는다)
-- 확인용 앱 `$LOCALAPPDATA/Temp/aksu`(서버 · 웹 · tarball 셋)는 Task 10 리뷰가 끝날 때까지 둔다 — 다시 띄우려면 `docker start admin-kit-test-db` → DB `aksu` 만들기 → `TZ=UTC node seed.mjs` → `TZ=UTC node dist/main.js`(4100) · `pnpm dev`(5181). DB `aksu` 는 지웠고 서버 · 웹 프로세스는 멈췄다(4100 · 5181 비었음) · `admin-kit-test-db` 는 시작 전처럼 멈춰 두었다(재확인 뒤에도 같다). tarball 셋은 `0af195c` 빌드
+- ~~최종 리뷰(Task 10)~~ — §4. I1 · M1 · I2 고침은 실브라우저를 다시 돌리지 않고 테스트(렌더 · 단위)와 탐침으로 확인했다
+- 사람이 눈으로 볼 것(도구로 못 한 것): 「이미지 넣기」 가 OS 파일 창을 실제로 연다 · OS 클립보드 붙여넣기(스크린숏 · 이미지 복사) · 탐색기에서 끌어 놓기 · 편집 영역 밖 드롭(도구 막대는 아무것도 넣지 않고 페이지도 떠나지 않는다 — `5666aad` · 편집기 밖 페이지는 브라우저 기본 — P12) · readonly 편집기 위 드롭(넣지 않고 페이지도 떠나지 않는다 — `5666aad`)
+- 확인용 앱 `$LOCALAPPDATA/Temp/aksu`(서버 · 웹 · tarball 셋)는 지웠다(2026-11-12). DB `aksu` 는 앞서 지웠고 `admin-kit-test-db` 는 멈춰 있다
 - push · PR · 병합 · 발행은 사람이 한다

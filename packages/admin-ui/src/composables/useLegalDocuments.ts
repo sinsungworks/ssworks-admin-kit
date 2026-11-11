@@ -279,7 +279,9 @@ export function useLegalDocuments<
     if (draft.value.trim() === '') return 'empty'
     if (draft.value.length > LEGAL_BODY_MAX_LENGTH) return 'tooLong'
     if (draft.value === baseBody.value) return 'unchanged'
-    // 등록에 없는 blob: 그림은 올라가지 않아 발행하면 공개 화면에서 깨진다 — 그림 첨부가 있을 때만 본다
+    // 등록에 없는 blob: 그림은 올라가지 않아 발행하면 공개 화면에서 깨진다 — 그림 첨부가 있을 때만 본다.
+    // 🔴 등록(레지스트리의 Map)은 반응형이 아니다 — 초안은 그대로인데 등록만 바뀌면 publishBlock(computed)이 낡은 판정을
+    //    들고 있을 수 있다. 그 틈은 확인 순간의 재검사(D10 — action 이 이 함수를 직접 다시 부른다)가 메운다
     if (options.attachments != null && options.attachments.strays(draft.value).length > 0) {
       return 'strayImages'
     }

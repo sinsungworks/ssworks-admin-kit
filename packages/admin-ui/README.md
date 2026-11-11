@@ -924,8 +924,13 @@ const attachments = useImageAttachments({
   onRejected: (notice) => toast.warning(notice.message),
 })
 const flow = useWriteFlow() // 확인 · 재인증은 action(commit) 앞에서 끝나 헛업로드가 없다
+const bodyError = ref('') // 편집기는 칸 오류를 그리지 않는다 — 앱이 편집기 아래에 그린다
 
 function save() {
+  // 🔴 등록에 없는 그림(아래 strays)은 업로드 전에 칸 오류로 멈춘다 — commit 도 거부하지만 평범한 Error 라 칸에 붙지 않는다
+  const strays = attachments.strays(draft.value).length
+  bodyError.value = strays > 0 ? DEFAULT_IMAGE_ATTACHMENT_MESSAGES.stray(strays) : ''
+  if (strays > 0) return
   const snapshot = draft.value // 업로드 동안 사용자가 더 고쳤는지 보려고
   void flow.run({
     // 업로드 → 치환본으로 저장. 409 충돌은 원래 오류라 onConflict 가 그대로 돈다
@@ -946,6 +951,7 @@ function save() {
   :attachments="attachments"
   :readonly="flow.submitting.value || attachments.busy.value"
 />
+<div v-if="bodyError" class="text-error text-caption">{{ bodyError }}</div>
 ```
 
 저장 중에는 편집기를 잠근다(킷이 잠그지 않는다 — `useLegalDocuments` 는 스스로 잠근다). `attachments` 는 보통 객체라 템플릿에서 `busy` · `progress` 는 `.value` 가 필요하다(자동으로 풀리지 않는다).
@@ -975,15 +981,8 @@ const attachments = useImageAttachments({
 
 편집기는 그림을 넣기 전에 자기 디바운스를 내보내(`flush`) `room()` 이 늦은 값을 보지 않게 한다 — 다른 편집기의 디바운스(200ms 안에 편집기를 바꿔 붙여넣기)는 앱의 저장 전 검사(`count`)와 서버 첨부(409)가 막는다.
 
-- 🔴 **등록에 없는 그림(`strays`)** — 본문의 `![](blob:…)` 중 이 레지스트리에 등록되지 않은 주소는 올라가지 않는다. 그대로 저장되면 관리자 화면에서는 보여도 공개 화면에서 깨진다. 생기는 길은 셋이다 — (a) 다른 편집기 · 레지스트리의 그림을 복사해 붙여 넣음(카드마다 레지스트리를 따로 두는 앱 — ProseMirror 복사 · `<img src="blob:…">` HTML 붙여넣기 모두 주소를 그대로 옮긴다), (b) 저장에 성공하기 전에 복사해 둔 그림을 저장 뒤 다시 붙여 넣음(그 주소는 해제돼 등록에서 빠졌다), (c) 「원문」 탭에서 `blob:` 주소를 손으로 고침. 앱은 저장 전에 `attachments.strays(본문들)`(문자열 하나도 된다 — 서로 다른 주소를 처음 나온 순서로)로 먼저 보고 칸 오류를 띄운다:
-
-```ts
-const n = attachments.strays(bodies.value).length // 저장 전 — 있으면 칸 오류로 멈춘다
-if (n > 0) return setFieldError('body', DEFAULT_IMAGE_ATTACHMENT_MESSAGES.stray(n))
-```
-
-`commit` 도 이런 본문은 올리지도 저장하지도 않고 평범한 `Error`(`messages.stray(n)` — 「저장할 수 없는 그림이 n장 있습니다(다른 곳에서 복사한 그림). …」)로 거부한다. `ApiError` 가 아니라 칸 오류로 가지 않으니, 사용자가 문구를 보게 하려면 앱이 먼저 확인한다. 약관(`useLegalDocuments` 에 `attachments`)은 스스로 발행을 막는다(`publishBlock` 이 `'strayImages'` — 버튼 옆 글자).
-
+- 🔴 **등록에 없는 그림(`strays`)** — 본문의 `![](blob:…)` 중 이 레지스트리에 등록되지 않은 주소는 올라가지 않는다. 그대로 저장되면 관리자 화면에서는 보여도 공개 화면에서 깨진다. 생기는 길은 셋이다 — (a) 다른 편집기 · 레지스트리의 그림을 복사해 붙여 넣음(카드마다 레지스트리를 따로 두는 앱 — ProseMirror 복사 · `<img src="blob:…">` HTML 붙여넣기 모두 주소를 그대로 옮긴다), (b) 저장에 성공하기 전에 복사해 둔 그림을 저장 뒤 다시 붙여 넣음(그 주소는 해제돼 등록에서 빠졌다), (c) 「원문」 탭에서 `blob:` 주소를 손으로 고침. 앱은 저장 전에 `attachments.strays(본문 | 본문들)`(서로 다른 주소를 처음 나온 순서로)로 먼저 보고 칸 오류를 띄운다 — 위 `save()` 의 첫머리(본문 여럿이면 `strays(bodies.value)`). `commit` 도 이런 본문은 올리지도 저장하지도 않고 평범한 `Error`(`messages.stray(n)` — 「저장할 수 없는 그림이 n장 있습니다(다른 곳에서 복사한 그림). …」)로 거부한다. `ApiError` 가 아니라 칸 오류로 가지 않으니, 사용자가 문구를 보게 하려면 앱이 먼저 확인한다. 약관(`useLegalDocuments` 에 `attachments`)은 스스로 발행을 막는다(`publishBlock` 이 `'strayImages'` — 버튼 옆 글자).
+- **`strays` 의 한계** — 본문 글자에서 `](blob:` 를 찾는 셈이라, 인라인 코드 · 코드 블록 안의 `](blob:` 도 센다(오탐 — 그 글자를 고쳐야 저장된다). `![](<blob:…>)` · 참조 정의 `[r]: blob:…` · 「원문」 에 직접 친 `<img src="blob:…">` 는 잡지 못한다(그대로 저장된다).
 - **해제** — 레지스트리는 만든 스코프(컴포넌트)가 끝날 때 남은 주소를 해제한다(`dispose`). 편집기 하나가 사라져도 등록은 남는다 — 본문은 앱이 갖고 있다. `dispose()` 뒤 `add` 는 빈 배열이고 `commit` 은 던진다(`Error('useImageAttachments: dispose 뒤에는 commit 할 수 없다')` — 해제된 `blob:` 주소를 서버에 그대로 저장하지 않게). 진행 중인 `commit` 중에 `dispose()` 가 불려도 그 `commit` 은 끝까지 가고, 주소는 한 번씩만 해제된다.
 - **본문에서 뺀 그림의 `File`** 은 레지스트리를 `dispose` 할 때까지 메모리에 남는다 — 지웠다 되돌린 그림이 다음 저장에서 올라가게 하기 위해서다(C8).
 - **`readonly` 편집기는 파일을 받지 않는다** — 넣지도 등록하지도 않는다. 다만 `attachments` 를 주면 편집기 뿌리(도구 막대 · 본문 · 원문)가 파일 끌기(`dragover` · `drop`)의 기본 동작을 막아, 놓아도 브라우저가 파일을 열어 SPA 를 떠나지 않는다(초안 · 발행 중 약관 보호).
