@@ -424,3 +424,23 @@ export interface ImageAttachments {
 테스트 계약(§9-1 admin-ui 에 더한다): `room` 이 있으면 C1 셈 대신 쓰인다 · `room()` 0 · 음수 · `NaN` 이면 전부 `full` · 한 `add` 안에서 앞서 받은 장수만큼 줄어든다 · `count`(같은 주소 둘 · 여러 본문 · 미등록 `blob:` 제외 · 문자열과 배열) · 배열 `commit`(등록 순서로 한 번씩 업로드 · 본문마다 치환 · `finals` 의 길이 · 순서 · 빈 배열 · 업로드 n장째 실패와 `save` 실패의 되돌림이 이번에 올린 키만 · 재진입 거부) · 편집기(디바운스 중에 그림을 붙여넣으면 `add` 앞에 `update:modelValue` 가 나간다 · 같은 `attachments` 를 받은 편집기 둘이 각자 넣은 그림이 하나의 `count` 에 잡힌다).
 
 릴리스(§10 에 더한다): admin-ui minor 에 `room` · `count` · 배열 `commit` 이 같이 실린다(세 패키지 고정 그룹 — 0.14.0). 쓰는 쪽이 할 일은 없다(덧붙임). sseng-home 은 공개 뒤 자기 설계서 §6-5 를 고쳐 연결한다.
+
+## 15. 구현 중 정정 (PR #3k — 2026-11-11)
+
+스펙과 다르게 한 것 · 스펙이 정하지 않아 구현(플랜 `docs/superpowers/plans/2026-11-11-admin-ui-image-attachments.md` 「플랜이 정한 것」)이 정한 것과 그 이유.
+
+- **§5-2 · C2 되돌림을 기다리지 않는다**: 의사 코드의 `await remove(key)` 뒤 다시 던지기를 "remove 를 시작만 하고 원래 예외를 곧바로 다시 던진다" 로 바꿨다. 기다리면 `createApiClient` 의 지연 `onError`(한 매크로태스크 뒤)가 먼저 돌아 useWriteFlow 가 처리할 revision 충돌 · 칸 오류까지 전역 토스트로 뜬다(`ApiError.handled` 계약). 되돌림 실패는 `handled` 로 표시해 삼킨다(저장 성공 · 응답 유실의 404 토스트도 막는다).
+- **§4-3 · §6 · §8 오류 문구 표**: admin-ui 에 코드 → 문구 표가 없어 `api/upload-errors.ts`(`DEFAULT_UPLOAD_ERROR_MESSAGES` · `uploadErrorMessage`)를 새로 뒀다(§8 의 `api/error-messages` 자리). commit 이 **업로드 단계** 실패의 같은 ApiError message 를 이 표로 바꾼다 — 503 은 코드로, 413 은 `details.maxBytes` 를 붙여 「(장당 최대 10MB)」. 저장(save) 단계 오류는 바꾸지 않는다(4xx 서버 문구 그대로). 레지스트리 옵션 `errorMessages` 를 더했다.
+- **C3 끌어 놓기는 `handleDOMEvents.drop`**: ProseMirror(1.42.8)는 놓은 자리(`posAtCoords`)를 못 찾으면 `handleDrop` 을 부르지 않고 기본 동작도 막지 않아 브라우저가 그림 파일을 연다(초안 유실). 편집기 안 끌기(`view.dragging`)는 ProseMirror 몫으로 둔다.
+- **C3 붙여넣기는 글자 없이 파일만 올 때**: 클립보드에 글자가 함께 오면(Word · 엑셀 · 웹 문서 복사는 내용의 그림 한 장을 싣는다) 기본 붙여넣기다(ringside 와 같다).
+- **C3 그림 단추는 원문 모드에서도**: 원문 textarea 의 캐럿 자리에 `![](blob:…)` 줄을 넣는다. 꺼지는 것은 readonly 뿐이다. 원문 끌어 놓기도 캐럿 자리다. 원문 dragover 는 파일을 끌 때 막는다(브라우저는 dragover 동안 `files` 를 비워 둔다 — `types` 의 `'Files'` 로 본다).
+- **C4 넣는 자리**: 선택이 있으면 지우지 않고 선택 끝에 넣는다. 여러 장은 한 트랜잭션(되돌리기 한 번). 캐럿 규칙은 `EditorImage` 입력 규칙의 것을 `moveCaretAfterImage` 로 꺼내 함께 쓴다. 넣은 뒤 편집기에 포커스.
+  - **보충 — 포커스를 받은 적 없는 서식 편집기는 문서 끝에 넣는다**: 그림 단추와 놓은 자리를 못 찾은 끌어 놓기가 해당한다. TipTap 의 처음 선택은 문서 맨 앞이라 그대로 두면 사용자가 본문을 누르기 전에 단추를 눌렀을 때 그림이 맨 위로 간다 — 원문 모드는 이미 끝에 넣는다. 한 번 포커스를 받은 뒤에는 위 규칙(선택 끝)이다.
+- **C7 · C14 약관도 초안을 치환본으로 · 기준 판은 확인한 번호로**: §14 C14 는 약관을 "발행 뒤 이력을 다시 읽어 해당 없다" 고 했지만 재조회가 실패하면 해제된 `blob:` 이 초안에 남는다 — 발행 성공 뒤 초안 · 비교 기준을 보낸 치환본으로 바꾼다. 기준 판 번호는 확인 순간의 번호로 보낸다 — 그림을 올리는 비동기 틈에 재조회가 current 를 새 판으로 바꿔도 409 가 나게(전에는 틈이 없었다).
+- **C1 문구 모양**: `rejectedType(count)` · `rejectedSize(count, maxBytes)` · `rejectedFull(count)` · `uploading(done, total)`. `rejectedFull` 은 한도 숫자를 싣지 않는다 — `room`(C9)을 쓰는 앱의 한도는 킷이 모른다.
+- **C2 재진입 · 해제**: 진행 중 commit 은 `Error('useImageAttachments: commit 이 이미 진행 중이다')` 로 거부한다(보통은 useWriteFlow 의 submitting 이 먼저 막는다). dispose 뒤 `add` 는 빈 배열, 진행 중 commit 은 시작할 때 붙잡은 파일로 끝까지 간다. 남은 칸은 0 이하 · NaN 이면 0, 소수는 내림, Infinity 는 그대로.
+  - **보충 — dispose 뒤 `commit` 은 던진다**: `Error('useImageAttachments: dispose 뒤에는 commit 할 수 없다')`. 해제된 `blob:` 주소를 서버에 그대로 저장하지 않게 하기 위해서다. 진행 중 commit 중에 `dispose()` 가 불려도 그 commit 은 끝까지 가고, 각 주소는 한 번씩만 해제된다.
+- **편집기는 입력이 사라지면 파일을 무시한다**: 파일 선택창이 열린 채 편집기가 언마운트되면 그 파일은 등록하지 않는다.
+- **C6 `uploadFile(url, file: Blob, config?)`**: 형식이 비면 `application/octet-stream`(서버 415). `transformRequest` 는 그대로 넘김 — happy-dom 의 File 은 태그가 `[object File]` 이 아니라 axios 가 JSON 으로 바꿨다(실측).
+- **공개 이름 더한 것**: `ImageAttachmentProgress` · `ImageAttachmentRejectReason` · `DEFAULT_UPLOAD_ERROR_MESSAGES` · `UploadErrorMessages` · `uploadErrorMessage` · `MarkdownEditorMessages.image`(「이미지 넣기」) · `LegalDocumentEditorBindings.attachments?`.
+- **편집 영역 밖 드롭**: 도구 막대 · 페이지에 놓은 파일은 다루지 않는다(브라우저 기본 — 페이지 전역 문제). README 에 적었다.
