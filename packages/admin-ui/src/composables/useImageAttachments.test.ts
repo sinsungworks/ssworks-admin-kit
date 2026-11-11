@@ -366,6 +366,33 @@ describe('useImageAttachments — 해제(C8)', () => {
     expect(attachments.count(`![](${a})`)).toBe(0)
   })
 
+  it('dispose 뒤 commit 은 거부한다 — 해제된 blob: 이 그대로 저장되지 않게', async () => {
+    const { attachments, upload } = setup()
+    const [a] = attachments.add([png('a.png')], '')
+    attachments.dispose()
+    const save = vi.fn(async () => undefined)
+    await expect(attachments.commit(`![](${a})`, save)).rejects.toThrow('dispose 뒤')
+    expect(upload).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('commit 도중 dispose 돼도 끝까지 가고 주소는 한 번만 해제한다', async () => {
+    const gate = deferred<void>()
+    const upload = vi.fn(async (file: File) => {
+      await gate.promise
+      return createdFor(file)
+    })
+    const { attachments } = setup({ upload })
+    const [a] = attachments.add([png('a.png')], '')
+    const save = vi.fn(async (final: string) => final)
+    const running = attachments.commit(`![](${a})`, save)
+    attachments.dispose()
+    gate.resolve()
+    await expect(running).resolves.toBe(`![](${createdFor(png('a.png')).url})`)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(revoked).toEqual([a])
+  })
+
   it('만든 스코프가 끝나면 저절로 해제한다', () => {
     const scope = effectScope()
     const attachments = scope.run(() =>

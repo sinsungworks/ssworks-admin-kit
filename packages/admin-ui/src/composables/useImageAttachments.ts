@@ -37,7 +37,10 @@ import {
 //    주소만 올라간다. 편집기 여럿이 하나를 나눠 써도 된다(C13) — 해제는 만든 스코프가 끝날 때.
 
 export interface UseImageAttachmentsOptions {
-  /** 파일 하나를 올린다 — 보통 `(file) => api.uploadFile('/admin/uploads', file, { params: { purpose } })` */
+  /**
+   * 파일 하나를 올린다 — 보통 `(file) => api.uploadFile('/admin/uploads', file, { params: { purpose } })`.
+   * 실패는 ApiError 로 던져야 업로드 오류 문구(ERR_UPLOAD_*)로 바뀐다
+   */
   upload: (file: File) => Promise<AdminUploadCreated>
   /** 되돌림 — 보통 `` (key) => api.del(`/admin/uploads/${key}`) ``. 없으면 남은 것은 서버 정리 잡 몫 */
   remove?: (key: string) => Promise<unknown>
@@ -140,6 +143,8 @@ export function useImageAttachments(options: UseImageAttachmentsOptions): ImageA
     bodies: readonly string[],
     save: (finals: string[]) => Promise<T>,
   ): Promise<T> {
+    // 해제된 blob: 이 그대로 서버 본문에 저장되지 않게 — add 와 같이 dispose 를 따른다(진행 중이던 commit 은 끝까지 간다)
+    if (disposed) throw new Error('useImageAttachments: dispose 뒤에는 commit 할 수 없다')
     if (busy.value) throw new Error('useImageAttachments: commit 이 이미 진행 중이다')
     busy.value = true
     // 🔴 시작할 때의 대응을 붙잡는다 — 도중에 dispose 돼도 이번 commit 은 끝까지 간다
@@ -165,8 +170,8 @@ export function useImageAttachments(options: UseImageAttachmentsOptions): ImageA
       }
       const result = await save(bodies.map((body) => replaceUrls(body, replacements)))
       for (const { url } of queue) {
-        URL.revokeObjectURL(url)
-        files.delete(url)
+        // 진행 중 dispose 가 이미 해제한 주소는 다시 해제하지 않는다
+        if (files.delete(url)) URL.revokeObjectURL(url)
       }
       return result
     } catch (error) {
