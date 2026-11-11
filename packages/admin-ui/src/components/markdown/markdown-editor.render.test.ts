@@ -767,6 +767,25 @@ describe('MarkdownEditor — 그림 첨부(이미지 업로드 C3 · C4 · C5 ·
     expect(editorOf(w).getMarkdown()).toBe('첫 줄\n\n![](blob:test/u001)\n\n')
   })
 
+  it('D1 — 포커스한 적 없는 빈 편집기: 그림이 처음 빈 문단을 대신한다(앞 빈 문단 · &nbsp; 없음)', () => {
+    const w = mountEditor({ modelValue: '', attachments: registry() })
+    choose([imageFile('a.png')])
+    const editor = editorOf(w)
+    editor.state.doc.check()
+    expect(editor.getMarkdown()).toBe('![](blob:test/u001)\n\n')
+    expect(editor.getMarkdown()).not.toContain('&nbsp;')
+    expect(editor.state.doc.firstChild?.type.name).toBe('image')
+  })
+
+  it('D1 — 포커스한 적 없는 빈 편집기에 자리를 못 찾은 끌어 놓기도 앞 빈 문단을 남기지 않는다', () => {
+    const w = mountEditor({ modelValue: '', attachments: registry() })
+    const editor = editorOf(w)
+    vi.spyOn(editor.view, 'posAtCoords').mockReturnValue(null)
+    content()!.dispatchEvent(dragEvent('drop', [imageFile('a.png')]))
+    expect(editor.getMarkdown()).toBe('![](blob:test/u001)\n\n')
+    expect(editor.state.doc.firstChild?.type.name).toBe('image')
+  })
+
   it('끌어 놓기 — 놓은 자리를 못 찾아도(posAtCoords null) 기본 동작을 막고 문서 끝에 넣는다', () => {
     const w = mountEditor({ modelValue: '앞뒤', attachments: registry() })
     const editor = editorOf(w)
