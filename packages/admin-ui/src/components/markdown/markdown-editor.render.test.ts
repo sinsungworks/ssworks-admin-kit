@@ -1,8 +1,18 @@
 // @vitest-environment happy-dom
 import { undoDepth } from '@tiptap/pm/history'
+import { Slice } from '@tiptap/pm/model'
 import type { Editor } from '@tiptap/vue-3'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { AdminUploadCreated } from '@ssworks/admin-shared'
+import { useImageAttachments } from '../../composables/useImageAttachments.js'
+import {
+  dragEvent,
+  imageFile,
+  pasteEvent,
+  stubObjectUrls,
+  transferOf,
+} from '../../test/image-transfer.js'
 import { buttonByText, installVisualViewport, vuetify } from '../../test/setup.js'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { MARKDOWN_EDITOR_EMIT_DELAY_MS } from './markdown-editor.js'
@@ -519,5 +529,223 @@ describe('MarkdownEditor — 링크', () => {
     expect(dialog()).toBeTruthy()
     expect(dialog()!.textContent).toContain('사용할 수 없는 주소입니다.')
     expect(editor.getMarkdown()).toBe('본문')
+  })
+})
+
+describe('MarkdownEditor — 그림 첨부(이미지 업로드 C3 · C4 · C5 · C12 · C13)', () => {
+  // 레지스트리는 실물(useImageAttachments)이다 — blob: 주소만 대역(stubObjectUrls). 편집기 테스트는 올리지 않는다.
+  beforeEach(() => {
+    stubObjectUrls()
+  })
+
+  function registry(onRejected = vi.fn()) {
+    return useImageAttachments({
+      upload: async (): Promise<AdminUploadCreated> => {
+        throw new Error('편집기 테스트는 올리지 않는다')
+      },
+      onRejected,
+    })
+  }
+
+  const imageButton = () => toolButton('이미지 넣기')
+  const fileInput = () => document.querySelector<HTMLInputElement>('input[type="file"]')
+  const modeButton = (name: string) =>
+    buttonByText(name, document.querySelector('[role="toolbar"]')!)!
+
+  /** 숨은 파일 입력으로 고른 것처럼 */
+  function choose(files: readonly File[]): void {
+    const input = fileInput()!
+    input.files = transferOf(files).files
+    input.dispatchEvent(new Event('change'))
+  }
+
+  it('attachments 가 없으면 그림 단추 · 파일 입력이 없고, 파일 붙여넣기는 막지 않는다', () => {
+    const w = mountEditor({ modelValue: '본문' })
+    expect(imageButton()).toBeNull()
+    expect(fileInput()).toBeNull()
+    const paste = pasteEvent([imageFile('a.png')])
+    content()!.dispatchEvent(paste)
+    expect(paste.defaultPrevented).toBe(false)
+    expect(editorOf(w).getMarkdown()).toBe('본문')
+  })
+
+  it('그림 단추 — 숨은 파일 입력(서버가 받는 형식 넷 · 여러 장)을 연다 · 문구는 messages.image', async () => {
+    mountEditor({ attachments: registry() })
+    expect(imageButton()).toBeTruthy()
+    const input = fileInput()!
+    expect(input.hidden).toBe(true)
+    expect(input.multiple).toBe(true)
+    expect(input.accept).toBe('image/jpeg,image/png,image/webp,image/gif')
+    const click = vi.spyOn(input, 'click')
+    imageButton()!.click()
+    expect(click).toHaveBeenCalledTimes(1)
+    wrapper!.unmount()
+    wrapper = null
+    document.body.innerHTML = ''
+    mountEditor({ attachments: registry(), messages: { image: 'Image' } })
+    expect(toolButton('Image')).toBeTruthy()
+  })
+
+  it('고른 파일 → 캐럿 자리에 그림 노드(고른 순서) · 즉시 update:modelValue · 입력을 비운다', () => {
+    const w = mountEditor({ attachments: registry() })
+    const editor = editorOf(w)
+    editor.commands.setTextSelection(endOf(editor))
+    choose([imageFile('a.png'), imageFile('b.gif', 4, 'image/gif')])
+    editor.state.doc.check()
+    const value = '# 제1조\n\n![](blob:test/u001)\n\n![](blob:test/u002)\n\n'
+    expect(editor.getMarkdown()).toBe(value)
+    expect(w.emitted('update:modelValue')).toEqual([[value]])
+    expect(fileInput()!.files).toHaveLength(0)
+  })
+
+  it('파일만 붙여넣으면 그림 노드 + doc.check() · 기본 동작을 막는다 — 글자가 함께 오면 기본 붙여넣기', () => {
+    const attachments = registry()
+    const w = mountEditor({ modelValue: '본문', attachments })
+    const editor = editorOf(w)
+    editor.commands.setTextSelection(endOf(editor))
+    const paste = pasteEvent([imageFile('a.png')])
+    content()!.dispatchEvent(paste)
+    expect(paste.defaultPrevented).toBe(true)
+    editor.state.doc.check()
+    expect(editor.getMarkdown()).toBe('본문\n\n![](blob:test/u001)\n\n')
+
+    const add = vi.spyOn(attachments, 'add')
+    editor.commands.setTextSelection(3)
+    content()!.dispatchEvent(pasteEvent([imageFile('b.png')], '글자'))
+    expect(add).not.toHaveBeenCalled()
+    expect(editor.getMarkdown()).toBe('본문글자\n\n![](blob:test/u001)\n\n')
+  })
+
+  it('거른 파일은 넣지 않는다 — 알림은 레지스트리 onRejected 몫(편집기는 토스트를 띄우지 않는다)', () => {
+    const onRejected = vi.fn()
+    const w = mountEditor({ modelValue: '본문', attachments: registry(onRejected) })
+    const editor = editorOf(w)
+    editor.commands.setTextSelection(endOf(editor))
+    content()!.dispatchEvent(
+      pasteEvent([imageFile('a.svg', 4, 'image/svg+xml'), imageFile('b.png')]),
+    )
+    expect(editor.getMarkdown()).toBe('본문\n\n![](blob:test/u001)\n\n')
+    expect(onRejected).toHaveBeenCalledWith(expect.objectContaining({ reason: 'type', count: 1 }))
+    expect(document.querySelector('.v-snackbar')).toBeNull()
+  })
+
+  it('끌어 놓기 — 놓은 자리(posAtCoords)에 넣고 기본 동작을 막는다 · 편집기 안에서 끄는 것은 ProseMirror 몫', () => {
+    const attachments = registry()
+    const w = mountEditor({ modelValue: '앞뒤', attachments })
+    const editor = editorOf(w)
+    vi.spyOn(editor.view, 'posAtCoords').mockReturnValue({ pos: 2, inside: -1 })
+    const drop = dragEvent('drop', [imageFile('a.png')])
+    content()!.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    editor.state.doc.check()
+    expect(editor.getMarkdown()).toBe('앞\n\n![](blob:test/u001)\n\n뒤')
+
+    const add = vi.spyOn(attachments, 'add')
+    editor.view.dragging = { slice: Slice.empty, move: true }
+    content()!.dispatchEvent(dragEvent('drop', [imageFile('b.png')]))
+    expect(add).not.toHaveBeenCalled()
+  })
+
+  it('readonly 면 셋 다 꺼진다 — readonly 를 풀면 다시 받는다', async () => {
+    const attachments = registry()
+    const add = vi.spyOn(attachments, 'add')
+    const w = mountEditor({ modelValue: '본문', attachments, readonly: true })
+    expect(imageButton()!.disabled).toBe(true)
+    content()!.dispatchEvent(pasteEvent([imageFile('a.png')]))
+    content()!.dispatchEvent(dragEvent('drop', [imageFile('b.png')]))
+    modeButton('원문').click()
+    await flushPromises()
+    sourceArea()!.dispatchEvent(pasteEvent([imageFile('c.png')]))
+    expect(add).not.toHaveBeenCalled()
+    modeButton('서식').click()
+    await w.setProps({ readonly: false })
+    expect(imageButton()!.disabled).toBe(false)
+    content()!.dispatchEvent(pasteEvent([imageFile('d.png')]))
+    expect(add).toHaveBeenCalledTimes(1)
+  })
+
+  it('원문 — 붙여넣기 · 끌어 놓기 · 그림 단추는 캐럿 자리에 `![](blob:…)` 줄 · 즉시 emit · 서식으로 돌아오면 그림 노드', async () => {
+    const w = mountEditor({ modelValue: '앞뒤', attachments: registry() })
+    modeButton('원문').click()
+    await flushPromises()
+    const area = sourceArea()!
+    area.setSelectionRange(1, 1)
+    const paste = pasteEvent([imageFile('a.png')])
+    area.dispatchEvent(paste)
+    expect(paste.defaultPrevented).toBe(true)
+    const once = '앞\n\n![](blob:test/u001)\n\n뒤'
+    expect(area.value).toBe(once)
+    expect(area.selectionEnd).toBe('앞\n\n![](blob:test/u001)'.length)
+    expect(w.emitted('update:modelValue')).toEqual([[once]])
+
+    const over = dragEvent('dragover', [imageFile('b.png')])
+    area.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const drop = dragEvent('drop', [imageFile('b.png')])
+    area.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    choose([imageFile('c.png')])
+    const thrice = '앞\n\n![](blob:test/u001)\n\n![](blob:test/u002)\n\n![](blob:test/u003)\n\n뒤'
+    expect(area.value).toBe(thrice)
+    expect(w.emitted('update:modelValue')).toHaveLength(3)
+
+    modeButton('서식').click()
+    await flushPromises()
+    expect(content()!.querySelectorAll('img')).toHaveLength(3)
+    expect(editorOf(w).getMarkdown()).toBe(thrice)
+  })
+
+  it('🔴 C12 — 디바운스 중에 그림을 넣으면 대기 중인 update:modelValue 가 add 보다 먼저 나간다', () => {
+    const log: string[] = []
+    const attachments = registry()
+    const add = attachments.add
+    vi.spyOn(attachments, 'add').mockImplementation((files, body) => {
+      log.push(`add:${body}`)
+      return add(files, body)
+    })
+    const w = mountEditor({
+      attachments,
+      'onUpdate:modelValue': (value: string) => log.push(`emit:${value}`),
+    })
+    const editor = editorOf(w)
+    type(editor, '가')
+    type(editor, '나')
+    content()!.dispatchEvent(pasteEvent([imageFile('a.png')]))
+    expect(log).toEqual([
+      'emit:# 제1조가',
+      'emit:# 제1조가나',
+      'add:# 제1조가나',
+      'emit:# 제1조가나\n\n![](blob:test/u001)\n\n',
+    ])
+  })
+
+  it('C13 — 레지스트리 하나를 편집기 둘이 나눠 쓴다: 각자 넣은 그림이 하나의 count 에 잡히고, 하나가 사라져도 등록은 남는다', () => {
+    const attachments = registry()
+    const values = ['첫째', '둘째']
+    const mountOne = (index: number, label: string) =>
+      mount(MarkdownEditor, {
+        props: {
+          modelValue: values[index]!,
+          label,
+          attachments,
+          'onUpdate:modelValue': (value: string) => {
+            values[index] = value
+          },
+        },
+        attachTo: document.body,
+        global: { plugins: [vuetify] },
+      })
+    const first = mountOne(0, '첫째 본문')
+    const second = mountOne(1, '둘째 본문')
+    try {
+      content('첫째 본문')!.dispatchEvent(pasteEvent([imageFile('a.png')]))
+      content('둘째 본문')!.dispatchEvent(pasteEvent([imageFile('b.png')]))
+      expect(values.every((value) => value.includes('blob:test/'))).toBe(true)
+      expect(attachments.count(values)).toBe(2)
+      second.unmount()
+      expect(attachments.count(values)).toBe(2)
+    } finally {
+      first.unmount()
+    }
   })
 })

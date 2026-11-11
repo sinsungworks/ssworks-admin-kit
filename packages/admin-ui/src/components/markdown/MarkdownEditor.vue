@@ -1,9 +1,19 @@
 <script setup lang="ts">
+  import { UPLOAD_CONTENT_TYPES } from '@ssworks/admin-shared'
   import { history } from '@tiptap/pm/history'
   import { NodeSelection, Plugin } from '@tiptap/pm/state'
+  import type { EditorView } from '@tiptap/pm/view'
   import { Editor } from '@tiptap/vue-3'
   import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
   import { VBtn, VBtnToggle, VDivider } from 'vuetify/components'
+  import type { ImageAttachments } from '../../composables/useImageAttachments.js'
+  import {
+    filesOf,
+    hasFiles,
+    insertImagesAt,
+    pastedFiles,
+    sourceWithImages,
+  } from './editor-images.js'
   import { createMarkdownEditorExtensions, normalizeLinkHref } from './editor-markdown.js'
   import {
     DEFAULT_MARKDOWN_EDITOR_MESSAGES,
@@ -26,6 +36,10 @@
   //  - emit 디바운스(결정 ③) — 버스트의 첫 변경은 즉시(부모의 더티 판정이 바로 선다), 이어지는 변경은 200ms 멈추면(최대 1초) 나간다.
   //    포커스 잃음 · 전환 · readonly · 언마운트 · pagehide 에서 flush. `flush()` 를 expose 한다(라우트 가드 · 단축키 저장 전).
   //  - 링크는 BaseDialog(브라우저 prompt 금지). 도구 막대 문구는 `messages`.
+  //  - 그림 첨부(이미지 업로드 스펙 `docs/superpowers/specs/2026-11-01-admin-kit-image-uploads-design.md` C3 · C4 · C5 · C12 · C13) —
+  //    `attachments`(useImageAttachments)를 주면 그림 단추 · 파일 붙여넣기 · 파일 끌어 놓기(서식 · 원문 둘 다)가 켜진다. 편집기는
+  //    `blob:` 그림만 넣고, 올리기는 저장 때 레지스트리 commit 이 한다. 거른 파일 알림은 레지스트리 onRejected(토스트 없음).
+  //    레지스트리 하나를 편집기 여럿이 나눠 써도 된다. readonly 면 셋 다 꺼진다.
   //
   // 🔴 받은 값(prop)이 마지막으로 합의한 값(`lastEmitted`)과 같으면 아무것도 하지 않는다(D3). 디바운스 뒤 부모가 돌려준 값은 그 사이 더
   //    친 글자 때문에 지금 문서와 다를 수 있어 문서와 비교하면 조합 중 치환이 일어난다 — 그래서 `lastEmitted` 와 비교한다(W4).
@@ -48,6 +62,8 @@
       /** 처음 보일 편집 방식. 기본 'wysiwyg'(서식). 'source' 는 Markdown 원문 textarea */
       defaultMode?: MarkdownEditorMode
       messages?: Partial<MarkdownEditorMessages>
+      /** 그림 첨부 레지스트리(useImageAttachments). 없으면 그림 단추 · 파일 붙여넣기 · 끌어 놓기가 없다 */
+      attachments?: ImageAttachments
     }>(),
     {
       readonly: false,
@@ -55,6 +71,7 @@
       height: '420px',
       defaultMode: 'wysiwyg',
       messages: () => ({}),
+      attachments: undefined,
     },
   )
 
@@ -81,6 +98,13 @@
   const linkOpen = ref(false)
   const linkHref = ref('')
 
+  const fileInput = ref<HTMLInputElement | null>(null)
+  const sourceArea = ref<HTMLTextAreaElement | null>(null)
+  /** 그림 단추의 파일 고르기 창 — 서버가 받는 원본 형식 넷 */
+  const imageAccept = UPLOAD_CONTENT_TYPES.join(',')
+  /** 그림을 받을 수 있는가 — 레지스트리가 있고 쓸 수 있을 때 */
+  const canAttach = computed(() => props.attachments != null && !props.readonly)
+
   function contentAttributes(): Record<string, string> {
     const attributes: Record<string, string> = {
       role: 'textbox',
@@ -89,6 +113,15 @@
     }
     if (props.readonly) attributes['aria-readonly'] = 'true'
     return attributes
+  }
+
+  /** 서식 편집기의 ProseMirror props — 만들 때 · readonly · label 이 바뀔 때 같은 묶음을 넘긴다(처리기가 한 벌이다) */
+  function viewProps() {
+    return {
+      attributes: contentAttributes(),
+      handlePaste: onWysiwygPaste,
+      handleDOMEvents: { drop: onWysiwygDrop },
+    }
   }
 
   function cancelPending(): void {
@@ -160,7 +193,7 @@
       contentType: 'markdown',
       editable: !props.readonly,
       injectCSS: false,
-      editorProps: { attributes: contentAttributes() },
+      editorProps: viewProps(),
       onUpdate: scheduleEmit,
       onBlur: flush,
       onTransaction: () => {
@@ -204,13 +237,13 @@
     (readonly) => {
       if (readonly) flush()
       editor.value?.setEditable(!readonly, false)
-      editor.value?.setOptions({ editorProps: { attributes: contentAttributes() } })
+      editor.value?.setOptions({ editorProps: viewProps() })
     },
   )
 
   watch(
     () => props.label,
-    () => editor.value?.setOptions({ editorProps: { attributes: contentAttributes() } }),
+    () => editor.value?.setOptions({ editorProps: viewProps() }),
   )
 
   function setMode(next: unknown): void {
@@ -230,6 +263,98 @@
     emit('update:modelValue', value)
   }
 
+  // ── 그림 첨부 ─────────────────────────────────────────────────────
+
+  /**
+   * 받은 파일을 레지스트리에 넣고, 받아들인 그림을 지금 모드의 캐럿 자리에 넣는다. at = 서식 문서의 자리(끌어 놓기 — 없으면 선택 끝).
+   * 🔴 add 전에 디바운스 중인 변경을 내보낸다(C12) — 앱의 v-model 이 편집기보다 늦으면 room() 이 남은 칸을 크게 센다.
+   *    다른 편집기의 디바운스는 막지 못한다 — 앱의 저장 전 검사(count)와 서버 첨부(409)가 막는다
+   */
+  function attachFiles(files: readonly File[], at?: number): void {
+    const attachments = props.attachments
+    if (attachments == null || props.readonly || files.length === 0) return
+    flush()
+    const urls = attachments.add(files, lastEmitted)
+    if (urls.length === 0) return
+    if (mode.value === 'source') {
+      insertIntoSource(urls)
+      return
+    }
+    const instance = editor.value
+    if (instance == null || instance.isDestroyed) return
+    insertImagesAt(instance, at ?? instance.state.selection.to, urls)
+    instance.view.focus()
+  }
+
+  /** 원문 textarea 의 캐럿 자리에 그림 줄 — 친 것과 같이 즉시 emit */
+  function insertIntoSource(urls: readonly string[]): void {
+    const area = sourceArea.value
+    if (area == null) return
+    const next = sourceWithImages(area.value, area.selectionEnd, urls)
+    area.value = next.value
+    area.setSelectionRange(next.caret, next.caret)
+    area.focus()
+    lastEmitted = next.value
+    wysiwygStale = true
+    emit('update:modelValue', next.value)
+  }
+
+  /** 서식 붙여넣기 — 글자 없이 파일만 올 때만 맡는다(true 면 ProseMirror 가 기본 동작을 막는다) */
+  function onWysiwygPaste(_view: EditorView, event: ClipboardEvent): boolean {
+    if (!canAttach.value) return false
+    const files = pastedFiles(event.clipboardData)
+    if (files.length === 0) return false
+    attachFiles(files)
+    return true
+  }
+
+  /**
+   * 서식 끌어 놓기 — 바깥 파일만 맡는다. 🔴 `handleDrop` 이 아니라 `handleDOMEvents.drop` 이다 — ProseMirror 는 놓은 자리를 못 찾으면
+   * (posAtCoords 가 null) handleDrop 을 부르지 않고 기본 동작도 막지 않아 브라우저가 그림 파일을 열어 버린다(초안 유실). 편집기 안에서
+   * 끄는 그림 · 글자(`view.dragging` — 크롬은 그림 노드를 끌 때 파일도 싣는다)는 ProseMirror 몫이다
+   */
+  function onWysiwygDrop(view: EditorView, event: DragEvent): boolean {
+    if (!canAttach.value || view.dragging != null) return false
+    const files = filesOf(event.dataTransfer)
+    if (files.length === 0) return false
+    event.preventDefault()
+    attachFiles(files, view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos)
+    return true
+  }
+
+  function onSourcePaste(event: ClipboardEvent): void {
+    if (!canAttach.value) return
+    const files = pastedFiles(event.clipboardData)
+    if (files.length === 0) return
+    event.preventDefault()
+    attachFiles(files)
+  }
+
+  /** 원문에 파일을 놓을 수 있게 — 막지 않으면 브라우저가 그 자리 놓기를 받지 않고 파일을 연다 */
+  function onSourceDragOver(event: DragEvent): void {
+    if (canAttach.value && hasFiles(event.dataTransfer)) event.preventDefault()
+  }
+
+  /** 원문 끌어 놓기 — 놓은 자리가 아니라 캐럿 자리에 넣는다(textarea 는 놓은 글자 자리를 알려 주지 않는다) */
+  function onSourceDrop(event: DragEvent): void {
+    if (!canAttach.value) return
+    const files = filesOf(event.dataTransfer)
+    if (files.length === 0) return
+    event.preventDefault()
+    attachFiles(files)
+  }
+
+  function pickFiles(): void {
+    fileInput.value?.click()
+  }
+
+  function onFilesPicked(event: Event): void {
+    const input = event.target as HTMLInputElement
+    const files = [...(input.files ?? [])]
+    input.value = '' // 같은 파일을 다시 고를 수 있게
+    attachFiles(files)
+  }
+
   interface Tool {
     /** 도구 단추의 문구 키 — 모드 · 도구 막대 이름 · 링크 대화상자 문구는 아니다 */
     key: Exclude<
@@ -244,6 +369,7 @@
       | 'linkRemove'
       | 'linkCancel'
       | 'linkInvalid'
+      | 'image'
     >
     icon: string
     active: boolean
@@ -431,6 +557,27 @@
           @click="tool.run"
         />
       </template>
+      <!-- 그림 단추는 두 모드 모두에서 쓴다(원문이면 캐럿 자리에 `![](blob:…)` 줄) -->
+      <template v-if="attachments">
+        <VDivider class="markdown-editor__divider" vertical />
+        <VBtn
+          :aria-label="text.image"
+          :disabled="readonly"
+          icon="mdi-image-plus"
+          size="small"
+          :title="text.image"
+          variant="text"
+          @click="pickFiles"
+        />
+        <input
+          ref="fileInput"
+          :accept="imageAccept"
+          hidden
+          multiple
+          type="file"
+          @change="onFilesPicked"
+        />
+      </template>
       <!-- Vuetify 는 role · aria-pressed 를 달지 않는다 — 묶음 이름과 선택 상태를 직접 노출한다(리뷰 중요 #3) -->
       <VBtnToggle
         :aria-label="text.modeToggle"
@@ -454,12 +601,16 @@
       <div v-show="mode === 'wysiwyg'" ref="host" class="markdown-editor__wysiwyg" />
       <textarea
         v-show="mode === 'source'"
+        ref="sourceArea"
         :aria-label="label"
         class="markdown-editor__source"
         :readonly="readonly"
         spellcheck="false"
         :value="modelValue"
+        @dragover="onSourceDragOver"
+        @drop="onSourceDrop"
         @input="onSourceInput"
+        @paste="onSourcePaste"
       />
     </div>
     <MarkdownLinkDialog
