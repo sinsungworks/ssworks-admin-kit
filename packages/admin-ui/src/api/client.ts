@@ -48,6 +48,11 @@ export interface ApiClient {
     put<T = unknown>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T>
     /** 🔴 본문을 싣는다 — 민감 작업 재인증 비밀번호가 DELETE 본문으로 간다. */
     del<T = unknown>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T>
+    /**
+     * 파일 하나를 **원시 바이트**로 POST 한다(multipart 아님 — admin-server `POST /admin/uploads?purpose=`).
+     * `Content-Type` 은 파일 형식. 응답 봉투 · bigint · 401 갱신 · `onError` 는 다른 요청과 같다.
+     */
+    uploadFile<T = unknown>(url: string, file: Blob, config?: AxiosRequestConfig): Promise<T>
   }
   /** 갱신 실패 리스너를 더한다. 옵션의 `onAuthFailure` 와 함께 각각 한 번씩 불린다. */
   onAuthFailure(fn: () => void): void
@@ -237,6 +242,18 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       patch: withBody('patch'),
       put: withBody('put'),
       del: withBody('delete'),
+      // 🔴 인스턴스 기본 `Content-Type: application/json` 이 남으면 서버가 415 다 — 파일 형식으로 덮는다. axios 기본
+      //    transformRequest 는 Blob 으로 못 알아본 File(happy-dom — 태그가 `[object File]` 이 아니다)을 JSON 으로 바꿔
+      //    바이트가 증발한다 — 그대로 넘긴다(스펙 C6). 요청 인터셉터의 bigint 코덱은 평범한 객체만 탄다.
+      uploadFile: <T>(url: string, file: Blob, config?: AxiosRequestConfig) =>
+        request<T>({
+          ...config,
+          url,
+          method: 'post',
+          data: file,
+          transformRequest: [(data: unknown) => data],
+          headers: { ...config?.headers, 'Content-Type': file.type || 'application/octet-stream' },
+        }),
     },
     onAuthFailure(fn) {
       authFailureListeners.push(fn)
