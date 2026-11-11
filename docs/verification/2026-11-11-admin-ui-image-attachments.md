@@ -31,11 +31,49 @@ cb72255 docs: PR #3k 구현 플랜 — admin-ui 편집기 그림 첨부(useImage
 
 ## 2. 확인용 앱(`$LOCALAPPDATA/Temp/aksu` — Task 9)
 
-(Task 9 에서)
+2026-11-11 · 워크트리 `4834b83` 에서 `pnpm build` 뒤 pack.
+
+| 단계 | 결과 |
+| --- | --- |
+| tarball | `ssworks-admin-shared-0.13.0.tgz`(75,970 B) · `ssworks-admin-ui-0.13.0.tgz`(467,906 B) · `ssworks-admin-server-0.13.0.tgz`(351,494 B) — 번호가 플랜과 같아 `file:` 이름 그대로 |
+| 서버 설치 | `pnpm install` 깨끗(148 패키지 · ignored builds 없음 → `allowBuilds` 불필요). 해소 판 `@nestjs/*` 12.4.2 · kysely 0.29.8 · mariadb 3.5.5 · sharp 0.35.5 · zod 4.6.7 · typescript 6.0.3 |
+| 서버 빌드 | `tsc -p tsconfig.json` 오류 0 |
+| DB · 시드 | `admin-kit-test-db` 는 멈춰 있어 `docker start`(끝나고 다시 멈춤). `aksu` 만들기 → `장 13개 적용` · `계정 admin / admin1234` |
+| 서버 기동 | `/api/health` → `{"success":true,"data":{"ok":true}}` · 기동 로그에 오류 · 경고 없음 · 라우트 표에 uploads POST · DELETE · media GET |
+| 웹 설치 | `pnpm install` 깨끗(159 패키지). vue 3.5.45 · vuetify 4.3.3 · axios 1.21.1 · vite 8.3.7 · vue-tsc 3.3.14 · tiptap 3.32.0 |
+| `pnpm peers check` | `No peer dependency issues found` |
+| `vue-tsc --noEmit` | 오류 0 |
+| `vite build` | 통과 — `index-*.js` 1,200.46 kB(gzip 399.98 kB) 크기 경고만 |
+
+확인용 앱 코드를 고친 곳: **없다** — 플랜 Step 2 · Step 5 의 코드가 그대로 `tsc` · `vue-tsc` · `vite build` 를 통과했다.
+
+도구 쪽 편차(킷 · 앱 코드는 그대로):
+
+- V1 의 파일 고르기 창 — OS 창은 도구로 닫을 수 없어, `HTMLInputElement.prototype.click` 을 잠깐 가로채(파일 입력이면 기록만 하고 창은 열지 않는다) **실제 마우스 클릭**으로 단추를 눌렀다. 창이 실제로 뜨는 것은 사람 확인 몫(§5).
+- 토스트는 `MutationObserver` 로 `.v-snackbar` 글자를 모았다(사라진 뒤에도 남게). 같은 토스트가 바깥 · 안쪽 요소로 두 번 잡혀 기록에 두 줄씩 남는다 — 화면에는 하나.
+- 콘솔 도구(claude-in-chrome)는 console API 메시지만 준다 — 브라우저가 찍는 네트워크 실패 줄(409 · 503 · 502 · 404)은 잡지 않는다.
 
 ## 3. 실브라우저(Task 9)
 
-(Task 9 에서)
+Chrome(claude-in-chrome) 새 탭 하나 · `http://localhost:5181` · admin 로그인. 이벤트는 플랜 Step 7 의 `window.aksu` 도우미로 페이지 안에서 만들었다(ProseMirror · Vue 처리기 · 네트워크 · 서버 · DB 는 진짜). 리뷰 뒤 바뀐 동작(포커스한 적 없는 서식 편집기는 문서 끝에 넣는다 · 사라진 편집기는 파일을 버린다 · dispose 뒤 commit 은 던진다 · readonly 는 파일을 받지 않는다)을 기대에 반영했다 — readonly 드롭은 탭이 그림 파일로 떠나므로 브라우저에서 돌리지 않았다.
+
+| #   | 기대 | 실제 | 판정 |
+| --- | --- | --- | --- |
+| V1  | 「이미지 넣기」 단추 · 파일 창 · 편집기에 그림 둘(순서대로) · 미리보기 `blob:` 둘 · 업로드 요청 없음 | 편집기 셋 모두 단추 있음. 실제 클릭 → 그 편집기의 숨은 입력(`accept` `image/jpeg,image/png,image/webp,image/gif` · `multiple`)에 `click` 1회. `choose(a, b)` → 편집기 `<p></p><img a><img b><p></p>`(포커스한 적 없어 문서 끝) · 미리보기 `blob:` 둘(96×64 로드) · 입력 `value` 비움 · `/api/` 요청 0 | 통과 — 단, 앞 빈 문단은 **D1** |
+| V2  | 파일만 `true` · 그림 하나 더 / 글자와 함께면 글자만 | 첫째 `true` · 그림 3. 둘째도 `true` 지만 ProseMirror 기본 글자 붙여넣기가 막은 것(prosemirror-view `editHandlers.paste` 가 `clipboardData` 의 글자를 넣고 `preventDefault`) — 킷은 맡지 않았다: 그림 3 그대로 · 새 문단 「표 글자」 만. **기대 정정**: 둘째 반환값은 `true` 가 맞다 | 통과 |
+| V3  | `true` · 놓은 자리(편집 영역 머리)에 그림 · 탭 그대로 | `true` · 새 그림이 첫 블록(앞 빈 문단 위) · `location.href` 그대로 | 통과 |
+| V4  | 원문 캐럿 자리에 `![](blob:…)` 줄 · 서식으로 돌아오면 그림 노드 | 캐럿을 `&nbsp;` 줄 끝(76)에 두고 붙여넣기 → `preventDefault` · 그 자리에 빈 줄로 띄운 `![](blob:…)` 줄 · 캐럿은 그 줄 뒤(146) · textarea 포커스 유지. 「서식」 → 그림 노드 5(같은 차례) · 미리보기 5 | 통과 |
+| V5  | 경고 토스트 둘(문구 그대로) · 편집기 그대로 | 둘 다 `true`. 주황 토스트 「장당 최대 10MB를 넘어 1장을 넣지 않았습니다.」 → 「지원하지 않는 형식이라 1장을 넣지 않았습니다. (JPG · PNG · WebP · GIF)」 · 편집기 innerHTML 같음(그림 5) · 요청 0 | 통과 |
+| V6  | 업로드 201 × 그림 수 → 발행 201 · 성공 토스트 · 편집기 그림이 `/api/media/legal/…` · 「바뀜」 없음 | `POST /api/admin/uploads?purpose=legal` 201 × 5 → `POST /api/admin/legal-documents` 201 → 중계 GET 200 × 5 → current · 이력 200. 편집기 · 미리보기 그림 5 모두 `/api/media/legal/2026/11/….webp`(로드됨) · 단추 꺼짐 + 「시행 중인 판과 내용이 같습니다.」. 성공 토스트는 이 회차엔 읽기 전에 사라졌고 V8 재발행에서 「이용약관 새 버전을 발행했습니다.」 로 확인 | 통과 |
+| V7  | 원문에 `/api/media/legal/…` · 행 `legalDocument` · `deleted` 0 · 중계 200 · 304 | [보기] 대화상자 그림 5 모두 `/api/media/legal/…`. `GET /legal-documents/1` 의 body 에 `blob:` 없음. DB 행 1 ~ 5 `ref_type legalDocument` · `ref_id 1` · `deleted 0`(행 차례는 등록 차례 a · b · c · e · f). `media-check.mjs` → `첫 요청 200 image/webp public, max-age=600 same-site "5a88ec9116897b21"` · `If-None-Match 304` | 통과 |
+| V8  | 업로드 201 × 2 → 발행 409 → DELETE 200 × 2 · 노란 충돌 안내 · 전역 오류 토스트 없음 · 초안 `blob:` 그대로 · 두 행 `deleted` 1 · 다시 발행하면 새로 올라가 201 | `other-publish.mjs` → `201`(legalDocNo 2). 브라우저 발행 → 업로드 201 × 2 → 발행 **409** → `DELETE /api/admin/uploads/legal/2026/11/….webp` 200 × 2 → current · 이력 재조회. `v-alert text-warning` 「다른 관리자가 2026-11-11 20:08에 새 버전을 발행했습니다. …」 · 토스트 기록 0 · 초안 `blob:` 둘 그대로(로드됨). DB 행 6 · 7 `ref NULL` · `deleted 1`. 다시 발행 → 업로드 201 × 2(새 키) → 201 · 성공 토스트 · 행 8 · 9 `legalDocument 3` | 통과 |
+| V9  | 업로드 503 · 토스트 「이미지 저장소를 사용할 수 없습니다. …」(「서버 내부 오류」 아님) · 발행 요청 없음 · 초안 그대로 · 새 행 없음 | `storage-off` → 업로드 **503** 1회 · 발행 요청 없음 · 빨간 토스트 「이미지 저장소를 사용할 수 없습니다. 잠시 후 다시 시도하세요.」. 같은 조건의 직접 요청 응답 본문은 `{"success":false,"code":"ERR_UPLOAD_UNAVAILABLE","message":"서버 내부 오류가 발생했습니다."}` — 서버가 가린 문구를 코드로 바꿨다. 초안 `blob:` 그대로 · 진행 `0 / 0 · busy false` · DB 9 행 그대로 | 통과 |
+| V10 | 오류 토스트 하나(프록시 문구) · 초안 그대로 · 재기동 뒤 새 미첨부 행 없음 | 서버 끔 → 업로드 **502** 1회(vite 프록시 `ECONNREFUSED`) · 발행 요청 없음 · 토스트 하나 「Request failed with status code 502」 · 초안 `blob:` 둘 그대로. 재기동 뒤 DB 9 행 그대로. 덧붙여 재기동 뒤 다시 발행 → 업로드 201 × 2 → 201(4번 판 · 행 10 · 11 첨부) | 통과 |
+| V11 | 첫째 둘 · 둘째 하나 · 경고 「두 본문 합쳐 3장까지라 1장을 넣지 않았습니다.」 · count 3 · 업로드 201 × 3 · `<pre>` 치환본 · 편집기 그림 안 깨짐 | 첫째 2 · 둘째 1 · 경고 그 문구 · count 3. commit → 업로드 201 × 3 · `<pre>` 에 두 본문의 `/api/media/legal/…` 치환본 · count 0. **편집기 그림은 깨진다**(중계 404 × 3) — 서버 설계(`admin-server/src/media/media.controller.ts:16` 「첨부된 행만 200, 미첨부 · 지움 표시는 404」): 이 페이지는 서버에 저장하지 않아(`sync` 없음) 행 12 ~ 14 가 미첨부로 남는다. 파일은 저장소에 있다(`uploads/legal/2026/11/` 92 ~ 94 B). **기대 정정** — 킷 결함 아님(V6 · V8 처럼 저장이 첨부하면 보인다). `<pre>` 두 본문 모두 첫 줄이 `&nbsp;` → **D1** | 통과(기대 정정) |
+| V12 | V1 ~ V11 내내 콘솔 오류 · 경고 없음 | console API 오류 · 경고 0(vite `connecting` · `connected` debug 만) · Vue 경고 없음. vite `dev.log` 에 V10 의 `http proxy error: /api/admin/uploads?purpose=legal` · `ECONNREFUSED 127.0.0.1:4100` 한 줄(예상) | 통과 |
+| D1  | (V1 · V11 에서 나온 것) 빈 편집기에 그림만 넣으면 본문이 그림으로 시작한다 | **포커스한 적 없는 빈 서식 편집기**에 넣으면(그림 단추 · 붙여넣기 · 자리 못 찾은 드롭) 처음의 빈 문단이 그림 **앞**에 남아 Markdown 첫 블록이 `&nbsp;` 가 된다 — V1 `<p></p><img><img><p></p>` → 발행된 1번 판 원문 `![](…e)\n\n&nbsp;\n\n![](…f)…`(V3 드롭이 그 위에 올라갔다) · V11 `<pre>` 의 두 본문 모두 `&nbsp;\n\n![](/api/media/…)…`. 대조: 같은 빈 편집기를 **포커스한 뒤**(클릭 · Ctrl+A · Delete) 붙여넣으면 `<img><p></p>` — 그림이 빈 문단을 대신한다(TipTap `insertContentAt` 은 빈 글 블록 **안** 자리면 그 블록을 바꾼다). 의심: `packages/admin-ui/src/components/markdown/MarkdownEditor.vue:293-296`(`everFocused` 가 거짓이면 `doc.content.size` — 마지막 블록 **뒤**라 빈 문단이 남는다) · `editor-images.ts:41-43`. 영향: 약관은 append-only 라 발행된 판에 빈 첫 문단(`<p>&nbsp;</p>`)이 남는다 · 새 문서에서 단추부터 누르는 가장 흔한 흐름 | **실패 — 킷 결함(리뷰 수정의 회귀)** |
+
+D1 은 고치지 않았다(Task 9 규칙 — 확인 중 결함은 멈추고 보고). 고칠 방향 후보(정하지 않음): 포커스한 적 없을 때의 자리를 마지막 글 블록 **안** 끝(`Selection.atEnd(doc)` 꼴)으로 잡거나, 문서가 빈 문단 하나뿐이면 그 문단을 바꾼다 — 원문 모드(`sourceWithImages`)는 빈 값에서 앞 줄을 붙이지 않아 해당 없다.
 
 ## 4. 최종 리뷰(Task 10)
 
@@ -43,5 +81,8 @@ cb72255 docs: PR #3k 구현 플랜 — admin-ui 편집기 그림 첨부(useImage
 
 ## 5. 남은 것
 
-- 실브라우저 확인(Task 9) · 최종 리뷰(Task 10)
+- **D1**(§3) — 포커스한 적 없는 빈 편집기에 넣은 그림 앞에 빈 문단(`&nbsp;`)이 남는다. 고친 뒤 V1 · V11 을 다시 본다
+- 최종 리뷰(Task 10)
+- 사람이 눈으로 볼 것(도구로 못 한 것): 「이미지 넣기」 가 OS 파일 창을 실제로 연다 · OS 클립보드 붙여넣기(스크린숏 · 이미지 복사) · 탐색기에서 끌어 놓기 · 편집 영역 밖(도구 막대 · 페이지)에 놓은 파일은 브라우저 기본(P12) · readonly 편집기 위 드롭은 브라우저가 파일을 연다(킷이 받지 않는다)
+- 확인용 앱 `$LOCALAPPDATA/Temp/aksu`(서버 · 웹 · tarball 셋)는 Task 10 리뷰가 끝날 때까지 둔다 — 다시 띄우려면 `docker start admin-kit-test-db` → DB `aksu` 만들기 → `TZ=UTC node seed.mjs` → `TZ=UTC node dist/main.js`(4100) · `pnpm dev`(5181). DB `aksu` 는 지웠고 서버 · 웹 프로세스는 멈췄다 · `admin-kit-test-db` 는 시작 전처럼 멈춰 두었다
 - push · PR · 병합 · 발행은 사람이 한다
