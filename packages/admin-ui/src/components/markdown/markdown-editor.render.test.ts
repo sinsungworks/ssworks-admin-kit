@@ -786,6 +786,36 @@ describe('MarkdownEditor — 그림 첨부(이미지 업로드 C3 · C4 · C5 ·
     expect(editor.state.doc.firstChild?.type.name).toBe('image')
   })
 
+  it.each([
+    ['글머리 목록', '- 하나\n- 둘', '- 하나\n- 둘\n\n![](blob:test/u001)\n\n'],
+    ['번호 목록', '1. 하나\n2. 둘', '1. 하나\n2. 둘\n\n![](blob:test/u001)\n\n'],
+    ['인용', '> 인용 글', '> 인용 글\n\n![](blob:test/u001)\n\n'],
+  ])(
+    '포커스한 적 없는 편집기 — 끝이 %s 이면 그림은 최상위 맨 끝(안으로 들어가지 않는다)',
+    (_name, body, expected) => {
+      const w = mountEditor({ modelValue: body, attachments: registry() })
+      choose([imageFile('a.png')])
+      const editor = editorOf(w)
+      editor.state.doc.check()
+      expect(editor.getMarkdown()).toBe(expected)
+      expect(editor.getMarkdown()).not.toContain('&nbsp;')
+    },
+  )
+
+  it('M1 — readonly 편집기 뿌리(도구 막대)에 파일을 놓아도 기본 동작을 막는다(페이지를 떠나지 않게) · 등록 · 삽입은 없다', () => {
+    const attachments = registry()
+    const add = vi.spyOn(attachments, 'add')
+    const w = mountEditor({ modelValue: '본문', attachments, readonly: true })
+    const over = dragEvent('dragover', [imageFile('a.png')])
+    toolbar()!.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const drop = dragEvent('drop', [imageFile('a.png')])
+    toolbar()!.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(add).not.toHaveBeenCalled()
+    expect(editorOf(w).getMarkdown()).toBe('본문')
+  })
+
   it('끌어 놓기 — 놓은 자리를 못 찾아도(posAtCoords null) 기본 동작을 막고 문서 끝에 넣는다', () => {
     const w = mountEditor({ modelValue: '앞뒤', attachments: registry() })
     const editor = editorOf(w)

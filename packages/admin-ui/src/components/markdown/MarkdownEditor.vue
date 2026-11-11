@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { UPLOAD_CONTENT_TYPES } from '@ssworks/admin-shared'
   import { history } from '@tiptap/pm/history'
-  import { NodeSelection, Plugin, Selection } from '@tiptap/pm/state'
+  import { NodeSelection, Plugin } from '@tiptap/pm/state'
   import type { EditorView } from '@tiptap/pm/view'
   import { Editor } from '@tiptap/vue-3'
   import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
@@ -291,10 +291,15 @@
     const instance = editor.value
     if (instance == null || instance.isDestroyed) return
     // 한 번도 포커스하지 않은 편집기의 선택은 문서 시작(TipTap 초기값)이다 — 단추만 누른 사용자가 기대하는 자리는 끝이다(원문과 같다).
-    // 🔴 `doc.content.size` 는 마지막 블록 **뒤**라 빈 문단을 대신하지 못한다(앞 빈 문단 `&nbsp;` 회귀) — 마지막 글 블록의 끝을 쓴다:
-    //    빈 문서면 그 빈 문단을 그림이 대신한다
-    const position =
-      at ?? (everFocused ? instance.state.selection.to : Selection.atEnd(instance.state.doc).to)
+    // 🔴 최상위 맨 끝이되 마지막 블록이 빈 문단이면 그 안(그림이 대신한다 — `doc.content.size` 는 블록 **뒤**라 앞 빈 문단 `&nbsp;` 회귀 D1).
+    //    `Selection.atEnd` 는 가장 깊은 마지막 글 블록으로 들어가 목록 · 인용 안에 그림이 갇히므로 쓰지 않는다
+    const doc = instance.state.doc
+    const last = doc.lastChild
+    const end =
+      last != null && last.isTextblock && last.content.size === 0
+        ? doc.content.size - 1
+        : doc.content.size
+    const position = at ?? (everFocused ? instance.state.selection.to : end)
     insertImagesAt(instance, position, urls)
     instance.view.focus()
   }
@@ -355,6 +360,15 @@
     if (files.length === 0) return
     event.preventDefault()
     attachFiles(files)
+  }
+
+  /**
+   * 편집기 뿌리(도구 막대 · readonly 본문 포함)에 파일을 놓아도 브라우저가 파일을 열어 SPA 를 떠나지 않게 막기만 한다(초안 유실 — 약관은
+   * 발행 중 readonly). 아무것도 넣지 않는다 — 본문 · 원문 처리기가 실제 일을 하므로 preventDefault 가 두 번 불려도 해롭지 않다.
+   * 파일이 없는 끌기(편집기 안 글자 끌기)는 건드리지 않는다. 편집기 밖은 앱 몫(P12)
+   */
+  function onRootFileDrag(event: DragEvent): void {
+    if (props.attachments != null && hasFiles(event.dataTransfer)) event.preventDefault()
   }
 
   function pickFiles(): void {
@@ -552,7 +566,12 @@
 </script>
 
 <template>
-  <div class="markdown-editor" :style="{ height }">
+  <div
+    class="markdown-editor"
+    :style="{ height }"
+    @dragover="onRootFileDrag"
+    @drop="onRootFileDrag"
+  >
     <div :aria-label="text.toolbar(label)" class="markdown-editor__toolbar" role="toolbar">
       <template v-for="(group, index) in tools" :key="index">
         <VDivider v-if="index > 0" class="markdown-editor__divider" vertical />
