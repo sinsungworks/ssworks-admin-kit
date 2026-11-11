@@ -861,3 +861,30 @@ describe('useLegalDocuments — 그림 첨부(이미지 업로드 C7 · C14)', (
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({ baseLegalDocNo: 12n }))
   })
 })
+
+describe('useLegalDocuments — 등록에 없는 blob: 그림(최종 리뷰 I2)', () => {
+  beforeEach(() => {
+    stubObjectUrls()
+  })
+
+  it('attachments 가 있고 초안에 등록 없는 blob: 이 있으면 발행이 막힌다(strayImages)', async () => {
+    const attachments = useImageAttachments({ upload: vi.fn() })
+    const [own] = attachments.add([imageFile('a.png')], '')
+    const { legal } = setup({ attachments })
+    await flush()
+    legal.setDraft(`# 수정\n\n![](${own})\n`)
+    expect(legal.publishBlock.value).toBeNull()
+    legal.setDraft(`# 수정\n\n![](blob:other/zzz)\n`)
+    expect(legal.publishBlock.value).toBe('strayImages')
+    expect(legal.canPublish.value).toBe(false)
+    await legal.requestPublish()
+    expect(legal.editor.value.publishDialog.modelValue).toBe(false)
+  })
+
+  it('attachments 가 없으면 blob: 글자가 있어도 예전 그대로', async () => {
+    const { legal } = setup()
+    await flush()
+    legal.setDraft(`# 수정\n\n![](blob:other/zzz)\n`)
+    expect(legal.publishBlock.value).toBeNull()
+  })
+})

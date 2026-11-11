@@ -14,6 +14,7 @@ import {
   planAttachments,
   rejectionNotices,
   replaceUrls,
+  strayBlobUrls,
   urlsInBodies,
   type ImageAttachmentMessages,
   type ImageAttachmentRejection,
@@ -71,6 +72,11 @@ export interface ImageAttachments {
   commit<T>(markdowns: readonly string[], save: (finals: string[]) => Promise<T>): Promise<T>
   /** 본문(들)에 남은 등록 주소의 수 — 같은 주소는 여러 번 · 여러 본문에 있어도 하나(C10) */
   count(markdown: string | readonly string[]): number
+  /**
+   * 본문(들)의 그림 중 이 레지스트리에 등록되지 않은 `blob:` 주소 — 중복 없이 처음 나온 순서(I2). 다른 편집기에서 복사했거나
+   * 저장 전에 해제된 그림 · 원문 탭에서 손댄 주소다. 저장 전에 확인해 칸 오류로 보인다(`commit` 도 이런 본문은 거부한다)
+   */
+  strays(markdown: string | readonly string[]): string[]
   /** commit 진행 중 */
   busy: Readonly<Ref<boolean>>
   /** commit 의 업로드 진행 — 끝나면 `{ done: 0, total: 0 }` */
@@ -98,6 +104,10 @@ export function useImageAttachments(options: UseImageAttachmentsOptions): ImageA
 
   function count(markdown: string | readonly string[]): number {
     return urlsInBodies(files.keys(), bodiesOf(markdown)).length
+  }
+
+  function strays(markdown: string | readonly string[]): string[] {
+    return strayBlobUrls(files.keys(), bodiesOf(markdown))
   }
 
   function add(input: readonly File[], body: string): string[] {
@@ -146,6 +156,9 @@ export function useImageAttachments(options: UseImageAttachmentsOptions): ImageA
     // 해제된 blob: 이 그대로 서버 본문에 저장되지 않게 — add 와 같이 dispose 를 따른다(진행 중이던 commit 은 끝까지 간다)
     if (disposed) throw new Error('useImageAttachments: dispose 뒤에는 commit 할 수 없다')
     if (busy.value) throw new Error('useImageAttachments: commit 이 이미 진행 중이다')
+    // 등록에 없는 blob: 은 올라가지 않아 그대로 저장되면 공개 화면에서 깨진다 — 앱은 `strays()` 로 먼저 막아 칸 오류를 띄운다
+    const stray = strayBlobUrls(files.keys(), bodies)
+    if (stray.length > 0) throw new Error(messages.stray(stray.length))
     busy.value = true
     // 🔴 시작할 때의 대응을 붙잡는다 — 도중에 dispose 돼도 이번 commit 은 끝까지 간다
     const queue = urlsInBodies(files.keys(), bodies).map((url) => ({
@@ -207,5 +220,5 @@ export function useImageAttachments(options: UseImageAttachmentsOptions): ImageA
 
   if (getCurrentScope()) onScopeDispose(dispose)
 
-  return { add, commit, count, busy, progress, dispose }
+  return { add, commit, count, strays, busy, progress, dispose }
 }

@@ -291,6 +291,10 @@ describe('LegalDocumentEditor — 발행', () => {
     ['empty', '본문을 입력하세요.'],
     ['tooLong', '본문은 1,000,000자를 넘을 수 없습니다.'],
     ['unchanged', '시행 중인 판과 내용이 같습니다.'],
+    [
+      'strayImages',
+      '발행할 수 없는 그림이 있습니다(다른 곳에서 복사한 그림). 그 그림을 지우고 파일로 다시 넣으세요.',
+    ],
   ] as const)('막힌 이유 %s → 「%s」', (block, message) => {
     const w = mountEditor({ canPublish: false, publishBlock: block })
     expect(w.find('.legal-document-editor__hint').text()).toBe(message)

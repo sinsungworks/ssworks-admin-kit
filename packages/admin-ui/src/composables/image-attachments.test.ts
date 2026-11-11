@@ -5,6 +5,7 @@ import {
   planAttachments,
   rejectionNotices,
   replaceUrls,
+  strayBlobUrls,
   urlsInBodies,
 } from './image-attachments.js'
 
@@ -100,5 +101,26 @@ describe('urlsInBodies · replaceUrls(C2 · C10 · C11)', () => {
     expect(replaceUrls(`![](${A})\n\n![x](${A})\n\n![](${B})`, replacements)).toBe(
       `![](/api/media/legal/2026/11/a.webp)\n\n![x](/api/media/legal/2026/11/a.webp)\n\n![](${B})`,
     )
+  })
+})
+
+describe('strayBlobUrls — 등록에 없는 blob: 그림(I2)', () => {
+  const A = 'blob:test/u001'
+  const B = 'blob:test/u002'
+  const X = 'blob:test/x001'
+  const Y = 'blob:test/x002'
+
+  it('등록된 주소는 뺀다 · 그림 대상이 아닌 글 속 blob: 은 세지 않는다', () => {
+    expect(strayBlobUrls([A], [`![](${A})\n\n![](${X})`])).toEqual([X])
+    expect(strayBlobUrls([A], ['주소는 blob:abc 처럼 생겼다 ![](/api/media/x.webp)'])).toEqual([])
+  })
+
+  it('같은 주소가 두 번이어도 하나 · 여러 본문을 모두 본다 · 처음 나온 순서', () => {
+    expect(strayBlobUrls([], [`![](${Y}) ![](${X}) ![](${Y})`, `![a](${B})`])).toEqual([Y, X, B])
+  })
+
+  it('대상은 첫 괄호 · 공백 · 따옴표에서 끝난다', () => {
+    expect(strayBlobUrls([], [`![](${X} "제목")`, `![](${Y})`])).toEqual([X, Y])
+    expect(strayBlobUrls([], [])).toEqual([])
   })
 })

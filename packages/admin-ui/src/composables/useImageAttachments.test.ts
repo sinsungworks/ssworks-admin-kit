@@ -403,3 +403,45 @@ describe('useImageAttachments — 해제(C8)', () => {
     expect(revoked).toEqual([a])
   })
 })
+
+describe('useImageAttachments — 등록에 없는 blob:(I2)', () => {
+  const STRAY = 'blob:other/zzz'
+
+  it('strays — 문자열 · 배열 모두, 등록된 것은 뺀다', () => {
+    const { attachments } = setup()
+    const [a] = attachments.add([png('a.png')], '')
+    expect(attachments.strays(`![](${a}) ![](${STRAY})`)).toEqual([STRAY])
+    expect(attachments.strays([`![](${a})`, `![](${STRAY})`, `![](${STRAY})`])).toEqual([STRAY])
+    expect(attachments.strays([])).toEqual([])
+  })
+
+  it('저장에 성공한 뒤 옛 주소를 다시 넣으면 stray', async () => {
+    const { attachments } = setup()
+    const [a] = attachments.add([png('a.png')], '')
+    await attachments.commit(`![](${a})`, async () => undefined)
+    expect(attachments.strays(`![](${a})`)).toEqual([a])
+  })
+
+  it('commit 은 stray 가 있으면 거부 — 올리지도 저장하지도 않고 busy 는 false', async () => {
+    const { attachments, upload } = setup()
+    const [a] = attachments.add([png('a.png')], '')
+    const save = vi.fn(async () => undefined)
+    await expect(attachments.commit(`![](${a}) ![](${STRAY})`, save)).rejects.toThrow(
+      '저장할 수 없는 그림이 1장 있습니다(다른 곳에서 복사한 그림). 그 그림을 지우고 파일로 다시 넣으세요.',
+    )
+    // 장수는 서로 다른 주소의 수 — 같은 주소가 여러 본문 · 여러 번이어도 하나
+    await expect(
+      attachments.commit([`![](${STRAY})`, `![](${STRAY}) ![](blob:other/yyy)`], save),
+    ).rejects.toThrow('2장')
+    expect(upload).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+    expect(attachments.busy.value).toBe(false)
+  })
+
+  it('stray 가 없으면 commit 은 그대로', async () => {
+    const { attachments, uploaded } = setup()
+    const [a] = attachments.add([png('a.png')], '')
+    await attachments.commit(`글 blob:xyz ![](${a})`, async () => undefined)
+    expect(uploaded).toEqual(['a.png'])
+  })
+})

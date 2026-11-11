@@ -29,6 +29,8 @@ export interface ImageAttachmentMessages {
   rejectedFull: (count: number) => string
   /** 저장 중 진행 — 앱이 `progress` 로 그릴 때 쓴다(킷 화면은 그리지 않는다) */
   uploading: (done: number, total: number) => string
+  /** 등록에 없는 `blob:` 그림이 있어 저장을 거절할 때(I2) — count = 서로 다른 주소 수 */
+  stray: (count: number) => string
 }
 
 /** 기본 문구 — 🔴 얼린다(앱이 펼쳐 일부만 덮는다) */
@@ -40,6 +42,8 @@ export const DEFAULT_IMAGE_ATTACHMENT_MESSAGES: Readonly<ImageAttachmentMessages
       `장당 최대 ${formatMegabytes(maxBytes)}를 넘어 ${count}장을 넣지 않았습니다.`,
     rejectedFull: (count) => `이미지 수가 한도를 넘어 ${count}장을 넣지 않았습니다.`,
     uploading: (done, total) => `이미지 올리는 중 (${done}/${total})`,
+    stray: (count) =>
+      `저장할 수 없는 그림이 ${count}장 있습니다(다른 곳에서 복사한 그림). 그 그림을 지우고 파일로 다시 넣으세요.`,
   })
 
 const ACCEPTED_TYPES: ReadonlySet<string> = new Set(UPLOAD_CONTENT_TYPES)
@@ -101,6 +105,29 @@ export function rejectionNotices(
  */
 export function urlsInBodies(urls: Iterable<string>, bodies: readonly string[]): string[] {
   return [...urls].filter((url) => bodies.some((body) => body.includes(url)))
+}
+
+/**
+ * 본문(들)에서 마크다운 그림 대상(`](` 바로 뒤)으로 쓰였는데 등록에 없는 `blob:` 주소 — 중복 없이 처음 나온 순서(I2).
+ * 대상은 첫 `)` · 공백 · 탭 · 줄바꿈 · `"` 에서 끝난다. 글 속에 적힌 "blob:" 은 세지 않는다
+ */
+export function strayBlobUrls(registered: Iterable<string>, bodies: readonly string[]): string[] {
+  const known = new Set(registered)
+  const found = new Set<string>()
+  const opener = '](blob:'
+  const enders = new Set([')', ' ', '\t', '\n', '\r', '"'])
+  for (const body of bodies) {
+    let from = body.indexOf(opener)
+    while (from !== -1) {
+      const start = from + 2
+      let end = start
+      while (end < body.length && !enders.has(body.charAt(end))) end += 1
+      const url = body.slice(start, end)
+      if (!known.has(url)) found.add(url)
+      from = body.indexOf(opener, end)
+    }
+  }
+  return [...found]
 }
 
 /** 본문의 주소를 모두 바꾼다(같은 주소가 여러 번이면 모두) */

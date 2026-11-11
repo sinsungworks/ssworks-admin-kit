@@ -975,7 +975,15 @@ const attachments = useImageAttachments({
 
 편집기는 그림을 넣기 전에 자기 디바운스를 내보내(`flush`) `room()` 이 늦은 값을 보지 않게 한다 — 다른 편집기의 디바운스(200ms 안에 편집기를 바꿔 붙여넣기)는 앱의 저장 전 검사(`count`)와 서버 첨부(409)가 막는다.
 
-- 🔴 **「원문」 탭에서 `blob:` 주소를 고치지 않는다** — 등록 주소와 달라지면 올라가지 않고 그대로 저장돼 그림이 깨진다.
+- 🔴 **등록에 없는 그림(`strays`)** — 본문의 `![](blob:…)` 중 이 레지스트리에 등록되지 않은 주소는 올라가지 않는다. 그대로 저장되면 관리자 화면에서는 보여도 공개 화면에서 깨진다. 생기는 길은 셋이다 — (a) 다른 편집기 · 레지스트리의 그림을 복사해 붙여 넣음(카드마다 레지스트리를 따로 두는 앱 — ProseMirror 복사 · `<img src="blob:…">` HTML 붙여넣기 모두 주소를 그대로 옮긴다), (b) 저장에 성공하기 전에 복사해 둔 그림을 저장 뒤 다시 붙여 넣음(그 주소는 해제돼 등록에서 빠졌다), (c) 「원문」 탭에서 `blob:` 주소를 손으로 고침. 앱은 저장 전에 `attachments.strays(본문들)`(문자열 하나도 된다 — 서로 다른 주소를 처음 나온 순서로)로 먼저 보고 칸 오류를 띄운다:
+
+```ts
+const n = attachments.strays(bodies.value).length // 저장 전 — 있으면 칸 오류로 멈춘다
+if (n > 0) return setFieldError('body', DEFAULT_IMAGE_ATTACHMENT_MESSAGES.stray(n))
+```
+
+`commit` 도 이런 본문은 올리지도 저장하지도 않고 평범한 `Error`(`messages.stray(n)` — 「저장할 수 없는 그림이 n장 있습니다(다른 곳에서 복사한 그림). …」)로 거부한다. `ApiError` 가 아니라 칸 오류로 가지 않으니, 사용자가 문구를 보게 하려면 앱이 먼저 확인한다. 약관(`useLegalDocuments` 에 `attachments`)은 스스로 발행을 막는다(`publishBlock` 이 `'strayImages'` — 버튼 옆 글자).
+
 - **해제** — 레지스트리는 만든 스코프(컴포넌트)가 끝날 때 남은 주소를 해제한다(`dispose`). 편집기 하나가 사라져도 등록은 남는다 — 본문은 앱이 갖고 있다. `dispose()` 뒤 `add` 는 빈 배열이고 `commit` 은 던진다(`Error('useImageAttachments: dispose 뒤에는 commit 할 수 없다')` — 해제된 `blob:` 주소를 서버에 그대로 저장하지 않게). 진행 중인 `commit` 중에 `dispose()` 가 불려도 그 `commit` 은 끝까지 가고, 주소는 한 번씩만 해제된다.
 - **본문에서 뺀 그림의 `File`** 은 레지스트리를 `dispose` 할 때까지 메모리에 남는다 — 지웠다 되돌린 그림이 다음 저장에서 올라가게 하기 위해서다(C8).
 - **`readonly` 편집기는 파일을 받지 않는다** — 넣지도 등록하지도 않는다. 다만 `attachments` 를 주면 편집기 뿌리(도구 막대 · 본문 · 원문)가 파일 끌기(`dragover` · `drop`)의 기본 동작을 막아, 놓아도 브라우저가 파일을 열어 SPA 를 떠나지 않는다(초안 · 발행 중 약관 보호).
@@ -1031,7 +1039,7 @@ useDirtyGuard(() => legal.isDirty.value) // 라우트 이탈 · 새로고침 때
 - 탭 전환은 초안이 있으면 "편집 중인 내용 버리기" 확인을 거친다. 취소하면 탭도 초안도 그대로다.
 - 쿼리(`?kind=`)와 맞추려면 `initialKind` 로 시작하고 `legal.kind` 를 지켜본다.
 - 편집 중에 현재본을 다시 불러왔는데(`legal.reload()`) 그사이 다른 판이 발행됐으면, 409 때와 같은 충돌 안내가 뜬다. 초안은 그대로 남고, 다시 발행하면 그 판을 대체한다.
-- `attachments`(선택) — 편집기에 그림 넣기가 켜지고 발행이 `attachments.commit(초안, 발행)` 이 된다. 업로드 · 발행 어느 쪽이 실패하든 올린 그림을 지우고 초안(`blob:`)은 남는다(409 충돌 안내는 그대로). 성공하면 초안을 치환본으로 바꾼다. 용도는 `LEGAL_UPLOAD_PURPOSE`(`'legal'` — 서버는 `AdminLegalModule` 이 있으면 자동 등록, 권한은 `legal.publish` 슬롯) — 「마크다운 편집기」 → 「그림 첨부」.
+- `attachments`(선택) — 편집기에 그림 넣기가 켜지고 발행이 `attachments.commit(초안, 발행)` 이 된다. 업로드 · 발행 어느 쪽이 실패하든 올린 그림을 지우고 초안(`blob:`)은 남는다(409 충돌 안내는 그대로). 성공하면 초안을 치환본으로 바꾼다. 초안에 등록에 없는 `blob:` 그림(다른 곳에서 복사한 그림 — 「그림 첨부」 의 `strays`)이 있으면 발행이 막힌다(`'strayImages'` — 「발행할 수 없는 그림이 있습니다(다른 곳에서 복사한 그림). 그 그림을 지우고 파일로 다시 넣으세요.」). 용도는 `LEGAL_UPLOAD_PURPOSE`(`'legal'` — 서버는 `AdminLegalModule` 이 있으면 자동 등록, 권한은 `legal.publish` 슬롯) — 「마크다운 편집기」 → 「그림 첨부」.
 
 ### 이력 표에 열 더하기
 

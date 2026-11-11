@@ -10,11 +10,11 @@ export interface LegalKindOption<K extends string = string> {
 }
 
 /**
- * 발행이 막힌 첫 이유. 순서가 있다(3e 스펙 D16): readonly → loading → loadFailed → empty → tooLong → unchanged.
- * 화면은 `loading` 을 뺀 다섯을 버튼 옆 글자로 보인다.
+ * 발행이 막힌 첫 이유. 순서가 있다(3e 스펙 D16): readonly → loading → loadFailed → empty → tooLong → unchanged → strayImages.
+ * 화면은 `loading` 을 뺀 여섯을 버튼 옆 글자로 보인다.
  */
 export type LegalPublishBlock =
-  'readonly' | 'loading' | 'loadFailed' | 'empty' | 'tooLong' | 'unchanged'
+  'readonly' | 'loading' | 'loadFailed' | 'empty' | 'tooLong' | 'unchanged' | 'strayImages'
 
 export interface LegalDialogText {
   title: string
@@ -110,6 +110,8 @@ export const DEFAULT_LEGAL_DOCUMENT_EDITOR_MESSAGES: Readonly<LegalDocumentEdito
       empty: '본문을 입력하세요.',
       tooLong: `본문은 ${LEGAL_BODY_MAX_LENGTH.toLocaleString('en-US')}자를 넘을 수 없습니다.`,
       unchanged: '시행 중인 판과 내용이 같습니다.',
+      strayImages:
+        '발행할 수 없는 그림이 있습니다(다른 곳에서 복사한 그림). 그 그림을 지우고 파일로 다시 넣으세요.',
     }),
     historyTitle: '발행 이력',
     historyFailed: '발행 이력을 불러오지 못했습니다. 아래 목록이 최신이 아닐 수 있습니다.',

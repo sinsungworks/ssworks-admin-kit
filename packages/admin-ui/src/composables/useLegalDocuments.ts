@@ -279,6 +279,10 @@ export function useLegalDocuments<
     if (draft.value.trim() === '') return 'empty'
     if (draft.value.length > LEGAL_BODY_MAX_LENGTH) return 'tooLong'
     if (draft.value === baseBody.value) return 'unchanged'
+    // 등록에 없는 blob: 그림은 올라가지 않아 발행하면 공개 화면에서 깨진다 — 그림 첨부가 있을 때만 본다
+    if (options.attachments != null && options.attachments.strays(draft.value).length > 0) {
+      return 'strayImages'
+    }
     return null
   }
 
