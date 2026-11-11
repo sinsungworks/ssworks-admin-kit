@@ -100,6 +100,8 @@
 
   const fileInput = ref<HTMLInputElement | null>(null)
   const sourceArea = ref<HTMLTextAreaElement | null>(null)
+  /** 서식 편집기가 포커스를 받은 적이 있는가 — 없으면 선택은 TipTap 초기값(문서 시작)이라 그림을 끝에 넣는다 */
+  let everFocused = false
   /** 그림 단추의 파일 고르기 창 — 서버가 받는 원본 형식 넷 */
   const imageAccept = UPLOAD_CONTENT_TYPES.join(',')
   /** 그림을 받을 수 있는가 — 레지스트리가 있고 쓸 수 있을 때 */
@@ -195,6 +197,9 @@
       injectCSS: false,
       editorProps: viewProps(),
       onUpdate: scheduleEmit,
+      onFocus: () => {
+        everFocused = true
+      },
       onBlur: flush,
       onTransaction: () => {
         tick.value += 1
@@ -273,6 +278,9 @@
   function attachFiles(files: readonly File[], at?: number): void {
     const attachments = props.attachments
     if (attachments == null || props.readonly || files.length === 0) return
+    // 넣을 곳이 이미 사라졌으면(파일 창이 열려 있는 동안 언마운트) 등록하지 않는다 — 등록하면 아무도 넣지 않는 blob: 이 레지스트리에 남는다
+    const target = mode.value === 'source' ? sourceArea.value : editor.value
+    if (target == null || (target instanceof Editor && target.isDestroyed)) return
     flush()
     const urls = attachments.add(files, lastEmitted)
     if (urls.length === 0) return
@@ -282,7 +290,10 @@
     }
     const instance = editor.value
     if (instance == null || instance.isDestroyed) return
-    insertImagesAt(instance, at ?? instance.state.selection.to, urls)
+    // 한 번도 포커스하지 않은 편집기의 선택은 문서 시작(TipTap 초기값)이다 — 단추만 누른 사용자가 기대하는 자리는 끝이다(원문과 같다)
+    const position =
+      at ?? (everFocused ? instance.state.selection.to : instance.state.doc.content.size)
+    insertImagesAt(instance, position, urls)
     instance.view.focus()
   }
 
@@ -293,7 +304,7 @@
     const next = sourceWithImages(area.value, area.selectionEnd, urls)
     area.value = next.value
     area.setSelectionRange(next.caret, next.caret)
-    area.focus()
+    area.focus({ preventScroll: true }) // 편집기가 여럿인 페이지에서 긴 textarea 가 튀지 않게
     lastEmitted = next.value
     wysiwygStale = true
     emit('update:modelValue', next.value)

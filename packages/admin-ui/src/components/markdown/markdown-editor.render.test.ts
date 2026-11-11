@@ -748,4 +748,42 @@ describe('MarkdownEditor — 그림 첨부(이미지 업로드 C3 · C4 · C5 ·
       first.unmount()
     }
   })
+
+  it('편집기가 사라진 뒤 고른 파일은 레지스트리에 등록하지 않는다(파일 창이 열려 있는 동안 언마운트)', () => {
+    const attachments = registry()
+    const add = vi.spyOn(attachments, 'add')
+    const w = mountEditor({ attachments })
+    const input = fileInput()!
+    w.unmount()
+    wrapper = null
+    input.files = transferOf([imageFile('a.png')]).files
+    input.dispatchEvent(new Event('change'))
+    expect(add).not.toHaveBeenCalled()
+  })
+
+  it('포커스한 적 없는 서식 편집기에 단추로 넣으면 문서 끝에 들어간다(처음 선택은 문서 시작이다)', () => {
+    const w = mountEditor({ modelValue: '첫 줄', attachments: registry() })
+    choose([imageFile('a.png')])
+    expect(editorOf(w).getMarkdown()).toBe('첫 줄\n\n![](blob:test/u001)\n\n')
+  })
+
+  it('끌어 놓기 — 놓은 자리를 못 찾아도(posAtCoords null) 기본 동작을 막고 문서 끝에 넣는다', () => {
+    const w = mountEditor({ modelValue: '앞뒤', attachments: registry() })
+    const editor = editorOf(w)
+    vi.spyOn(editor.view, 'posAtCoords').mockReturnValue(null)
+    const drop = dragEvent('drop', [imageFile('a.png')])
+    content()!.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(editor.getMarkdown()).toBe('앞뒤\n\n![](blob:test/u001)\n\n')
+  })
+
+  it('끌어 놓기 — 파일이 모두 걸러져도 기본 동작은 막고(브라우저가 파일을 열지 않게) 알림은 onRejected 로 간다', () => {
+    const onRejected = vi.fn()
+    const w = mountEditor({ modelValue: '본문', attachments: registry(onRejected) })
+    const drop = dragEvent('drop', [imageFile('a.txt', 4, 'text/plain')])
+    content()!.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(editorOf(w).getMarkdown()).toBe('본문')
+    expect(onRejected).toHaveBeenCalledWith(expect.objectContaining({ reason: 'type', count: 1 }))
+  })
 })
