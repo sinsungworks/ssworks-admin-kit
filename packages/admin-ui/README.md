@@ -914,6 +914,8 @@ const teams = useTeamTree({
 
 `attachments`(`useImageAttachments`)를 주면 도구 막대에 「이미지 넣기」 단추가 생기고, 파일 붙여넣기 · 끌어 놓기를 받는다. 편집 중 그림은 브라우저 안(`blob:`)에만 있고 **저장할 때** 올라간다 — 작성하다 그만두면 서버에 아무것도 남지 않는다. 서버는 admin-server README 「이미지 업로드」(`AdminUploadsModule` · `AdminMediaModule`).
 
+아래 경로는 위 baseURL 갈래 (나)(`'/api'`) 기준이다 — (가) 앱은 `/admin` 을 뗀다(`'/uploads'` · `` `/uploads/${key}` ``).
+
 ```ts
 const attachments = useImageAttachments({
   upload: (file) =>
@@ -921,28 +923,58 @@ const attachments = useImageAttachments({
   remove: (key) => api.del(`/admin/uploads/${key}`),
   onRejected: (notice) => toast.warning(notice.message),
 })
+const flow = useWriteFlow() // 확인 · 재인증은 action(commit) 앞에서 끝나 헛업로드가 없다
 
-// 저장 — 본문에 남은 그림을 올리고, 주소를 바꾼 본문(final)으로 저장한다
-await flow.run({
-  action: () =>
-    attachments.commit(draft.value, async (final) => {
-      await api.put(`/admin/notices/${noticeNo}`, { body: final })
-      draft.value = final // 🔴 저장 뒤 초안을 치환본으로(아래)
-      savedBody.value = final
-    }),
-})
+function save() {
+  const snapshot = draft.value // 업로드 동안 사용자가 더 고쳤는지 보려고
+  void flow.run({
+    // 업로드 → 치환본으로 저장. 409 충돌은 원래 오류라 onConflict 가 그대로 돈다
+    action: () =>
+      attachments.commit(snapshot, async (final) => {
+        await api.put(`/admin/notices/${noticeNo}`, { body: final })
+        savedBody.value = final
+        // 🔴 저장 뒤 초안을 치환본으로(아래) — 그사이 고쳤으면 덮지 않는다
+        if (draft.value === snapshot) draft.value = final
+      }),
+  })
+}
 ```
 
 ```vue
-<MarkdownEditor v-model="draft" :attachments="attachments" />
+<MarkdownEditor
+  v-model="draft"
+  :attachments="attachments"
+  :readonly="flow.submitting.value || attachments.busy.value"
+/>
 ```
+
+저장 중에는 편집기를 잠근다(킷이 잠그지 않는다 — `useLegalDocuments` 는 스스로 잠근다). `attachments` 는 보통 객체라 템플릿에서 `busy` · `progress` 는 `.value` 가 필요하다(자동으로 풀리지 않는다).
 
 - **넣기** — 단추(여러 장) · 파일만 든 붙여넣기(스크린숏 · 이미지 복사 — 글자가 함께 오면 기본 붙여넣기다. Word · 엑셀 복사는 글자와 함께 그림 한 장을 싣는다) · 파일 끌어 놓기(놓은 자리). 「원문」 탭에서도 캐럿 자리에 `![](blob:…)` 줄이 들어간다. `readonly` 면 셋 다 꺼진다. 서식 모드에서 단추(와 놓은 자리를 못 찾은 끌어 놓기)는 선택 끝에 넣는데, 한 번도 포커스를 받지 않은 편집기는 문서 **끝**에 넣는다(TipTap 의 처음 선택은 문서 맨 앞이라 — 원문은 늘 끝에 넣고, 사용자는 본문을 누르기 전에 단추부터 누른다). 포커스를 받은 뒤에는 선택 끝이다. 편집기의 입력이 사라진 뒤(파일 선택창이 열린 채 언마운트)에 온 파일은 등록하지 않는다.
 - **거르기** — 형식(JPG · PNG · WebP · GIF) → 장당 크기(`policy.maxBytes`, 기본 10MB) → 남은 칸. 남은 칸은 `policy.maxPerBody`(기본 20) − 본문의 우리 그림(`mediaPath`, 기본 `/api/media`) − 본문 안 `blob:`. 거른 것은 사유마다 `onRejected` 한 번(편집기는 토스트를 띄우지 않는다). 최종 판정은 서버다.
 - **저장(`commit`)** — 본문에 **남아 있는** 그림만 등록 순서로 하나씩 올리고 주소를 모두 바꿔 `save` 를 부른다. 지웠다 되돌린 그림도 저장 순간 본문에 있으면 올라간다. 업로드 · `save` 어느 쪽이 실패하든 이번에 올린 그림을 지우고(`remove` — 기다리지 않는다) 원래 예외를 다시 던진다. 초안(`blob:`)은 그대로라 다시 저장하면 다시 올린다. 진행 중에 다시 부르면 거부한다. `busy` · `progress`(`{ done, total }`)로 진행을 그릴 수 있다(`DEFAULT_IMAGE_ATTACHMENT_MESSAGES.uploading`).
-- 🔴 **저장 뒤 초안을 치환본으로 바꾼다** — 성공하면 그 `blob:` 주소는 해제된다. `save` 안에서 받은 `final(s)` 로 초안과 「바뀜」 판정 기준을 바꾸지 않으면 편집기의 그림이 깨지고 「바뀜」 이 남는다. `useLegalDocuments` 는 이것을 스스로 한다.
-- **실패 문구** — 업로드 실패는 같은 `ApiError` 의 문구를 킷 표(`DEFAULT_UPLOAD_ERROR_MESSAGES` — `errorMessages` 로 덮는다)로 바꾼다. 503 은 서버가 문구를 가리므로 코드로 고르고, 413 은 상한을 붙인다(「이미지가 너무 큽니다. (장당 최대 10MB)」). 전역 토스트(`onError`)가 그 문구를 띄운다. 직접 그리는 화면은 `uploadErrorMessage(error)`.
-- **본문 여럿 · 합 한도**(카드 하나에 편집기 여럿 · 본문 밖 사진과 합친 한도) — 레지스트리 하나를 편집기 여럿에 넘기고 `room: () => 한도 − 사진 수 − attachments.count([본문들])` 로 남은 칸을 앱이 센다(그때 `messages.rejectedFull` 은 앱의 말로). 저장은 `attachments.commit([본문1, 본문2], async (finals) => …)` — 같은 길이 · 순서의 치환본. 편집기는 그림을 넣기 전에 자기 디바운스를 내보내(`flush`) `room()` 이 늦은 값을 보지 않게 한다 — 다른 편집기의 디바운스(200ms 안에 편집기를 바꿔 붙여넣기)는 앱의 저장 전 검사(`count`)와 서버 첨부(409)가 막는다.
+- 🔴 **저장 뒤 초안을 치환본으로 바꾼다** — 성공하면 그 `blob:` 주소는 해제된다. `save` 안에서 받은 `final(s)` 로 초안과 「바뀜」 판정 기준을 바꾸지 않으면 편집기의 그림이 깨지고 「바뀜」 이 남는다. 초안은 저장 시작 때와 같을 때만 바꾼다(`if (draft.value === snapshot)`) — 업로드 중에 더 친 글을 덮지 않게. `useLegalDocuments` 는 이것을 스스로 한다.
+- **실패 문구** — **업로드 단계** 실패만 같은 `ApiError` 의 문구를 킷 표(`DEFAULT_UPLOAD_ERROR_MESSAGES` — `errorMessages` 로 덮는다)로 바꾼다. 503 은 서버가 문구를 가리므로 코드로 고르고, 413 은 상한을 붙인다(「이미지가 너무 큽니다. (장당 최대 10MB)」). 전역 토스트(`onError`)가 그 문구를 띄운다. 직접 그리는 화면은 `uploadErrorMessage(error)`. `save` 에서 난 오류(저장 때 서버의 409 `ERR_UPLOAD_LIMIT` 등)는 서버 문구 그대로다.
+- **본문 여럿 · 합 한도**(카드 하나에 편집기 여럿 · 본문 밖 사진과 합친 한도) — 레지스트리 하나를 편집기 여럿에 넘기고 `room` 으로 남은 칸을 앱이 센다. 🔴 `room` 은 킷의 셈(`maxPerBody − 본문의 올라간 그림 − blob:`) **전체를 대신한다** — 이미 올라간 그림(`/api/media/<키>`)도 앱이 센다(빼먹으면 서버가 저장 때 409 `ERR_UPLOAD_LIMIT` 로 거절한다). 그때 `messages.rejectedFull` 은 앱의 말로. 저장은 `attachments.commit(본문들, async (finals) => …)` — 같은 길이 · 순서의 치환본.
+
+```ts
+import { collectUploadKeys } from '@ssworks/admin-shared' // 비기본 mediaPath 면 둘째 인자로
+
+const LIMIT = 20
+const attachments = useImageAttachments({
+  upload,
+  remove,
+  // 사진 키 · 본문들의 올라간 그림 키(겹침 없이) + 본문들의 blob: 수
+  room: () => {
+    const keys = new Set([...photoKeys.value, ...bodies.value.flatMap((b) => collectUploadKeys(b))])
+    return LIMIT - keys.size - attachments.count(bodies.value)
+  },
+  messages: { rejectedFull: (n) => `사진과 본문 그림은 합쳐 ${LIMIT}장까지입니다. (${n}장 제외)` },
+})
+```
+
+편집기는 그림을 넣기 전에 자기 디바운스를 내보내(`flush`) `room()` 이 늦은 값을 보지 않게 한다 — 다른 편집기의 디바운스(200ms 안에 편집기를 바꿔 붙여넣기)는 앱의 저장 전 검사(`count`)와 서버 첨부(409)가 막는다.
+
 - 🔴 **「원문」 탭에서 `blob:` 주소를 고치지 않는다** — 등록 주소와 달라지면 올라가지 않고 그대로 저장돼 그림이 깨진다.
 - **해제** — 레지스트리는 만든 스코프(컴포넌트)가 끝날 때 남은 주소를 해제한다(`dispose`). 편집기 하나가 사라져도 등록은 남는다 — 본문은 앱이 갖고 있다. `dispose()` 뒤 `add` 는 빈 배열이고 `commit` 은 던진다(`Error('useImageAttachments: dispose 뒤에는 commit 할 수 없다')` — 해제된 `blob:` 주소를 서버에 그대로 저장하지 않게). 진행 중인 `commit` 중에 `dispose()` 가 불려도 그 `commit` 은 끝까지 가고, 주소는 한 번씩만 해제된다.
 - **본문에서 뺀 그림의 `File`** 은 레지스트리를 `dispose` 할 때까지 메모리에 남는다 — 지웠다 되돌린 그림이 다음 저장에서 올라가게 하기 위해서다(C8).
