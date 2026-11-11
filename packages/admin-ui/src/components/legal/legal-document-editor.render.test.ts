@@ -4,6 +4,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h, type Component } from 'vue'
 import type { AdminLegalDocument, AdminLegalHistoryItem } from '@ssworks/admin-shared'
+import { useImageAttachments } from '../../composables/useImageAttachments.js'
 import type { ConfirmDialogBindings } from '../../composables/useWriteFlow.js'
 import { buttonByText, installVisualViewport, vuetify } from '../../test/setup.js'
 import { formatDateTime } from '../../utils/format-date-time.js'
@@ -213,6 +214,22 @@ describe('LegalDocumentEditor — 편집기 · 미리보기', () => {
   it('편집기 이름은 「종류 본문」이고 readonly 를 넘긴다', () => {
     mountEditor({ readonly: true })
     expect(content('이용약관 본문')?.getAttribute('aria-readonly')).toBe('true')
+  })
+
+  it('attachments 를 편집기에 그대로 넘긴다 — 있으면 그림 단추, 없으면 없다(이미지 업로드 C7)', () => {
+    const imageButton = () =>
+      document.querySelector('[role="toolbar"] button[aria-label="이미지 넣기"]')
+    mountEditor()
+    expect(imageButton()).toBeNull()
+    wrapper!.unmount()
+    wrapper = null
+    document.body.innerHTML = ''
+    const attachments = useImageAttachments({
+      upload: async () => Promise.reject(new Error('올리지 않는다')),
+    })
+    const w = mountEditor({ attachments })
+    expect(imageButton()).toBeTruthy()
+    expect(w.findComponent(MarkdownEditor).props('attachments')).toBe(attachments)
   })
 
   it('입력하면 update:modelValue — 포커스를 잃을 때(디바운스 flush)', () => {

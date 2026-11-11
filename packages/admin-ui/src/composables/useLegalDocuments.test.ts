@@ -1,11 +1,14 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, ref, type EffectScope } from 'vue'
 import {
   LEGAL_BODY_MAX_LENGTH,
   type AdminLegalDocument,
   type AdminLegalHistoryItem,
+  type AdminUploadCreated,
 } from '@ssworks/admin-shared'
 import { ApiError } from '../api/error.js'
+import { imageFile, stubObjectUrls } from '../test/image-transfer.js'
+import { useImageAttachments } from './useImageAttachments.js'
 import {
   useLegalDocuments,
   type LegalDocumentsController,
@@ -736,5 +739,125 @@ describe('useLegalDocuments — 해제', () => {
     await flush()
     expect(legal.current.value).toBeNull()
     expect(legal.draft.value).toBe('')
+  })
+})
+
+describe('useLegalDocuments — 그림 첨부(이미지 업로드 C7 · C14)', () => {
+  // 레지스트리는 실물(useImageAttachments) · blob: 주소만 대역. 올리기 · 지우기 어댑터는 vi.fn
+  const KEY = 'legal/2026/11/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.webp'
+  const MEDIA = `/api/media/${KEY}`
+  const uploaded: AdminUploadCreated = { key: KEY, url: MEDIA, width: 1, height: 1, bytes: 4 }
+
+  beforeEach(() => {
+    stubObjectUrls()
+  })
+
+  function withImage(
+    overrides: Parameters<typeof useImageAttachments>[0] = {
+      upload: vi.fn(async () => uploaded),
+    },
+  ) {
+    const upload = vi.fn(overrides.upload)
+    const remove = vi.fn(async (_key: string): Promise<unknown> => undefined)
+    const attachments = useImageAttachments({ remove, ...overrides, upload })
+    const [blob] = attachments.add([imageFile('a.png')], '')
+    return { attachments, upload, remove, blob: blob! }
+  }
+
+  it('바인딩에 attachments 가 실린다 — 없으면 undefined', async () => {
+    const { attachments } = withImage()
+    expect(setup({ attachments }).legal.editor.value.attachments).toBe(attachments)
+    expect(setup().legal.editor.value.attachments).toBeUndefined()
+  })
+
+  it('발행 = commit(초안, 발행) — 서버로 치환본, 성공 뒤 초안 · 기준도 치환본(재조회가 실패해도 blob: 이 남지 않는다)', async () => {
+    const loadCurrent = vi
+      .fn<(kind: Kind) => Promise<AdminLegalDocument | null>>()
+      .mockResolvedValueOnce(TERMS_12)
+      .mockRejectedValueOnce(apiError(500, 'ERR_COMMON_INTERNAL'))
+    const { attachments, upload, blob } = withImage()
+    const { legal, publish } = setup({ loadCurrent, attachments })
+    await flush()
+    legal.setDraft(`# 이용약관 v12\n\n![](${blob})\n`)
+    void legal.requestPublish()
+    await confirmPublish(legal)
+    const final = `# 이용약관 v12\n\n![](${MEDIA})\n`
+    expect(upload).toHaveBeenCalledTimes(1)
+    expect(publish).toHaveBeenCalledWith({ kind: 'TERMS', body: final, baseLegalDocNo: 12n })
+    expect(legal.loadFailed.value).toBe(true)
+    expect(legal.draft.value).toBe(final)
+    expect(legal.isDirty.value).toBe(false)
+    expect(attachments.count(`![](${blob})`)).toBe(0)
+  })
+
+  it('업로드 실패 — 발행하지 않고 초안(blob:)을 지킨다 · 처리 표시 없이 전역 토스트(문구는 코드로)', async () => {
+    const unavailable = apiError(503, 'ERR_UPLOAD_UNAVAILABLE', '서버 내부 오류가 발생했습니다.')
+    const { attachments, blob } = withImage({ upload: async () => Promise.reject(unavailable) })
+    const { legal, publish } = setup({ attachments })
+    await flush()
+    const draft = `# 이용약관 v12\n\n![](${blob})\n`
+    legal.setDraft(draft)
+    void legal.requestPublish()
+    await confirmPublish(legal)
+    expect(publish).not.toHaveBeenCalled()
+    expect(legal.draft.value).toBe(draft)
+    expect(legal.isDirty.value).toBe(true)
+    expect(unavailable.handled).toBe(false)
+    expect(unavailable.message).toBe('이미지 저장소를 사용할 수 없습니다. 잠시 후 다시 시도하세요.')
+  })
+
+  it('발행 409 — 올린 그림을 지우고(되돌림) 충돌 안내 · 초안(blob:) 보존 · 다시 발행하면 다시 올린다', async () => {
+    const conflict = apiError(
+      409,
+      'ERR_COMMON_REVISION_CONFLICT',
+      '다른 관리자가 먼저 발행했습니다.',
+    )
+    const publish = vi
+      .fn<(body: unknown) => Promise<unknown>>()
+      .mockRejectedValueOnce(conflict)
+      .mockResolvedValueOnce({ legalDocNo: 14n, contentHash: HASH })
+    const loadCurrent = vi
+      .fn<(kind: Kind) => Promise<AdminLegalDocument | null>>()
+      .mockResolvedValueOnce(TERMS_12)
+      .mockResolvedValue(TERMS_13)
+    const { attachments, upload, remove, blob } = withImage()
+    const { legal } = setup({ publish, loadCurrent, attachments })
+    await flush()
+    const draft = `# 내 편집\n\n![](${blob})\n`
+    legal.setDraft(draft)
+    void legal.requestPublish()
+    await confirmPublish(legal)
+    expect(remove).toHaveBeenCalledWith(KEY)
+    expect(conflict.handled).toBe(true)
+    expect(legal.conflict.value).toBe(true)
+    expect(legal.draft.value).toBe(draft)
+
+    void legal.requestPublish()
+    await confirmPublish(legal)
+    expect(upload).toHaveBeenCalledTimes(2)
+    expect(publish).toHaveBeenLastCalledWith({
+      kind: 'TERMS',
+      body: `# 내 편집\n\n![](${MEDIA})\n`,
+      baseLegalDocNo: 13n,
+    })
+  })
+
+  it('🔴 기준 판은 확인한 번호로 보낸다 — 그림을 올리는 사이 재조회가 새 판을 가져와도(서버가 409 를 낸다)', async () => {
+    const gate = deferred<AdminUploadCreated>()
+    const loadCurrent = vi
+      .fn<(kind: Kind) => Promise<AdminLegalDocument | null>>()
+      .mockResolvedValueOnce(TERMS_12)
+      .mockResolvedValue(TERMS_13)
+    const { attachments, blob } = withImage({ upload: () => gate.promise })
+    const { legal, publish } = setup({ loadCurrent, attachments })
+    await flush()
+    legal.setDraft(`# 내 편집\n\n![](${blob})\n`)
+    void legal.requestPublish()
+    legal.editor.value.publishDialog.onConfirm()
+    await legal.reload()
+    expect(legal.current.value?.legalDocNo).toBe(13n)
+    gate.resolve(uploaded)
+    await flush()
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ baseLegalDocNo: 12n }))
   })
 })
