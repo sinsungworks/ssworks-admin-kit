@@ -43,7 +43,7 @@
   "peerDependencies": {
     "@floating-ui/dom": "^1.0.0",
     "@he-tree/vue": "^2.10.5",
-    "@ssworks/admin-shared": "workspace:>=0.4.0 <1.0.0",
+    "@ssworks/admin-shared": "workspace:>=0.11.0 <1.0.0",
     "@tiptap/core": "3.32.0",
     "@tiptap/extension-code": "3.32.0",
     "@tiptap/extension-code-block": "3.32.0",

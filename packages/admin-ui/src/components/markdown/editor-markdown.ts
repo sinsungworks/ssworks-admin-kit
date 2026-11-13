@@ -196,12 +196,32 @@ export const EditorCode = Code.extend({
 const IMAGE_INPUT = /(?:^|\s)(!\[(.+|:?)]\((\S+)(?:(?:\s+)["'](\S+)["'])?\))$/
 
 /**
+ * 그림을 넣은 트랜잭션의 캐럿(A4). 🔴 `insertContentAt` 은 그림을 NodeSelection 으로 남겨 다음 타자가 그림을 지운다(ringside C1 과
+ * 같은 함정) — 그림 **바로 뒤**로 옮긴다. 바로 뒤가 텍스트 블록(글자를 가른 뒷부분)이면 그 첫머리, 아니면(문서 끝 · 뒤가 목록 ·
+ * 구분선) 빈 문단을 만들어 거기에 둔다 — 멀리 있는 목록 항목으로 튀지 않는다(리뷰 사소 #4). 그림이 선택돼 있지 않으면(문단
+ * 가운데였으면 insertContentAt 이 뒷글 문단 첫머리에 글자 선택을 둔다) 그대로 둔다. 입력 규칙(EditorImage)과 붙여넣기 · 끌어
+ * 놓기 · 그림 단추(editor-images.ts `insertImagesAt`)가 같은 규칙을 쓴다(이미지 업로드 스펙 C4).
+ */
+export function moveCaretAfterImage(tr: Transaction): void {
+  const { selection } = tr
+  if (!(selection instanceof NodeSelection)) return
+  const after = selection.to
+  const next = tr.doc.resolve(after).nodeAfter
+  if (next?.isTextblock) {
+    tr.setSelection(TextSelection.create(tr.doc, after + 1))
+    return
+  }
+  const paragraph = tr.doc.type.schema.nodes.paragraph
+  if (paragraph === undefined) return
+  tr.insert(after, paragraph.create())
+  tr.setSelection(TextSelection.create(tr.doc, after + 1))
+}
+
+/**
  * 그림(A4) — 기본 `Image` 에 입력 규칙만 바꿔 끼운다. 기본 `nodeInputRule` 은 블록 노드를 문단 가운데 넣을 때 친 마지막 글자 `)` 를
  * 그림 뒤 새 문단(`<p>)</p>`)에 남긴다(TipTap 3.32.0 — happy-dom · 실브라우저 Chrome 둘 다, 2026-11-01). 여기서는 친 글자를 넣지 않고
  * `![…](…)` 글자 자리에 그림을 넣는다(`insertContentAt` 이 문단을 가른다). 거르기는 없다(결정 ②) — 거르기는 앱 몫.
- * 🔴 넣은 뒤 캐럿을 그림 **바로 뒤**로 옮긴다 — `insertContentAt` 은 그림을 NodeSelection 으로 남겨 다음 타자가 그림을 지운다
- *    (ringside C1 과 같은 함정). 바로 뒤가 문단(글자를 가른 뒷부분)이면 그 첫머리, 아니면(문서 끝 · 뒤가 목록 · 구분선) 빈 문단을
- *    만들어 거기에 둔다 — 멀리 있는 목록 항목으로 튀지 않는다(리뷰 사소 #4)
+ * 🔴 넣은 뒤 캐럿을 그림 **바로 뒤**로 옮긴다(moveCaretAfterImage)
  */
 export const EditorImage = Image.extend({
   addInputRules() {
@@ -219,19 +239,7 @@ export const EditorImage = Image.extend({
               attrs: { src, alt: alt ?? '', title: title ?? null },
             })
             .command(({ tr }) => {
-              // 문단 가운데였으면 insertContentAt 이 뒷글 문단 첫머리에 글자 선택을 둔다 — 그대로. 그림이 선택돼 있을 때만 옮긴다
-              const { selection } = tr
-              if (!(selection instanceof NodeSelection)) return true
-              const after = selection.to
-              const next = tr.doc.resolve(after).nodeAfter
-              if (next?.isTextblock) {
-                tr.setSelection(TextSelection.create(tr.doc, after + 1))
-                return true
-              }
-              const paragraph = tr.doc.type.schema.nodes.paragraph
-              if (paragraph === undefined) return true
-              tr.insert(after, paragraph.create())
-              tr.setSelection(TextSelection.create(tr.doc, after + 1))
+              moveCaretAfterImage(tr)
               return true
             })
             .run()

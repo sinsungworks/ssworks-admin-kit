@@ -1,0 +1,23 @@
+---
+'@ssworks/admin-ui': minor
+---
+
+편집기 그림 첨부(PR #3k — `docs/superpowers/specs/2026-11-01-admin-kit-image-uploads-design.md` §2-4 · §4-3 · §14 · §15). 편집 중 그림은 브라우저 안(`blob:`)에만 두고 **저장할 때** 올려 주소를 바꾼 뒤 저장한다 — 작성하다 그만두면 서버에 아무것도 남지 않는다. 서버는 admin-server 0.11.0 의 `AdminUploadsModule` · `AdminMediaModule`.
+
+- `useImageAttachments({ upload, remove?, policy?, mediaPath?, room?, onRejected?, messages?, errorMessages? })` → `add(files, body)` · `commit(본문, save)` · `commit([본문들], save)` · `count(본문 | 본문들)` · `strays(본문 | 본문들)` · `busy` · `progress` · `dispose`. 거르기(형식 → 장당 크기 → 남은 칸)는 사유마다 `onRejected` 한 번. 업로드 · 저장 어느 쪽이 실패하든 이번에 올린 그림을 지우고(`remove`) 원래 예외를 다시 던진다. `room` 이 있으면 남은 칸을 앱이 센다(본문 밖 사진 · 본문 여럿과 합친 한도).
+- 등록에 없는 그림 — `strays(본문 | 본문들)` 은 본문의 `![](blob:…)` 중 이 레지스트리에 등록되지 않은 주소(다른 편집기에서 복사한 그림 · 저장 뒤 다시 붙인 그림 · 「원문」 에서 고친 주소 — 올라가지 않아 그대로 저장되면 공개 화면에서 깨진다)를 처음 나온 순서로 돌려준다. `commit` 은 그런 그림이 있으면 업로드 전에 `Error(messages.stray(n))` 로 거부한다(새 문구 `ImageAttachmentMessages.stray`). 약관은 스스로 발행을 막는다 — `LegalPublishBlock` 에 `'strayImages'` · 기본 문구 `DEFAULT_LEGAL_DOCUMENT_EDITOR_MESSAGES.blocked.strayImages`.
+- `MarkdownEditor` prop `attachments` — 도구 막대 「이미지 넣기」 · 파일만 든 붙여넣기 · 파일 끌어 놓기(서식 · 원문). 문구 `messages.image`. 레지스트리 하나를 편집기 여럿이 나눠 써도 된다.
+- `useLegalDocuments` 옵션 `attachments` · `LegalDocumentEditor` prop `attachments` — 발행이 그림을 올리고 치환본을 보낸다(성공하면 초안도 치환본으로).
+- `ApiClient.api.uploadFile(url, file, config?)` — 파일을 원시 바이트로 POST(`Content-Type` = 파일 형식).
+- 업로드 오류 문구 `DEFAULT_UPLOAD_ERROR_MESSAGES` · `uploadErrorMessage(error)` — 503 은 서버가 문구를 가리므로 코드로 고르고 413 은 상한을 붙인다. 레지스트리는 업로드 실패의 같은 `ApiError` 문구를 이것으로 바꾼다(전역 토스트가 그 문구를 띄운다).
+- 기본 문구 `DEFAULT_IMAGE_ATTACHMENT_MESSAGES`(얼림).
+
+**쓰는 쪽이 할 일**
+
+1. 🔴 peer `@ssworks/admin-shared` 하한이 `>=0.11.0` 이 됐다 — 세 패키지를 같은 번호로 설치한다.
+2. 공개 타입이 넓어졌다 — 그림을 쓰지 않는 앱도 아래에 해당하면 고친다(해당하지 않으면 할 일 없음).
+   - `MarkdownEditorMessages` 를 자기 타입으로 **전부** 채워 두는 앱(부분 덮기가 아닌)은 `image` 키를 더한다.
+   - 🔴 `LegalDocumentEditor` 는 `messages` 를 **얕게** 합친다 — `messages.blocked` 를 통째로 덮는 앱은 `strayImages` 를 더한다(빠지면 타입 오류 · 타입을 건너뛴 앱은 그 막힘의 안내 글자가 비어 단추만 꺼진다).
+   - `LegalPublishBlock` 을 빠짐없이 다루는 `switch`(`never` 검사)는 `'strayImages'` 갈래가 없어 타입 오류가 난다 — 갈래를 더한다.
+   - 킷의 `DEFAULT_*_MESSAGES` export 를 세는 앱 테스트는 둘(`DEFAULT_IMAGE_ATTACHMENT_MESSAGES` · `DEFAULT_UPLOAD_ERROR_MESSAGES`)이 늘어 깨진다 — 목록에 더한다.
+3. 그림을 쓰는 앱: 서버에 `AdminUploadsModule` · `AdminMediaModule`(admin-server README 「이미지 업로드」), 화면에 `useImageAttachments` → 편집기 `:attachments`, 저장은 `attachments.commit(초안, save)`. 저장 전에 `attachments.strays(초안)` 으로 먼저 보고 칸 오류를 띄운다(`commit` 의 거부는 평범한 `Error` 라 칸에 붙지 않는다). 🔴 `save` 안에서 받은 치환본으로 초안 · 「바뀜」 기준을 바꾼다 — 성공 뒤 `blob:` 주소는 해제된다(admin-ui README 「그림 첨부」).

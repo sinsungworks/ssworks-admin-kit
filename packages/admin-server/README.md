@@ -662,7 +662,7 @@ export class PublicLegalController {
 
 ## 이미지 업로드
 
-편집기(admin-ui `MarkdownEditor`)가 그림을 올리고 본문에 `![](/api/media/<키>)` 를 넣는다(admin-ui 쪽은 PR #3k — 아직 나오지 않았다. 그 전에는 앱이 `POST /admin/uploads` 를 직접 부른다). 서버는 원본을 그대로 두지 않고 WebP 로 다시 만들어(메타데이터 제거) 저장소(파일 시스템 · S3 호환)에 둔다. 올린 그림은 **미첨부**다 — 본문을 저장하는 쓰기(약관 발행 · 앱 라우트)가 같은 트랜잭션에서 문서에 **첨부**하고, 중계(`/api/media/…`)는 첨부된 그림만 내보낸다. 24시간 안에 첨부되지 않은 그림은 정리 잡이 지운다. 설계는 저장소 `docs/superpowers/specs/2026-11-01-admin-kit-image-uploads-design.md`.
+편집기(admin-ui `MarkdownEditor` + `useImageAttachments` — admin-ui README 「그림 첨부」)는 편집 중 그림을 브라우저 안(`blob:`)에 두고, 저장할 때 `POST /admin/uploads` 로 올려 본문의 주소를 `/api/media/<키>` 로 바꾼 뒤 저장한다(실패하면 올린 것을 `DELETE` 로 지운다). 서버는 원본을 그대로 두지 않고 WebP 로 다시 만들어(메타데이터 제거) 저장소(파일 시스템 · S3 호환)에 둔다. 올린 그림은 **미첨부**다 — 본문을 저장하는 쓰기(약관 발행 · 앱 라우트)가 같은 트랜잭션에서 문서에 **첨부**하고, 중계(`/api/media/…`)는 첨부된 그림만 내보낸다. 24시간 안에 첨부되지 않은 그림은 정리 잡이 지운다. 설계는 저장소 `docs/superpowers/specs/2026-11-01-admin-kit-image-uploads-design.md`.
 
 ```ts
 import { createFileSystemStorage } from '@ssworks/admin-server'

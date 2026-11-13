@@ -389,3 +389,59 @@ docs/superpowers/plans/YYYY-MM-DD-admin-server-uploads.md · YYYY-MM-DD-admin-ui
 - **표 이름 · 장 ID**: `uploads` → `admin_uploads`(`adminUploads` · `0013_admin_uploads`) — ringside 가 회원 업로드 표 `uploads` 를 이미 가져 `Database extends AdminDatabase` 가 깨진다(TS2320 · 기존 DB 1050). 🔴 코어 표에 앱 도메인과 겹치기 쉬운 일반 명사를 쓰지 않는다(users · roles · teams 는 킷의 도메인이라 예외). 이 문서의 앞 절(§3 · §4-2 · §8 · §9-2)에 남은 `uploads` 표 · `0013_uploads` 는 이 이름으로 읽는다(최종 리뷰).
 - **§4-2 정리 함수는 내보내지 않는다**: `markExpiredUploads` · `purgeDeletedUploads` · `SWEEP_BATCH` 는 패키지 안에만 둔다 — 정리의 공개 경로는 `AdminUploadsService.sweep()`(보관 시간 · 저장소 · 묶음 반복을 채운다) 하나고, 결과 타입 `SweepResult` 만 내보낸다. 정리 단계를 앱이 따로 부를 이유가 없고, 묶음 크기를 공개 계약으로 묶지 않는다(최종 리뷰).
 - **제자리 편집 문서는 만들기도 `sync`**: U8 · U9 의 갈래를 문서 종류로 정한다 — 제자리 편집 문서(공지 · 게시글)는 만들기(새 refId) · 고치기 · 지우기(빈 본문) 모두 `sync`, append-only 문서(약관)만 `attach`. 한 refType 에 섞으면 `attach` 로 만든 문서가 같은 refType 의 남의 그림을 빌리고(엄격하지 않다) 원래 문서의 `sync` 가 그 그림을 지움 표시해 빌린 쪽이 404 가 된다(최종 리뷰 — `attach.db.test.ts` 가 두 길을 잰다).
+
+## 14. 구현 전 정정 (PR #3k — 2026-11-11, sseng-home 요구)
+
+PR #3k 는 §13 다음 이 절을 읽는다. 첫 앱 소비자 sseng-home(`../sseng-home`)이 편집기 그림 넣기를 세 곳에 붙인다 — 사례 · 공지 본문, 그리고 사업영역 설명(카드 하나에 편집기 최대 12개 · 카드마다 저장). 스펙의 레지스트리는 "편집기 하나 · 본문 하나 · 본문당 한도" 를 전제로 해 두 곳이 맞지 않는다. (1) 한 번 저장에 본문이 여럿이다. (2) 한도가 본문 밖 그림(사진 · 항목 그림)과 합쳐진다 — sseng 은 「사진 + 모든 본문의 그림 ≤ 20」 을 서버 `syncUploads` 한 번으로 센다. 덧붙이는 옵션 · 메서드 · 겹쳐 쓰기(overload)로 넓힌다 — 이것들을 쓰지 않는 소비자(약관 · ringside)는 스펙 그대로다(사용자 결정 2026-11-11 — 본문을 JSON 글자 하나로 묶어 넘기는 길 · 편집기마다 레지스트리를 두고 `commit` 을 겹쳐 부르는 길은 버렸다: 앞은 계약 밖 사용이고 뒤는 되돌림이 중첩 순서에 기대며, 둘 다 한도 문제는 킷을 고쳐야 풀린다).
+
+| #   | 정정                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C9  | `useImageAttachments` 옵션 `room?: () => number` — 더 넣을 수 있는 장수를 **앱이** 센다(본문 밖 그림 · 다른 본문 포함). 있으면 `add` 의 남은 칸은 `room() − 이번 add 에서 앞서 받은 수`, 없으면 C1 그대로(`maxPerBody − collectUploadKeys(body) − body 안 등록 blob 수 − 받은 수`). `room()` 이 0 이하 · `NaN` 이면 남은 칸 0(전부 `full`). 거르는 순서(형식 → 크기 → 칸)와 사유 묶음은 C1 그대로. `full` 문구는 앱이 `messages` 로 덮는다(합 한도는 앱의 말이다)                                                                 |
+| C10 | `count(markdown: string \| readonly string[]): number` — 본문(들)에 남아 있는 **등록** 주소의 수. 같은 주소가 여러 번 · 여러 본문에 있어도 하나다(서버 `collectUploadKeys` 의 키 셈과 같은 모양 — 업로드도 한 번). 앱의 합 셈(남은 칸 · 저장 전 검사 · 사진 칸의 남은 수)에 쓴다. 등록되지 않은 `blob:`(다른 탭에서 붙여 온 주소)는 세지 않는다 — 올라가지도 않는다                                                                                                                                                               |
+| C11 | `commit` 겹쳐 쓰기 — `commit<T>(markdowns: readonly string[], save: (finals: string[]) => Promise<T>): Promise<T>`. 모든 본문에 남은 등록 주소를 **등록 순서**로 한 번씩 올리고, 본문마다 치환해 같은 길이 · 순서의 `finals` 로 `save` 를 부른다. `progress.total` 은 전체 장수. 되돌림 · 재진입 거부 · 성공 뒤 해제는 C2 그대로 — 실패하면 이번 `commit` 이 올린 키만 `remove` 하고 원래 예외를 다시 던진다, 초안은 건드리지 않는다. 빈 배열이면 업로드 없이 `save([])`. 문자열 하나를 주면 C2 그대로(`save` 가 문자열을 받는다) |
+| C12 | 편집기는 `attachments.add` 를 부르기 **전에** 자기 디바운스 중인 변경을 내보낸다(`flush`) — 앱의 v-model 이 편집기보다 늦어 `room()` 이 남은 칸을 크게 세지 않게. 다른 편집기의 디바운스(200ms 안에 편집기를 바꿔 붙여넣기)는 막지 않는다 — 앱의 저장 전 검사(`count` 포함)와 서버 첨부(409 `ERR_UPLOAD_LIMIT`)가 막는다                                                                                                                                                                                                          |
+| C13 | 한 레지스트리를 편집기 여럿에 넘겨도 된다(카드 하나 = 레지스트리 하나). 해제는 C8 그대로 — 레지스트리를 만든 스코프(앱 컴포넌트)가 끝날 때. 편집기 하나가 언마운트돼도 등록은 남는다 — 그 본문은 앱이 갖고 있고, 항목을 빼 본문이 사라지면 올라가지 않는다(C2 "본문에 남은 것만")                                                                                                                                                                                                                                                 |
+| C14 | README — 저장 성공 뒤 초안에 남은 `blob:` 은 이미 해제된 주소다. 앱은 `save` 안에서 받은 `final(s)` 로 초안(과 바뀜 판정 기준)을 바꾼다 — 그러지 않으면 편집기의 그림이 깨지고 「바뀜」 이 남는다. 약관(`useLegalDocuments`)은 발행 뒤 이력을 다시 읽어 해당 없다                                                                                                                                                                                                                                                                 |
+
+공개 API(§4-3 에 더해 읽는다):
+
+```ts
+export function useImageAttachments(options: {
+  // … §4-3 그대로
+  room?: () => number // C9
+}): ImageAttachments
+export interface ImageAttachments {
+  add(files: readonly File[], body: string): string[]
+  commit<T>(markdown: string, save: (final: string) => Promise<T>): Promise<T> // C2
+  commit<T>(markdowns: readonly string[], save: (finals: string[]) => Promise<T>): Promise<T> // C11
+  count(markdown: string | readonly string[]): number // C10
+  busy: Readonly<Ref<boolean>>
+  progress: Readonly<Ref<{ done: number; total: number }>>
+  dispose(): void
+}
+```
+
+테스트 계약(§9-1 admin-ui 에 더한다): `room` 이 있으면 C1 셈 대신 쓰인다 · `room()` 0 · 음수 · `NaN` 이면 전부 `full` · 한 `add` 안에서 앞서 받은 장수만큼 줄어든다 · `count`(같은 주소 둘 · 여러 본문 · 미등록 `blob:` 제외 · 문자열과 배열) · 배열 `commit`(등록 순서로 한 번씩 업로드 · 본문마다 치환 · `finals` 의 길이 · 순서 · 빈 배열 · 업로드 n장째 실패와 `save` 실패의 되돌림이 이번에 올린 키만 · 재진입 거부) · 편집기(디바운스 중에 그림을 붙여넣으면 `add` 앞에 `update:modelValue` 가 나간다 · 같은 `attachments` 를 받은 편집기 둘이 각자 넣은 그림이 하나의 `count` 에 잡힌다).
+
+릴리스(§10 에 더한다): admin-ui minor 에 `room` · `count` · 배열 `commit` 이 같이 실린다(세 패키지 고정 그룹 — 0.14.0). 쓰는 쪽이 할 일은 없다(덧붙임). sseng-home 은 공개 뒤 자기 설계서 §6-5 를 고쳐 연결한다.
+
+## 15. 구현 중 정정 (PR #3k — 2026-11-11)
+
+스펙과 다르게 한 것 · 스펙이 정하지 않아 구현(플랜 `docs/superpowers/plans/2026-11-11-admin-ui-image-attachments.md` 「플랜이 정한 것」)이 정한 것과 그 이유.
+
+- **§5-2 · C2 되돌림을 기다리지 않는다**: 의사 코드의 `await remove(key)` 뒤 다시 던지기를 "remove 를 시작만 하고 원래 예외를 곧바로 다시 던진다" 로 바꿨다. 기다리면 `createApiClient` 의 지연 `onError`(한 매크로태스크 뒤)가 먼저 돌아 useWriteFlow 가 처리할 revision 충돌 · 칸 오류까지 전역 토스트로 뜬다(`ApiError.handled` 계약). 되돌림 실패는 `handled` 로 표시해 삼킨다(저장 성공 · 응답 유실의 404 토스트도 막는다).
+- **§4-3 · §6 · §8 오류 문구 표**: admin-ui 에 코드 → 문구 표가 없어 `api/upload-errors.ts`(`DEFAULT_UPLOAD_ERROR_MESSAGES` · `uploadErrorMessage`)를 새로 뒀다(§8 의 `api/error-messages` 자리). commit 이 **업로드 단계** 실패의 같은 ApiError message 를 이 표로 바꾼다 — 503 은 코드로, 413 은 `details.maxBytes` 를 붙여 「(장당 최대 10MB)」. 저장(save) 단계 오류는 바꾸지 않는다(4xx 서버 문구 그대로). 레지스트리 옵션 `errorMessages` 를 더했다.
+- **C3 끌어 놓기는 `handleDOMEvents.drop`**: ProseMirror(1.42.8)는 놓은 자리(`posAtCoords`)를 못 찾으면 `handleDrop` 을 부르지 않고 기본 동작도 막지 않아 브라우저가 그림 파일을 연다(초안 유실). 편집기 안 끌기(`view.dragging`)는 ProseMirror 몫으로 둔다.
+- **C3 붙여넣기는 글자 없이 파일만 올 때**: 클립보드에 글자가 함께 오면(Word · 엑셀 · 웹 문서 복사는 내용의 그림 한 장을 싣는다) 기본 붙여넣기다(ringside 와 같다).
+- **C3 그림 단추는 원문 모드에서도**: 원문 textarea 의 캐럿 자리에 `![](blob:…)` 줄을 넣는다. 꺼지는 것은 readonly 뿐이다. 원문 끌어 놓기도 캐럿 자리다. 원문 dragover 는 파일을 끌 때 막는다(브라우저는 dragover 동안 `files` 를 비워 둔다 — `types` 의 `'Files'` 로 본다).
+- **C4 넣는 자리**: 선택이 있으면 지우지 않고 선택 끝에 넣는다. 여러 장은 한 트랜잭션(되돌리기 한 번). 캐럿 규칙은 `EditorImage` 입력 규칙의 것을 `moveCaretAfterImage` 로 꺼내 함께 쓴다. 넣은 뒤 편집기에 포커스.
+  - **보충 — 포커스를 받은 적 없는 서식 편집기는 최상위 맨 끝(마지막 블록이 빈 문단이면 그 문단을 그림이 대신한다)에 넣는다**: 그림 단추와 놓은 자리를 못 찾은 끌어 놓기가 해당한다. TipTap 의 처음 선택은 문서 맨 앞이라 그대로 두면 사용자가 본문을 누르기 전에 단추를 눌렀을 때 그림이 맨 위로 간다 — 원문 모드는 이미 끝에 넣는다. 한 번 포커스를 받은 뒤에는 위 규칙(선택 끝)이다. 실브라우저 확인(D1)에서 찾은 앞 빈 문단 회귀를 고쳤다 — 처음에는 `doc.content.size`(마지막 블록 뒤)를 썼더니 빈 문서에서 빈 문단이 그림 앞에 남아 `&nbsp;` 블록이 저장됐다. 최종 리뷰에서 `Selection.atEnd` 로 바꾼 뒤에는 끝이 목록 · 인용이면 그림이 그 안에 갇힌다는 것(인용은 `&nbsp;` 문단도 남는다)을 찾아 최상위 맨 끝으로 고쳤다. 또 `attachments` 를 준 편집기 뿌리는 파일 끌기(`dragover` · `drop`)를 막기만 해(readonly · 도구 막대 포함) 브라우저가 파일을 열어 SPA 를 떠나지 않게 한다.
+- **C7 · C14 약관도 초안을 치환본으로 · 기준 판은 확인한 번호로**: §14 C14 는 약관을 "발행 뒤 이력을 다시 읽어 해당 없다" 고 했지만 재조회가 실패하면 해제된 `blob:` 이 초안에 남는다 — 발행 성공 뒤 초안 · 비교 기준을 보낸 치환본으로 바꾼다. 기준 판 번호는 확인 순간의 번호로 보낸다 — 그림을 올리는 비동기 틈에 재조회가 current 를 새 판으로 바꿔도 409 가 나게(전에는 틈이 없었다).
+- **C1 문구 모양**: `rejectedType(count)` · `rejectedSize(count, maxBytes)` · `rejectedFull(count)` · `uploading(done, total)`. `rejectedFull` 은 한도 숫자를 싣지 않는다 — `room`(C9)을 쓰는 앱의 한도는 킷이 모른다.
+- **C2 재진입 · 해제**: 진행 중 commit 은 `Error('useImageAttachments: commit 이 이미 진행 중이다')` 로 거부한다(보통은 useWriteFlow 의 submitting 이 먼저 막는다). dispose 뒤 `add` 는 빈 배열, 진행 중 commit 은 시작할 때 붙잡은 파일로 끝까지 간다. 남은 칸은 0 이하 · NaN 이면 0, 소수는 내림, Infinity 는 그대로.
+  - **보충 — dispose 뒤 `commit` 은 던진다**: `Error('useImageAttachments: dispose 뒤에는 commit 할 수 없다')`. 해제된 `blob:` 주소를 서버에 그대로 저장하지 않게 하기 위해서다. 진행 중 commit 중에 `dispose()` 가 불려도 그 commit 은 끝까지 가고, 각 주소는 한 번씩만 해제된다.
+- **편집기는 입력이 사라지면 파일을 무시한다**: 파일 선택창이 열린 채 편집기가 언마운트되면 그 파일은 등록하지 않는다.
+- **C6 `uploadFile(url, file: Blob, config?)`**: 형식이 비면 `application/octet-stream`(서버 415). `transformRequest` 는 그대로 넘김 — happy-dom 의 File 은 태그가 `[object File]` 이 아니라 axios 가 JSON 으로 바꿨다(실측).
+- **공개 이름 더한 것**: `ImageAttachmentProgress` · `ImageAttachmentRejectReason` · `DEFAULT_UPLOAD_ERROR_MESSAGES` · `UploadErrorMessages` · `uploadErrorMessage` · `MarkdownEditorMessages.image`(「이미지 넣기」) · `LegalDocumentEditorBindings.attachments?`.
+- **편집 영역 밖 드롭**: 도구 막대 · 페이지에 놓은 파일은 다루지 않는다(브라우저 기본 — 페이지 전역 문제). README 에 적었다.
+- **C10 · §6 확장 — 최종 리뷰 I2 — 등록에 없는 blob: 은 저장하지 않는다(strays · commit 거부 · 약관 발행 막기)**: 다른 편집기 · 레지스트리에서 복사한 그림 · 저장 뒤 해제된 주소를 다시 붙인 그림 · 원문 탭에서 고친 주소는 올라가지 않아 공개 화면에서 깨진다(§6 「원문 탭에서 고침」 줄의 "그대로 저장" 을 바꾼다). `ImageAttachments.strays(본문 | 본문들): string[]`(그림 대상 `](blob:` 중 등록에 없는 것 — 중복 없이 처음 나온 순서)로 앱이 먼저 칸 오류를 띄우고, `commit` 은 그런 본문을 업로드 · save 없이 `Error(messages.stray(n))`(새 문구 `ImageAttachmentMessages.stray`)로 거부한다. 약관은 `LegalPublishBlock` 에 `'strayImages'`(unchanged 다음 · 문구 `LegalDocumentEditorMessages.blocked.strayImages`)를 더해 발행을 막는다 — `attachments` 가 없으면 예전 그대로.

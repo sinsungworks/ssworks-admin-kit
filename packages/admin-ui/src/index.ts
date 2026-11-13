@@ -132,6 +132,11 @@ export { safeRedirect } from './router/safe-redirect.js'
 // ── API 클라이언트 ────────────────────────────────────────────────────
 export { createApiClient, type ApiClientOptions, type ApiClient } from './api/client.js'
 export { ApiError } from './api/error.js'
+export {
+  DEFAULT_UPLOAD_ERROR_MESSAGES,
+  uploadErrorMessage,
+  type UploadErrorMessages,
+} from './api/upload-errors.js'
 export { toFieldErrors } from './api/field-errors.js'
 
 // ── 세션 스토어 ───────────────────────────────────────────────────────
@@ -234,6 +239,18 @@ export {
   type MarkdownEditorMode,
   type MarkdownEditorMessages,
 } from './components/markdown/markdown-editor.js'
+export {
+  useImageAttachments,
+  type UseImageAttachmentsOptions,
+  type ImageAttachments,
+  type ImageAttachmentProgress,
+} from './composables/useImageAttachments.js'
+export {
+  DEFAULT_IMAGE_ATTACHMENT_MESSAGES,
+  type ImageAttachmentMessages,
+  type ImageAttachmentRejection,
+  type ImageAttachmentRejectReason,
+} from './composables/image-attachments.js'
 export { default as LegalDocumentEditor } from './components/legal/LegalDocumentEditor.vue'
 export {
   DEFAULT_LEGAL_MESSAGES,

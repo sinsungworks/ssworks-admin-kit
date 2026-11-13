@@ -16,6 +16,8 @@ export interface MarkdownEditorMessages {
   horizontalRule: string
   undo: string
   redo: string
+  /** 그림 단추 — `attachments` 를 줄 때만 보인다 */
+  image: string
   /** 모드 토글의 두 단추 */
   modeWysiwyg: string
   modeSource: string
@@ -47,6 +49,7 @@ export const DEFAULT_MARKDOWN_EDITOR_MESSAGES: Readonly<MarkdownEditorMessages> 
     horizontalRule: '구분선',
     undo: '되돌리기',
     redo: '다시 실행',
+    image: '이미지 넣기',
     modeWysiwyg: '서식',
     modeSource: '원문',
     modeToggle: '편집 방식',

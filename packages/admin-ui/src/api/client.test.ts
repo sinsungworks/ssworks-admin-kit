@@ -155,6 +155,79 @@ describe('요청 래퍼', () => {
   })
 })
 
+describe('uploadFile — 원시 바이트 업로드(이미지 업로드 스펙 C6)', () => {
+  const created = {
+    key: 'legal/2026/11/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.webp',
+    url: '/api/media/legal/2026/11/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.webp',
+    width: 1,
+    height: 1,
+    bytes: 3,
+  }
+
+  it('파일을 그대로 POST — Content-Type 은 파일 형식, 쿼리 · 봉투는 평소대로', async () => {
+    const client = createApiClient({ baseURL: '/api' })
+    const seen = stub(client, () => ok(created))
+    const file = new File(['abc'], 'a.png', { type: 'image/png' })
+    const result = await client.api.uploadFile('/admin/uploads', file, {
+      params: { purpose: 'legal' },
+    })
+    expect(result).toEqual(created)
+    expect(seen[0]?.method).toBe('post')
+    expect(seen[0]?.url).toBe('/admin/uploads')
+    expect(seen[0]?.params).toEqual({ purpose: 'legal' })
+    expect(seen[0]?.data).toBe(file)
+    expect(String(seen[0]?.headers['Content-Type'])).toBe('image/png')
+  })
+
+  it('🔴 Blob 으로 못 알아보는 파일 객체도 JSON 으로 바뀌지 않는다(happy-dom 의 File 태그)', async () => {
+    // axios 기본 transformRequest 는 toString 태그로 Blob 을 알아본다 — 태그가 다르면 평범한 객체로 읽어 JSON 으로 바꿨다
+    class TaglessBlob extends Blob {
+      get [Symbol.toStringTag]() {
+        return 'Object'
+      }
+    }
+    const client = createApiClient({ baseURL: '/api' })
+    const seen = stub(client, () => ok(created))
+    const blob = new TaglessBlob(['abc'], { type: 'image/webp' })
+    await client.api.uploadFile('/admin/uploads', blob)
+    expect(seen[0]?.data).toBe(blob)
+    expect(String(seen[0]?.headers['Content-Type'])).toBe('image/webp')
+  })
+
+  it('형식이 비면 application/octet-stream — 서버가 415 로 거른다', async () => {
+    const client = createApiClient({ baseURL: '/api' })
+    const seen = stub(client, () => ok(created))
+    await client.api.uploadFile('/admin/uploads', new Blob(['abc']))
+    expect(String(seen[0]?.headers['Content-Type'])).toBe('application/octet-stream')
+  })
+
+  it('실패는 다른 요청과 같다 — 코드 · details 를 품은 ApiError, onError 는 한 매크로태스크 뒤', async () => {
+    const onError = vi.fn()
+    const client = createApiClient({ baseURL: '/api', onError })
+    stub(client, () => ({
+      status: 413,
+      body: {
+        success: false,
+        code: 'ERR_UPLOAD_TOO_LARGE',
+        message: '이미지가 너무 큽니다.',
+        details: { maxBytes: 10_485_760 },
+      },
+    }))
+    const failure = client.api.uploadFile(
+      '/admin/uploads',
+      new File(['x'], 'a.gif', { type: 'image/gif' }),
+    )
+    await expect(failure).rejects.toMatchObject({
+      status: 413,
+      code: 'ERR_UPLOAD_TOO_LARGE',
+      details: { maxBytes: 10_485_760 },
+    })
+    expect(onError).not.toHaveBeenCalled()
+    await macrotask()
+    expect(onError).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('ApiError 정규화 · onError', () => {
   it('실패 봉투 → ApiError{status,code,message,details}', async () => {
     const onError = vi.fn()

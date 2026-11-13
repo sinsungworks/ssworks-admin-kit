@@ -11,6 +11,7 @@
     VTabs,
   } from 'vuetify/components'
   import type { AdminLegalDocument, AdminLegalHistoryItem } from '@ssworks/admin-shared'
+  import type { ImageAttachments } from '../../composables/useImageAttachments.js'
   import type { LegalDetailDialogBindings } from '../../composables/useLegalDocuments.js'
   import type { ConfirmDialogBindings } from '../../composables/useWriteFlow.js'
   import { formatDateTime } from '../../utils/format-date-time.js'
@@ -66,6 +67,8 @@
       publishDialog: ConfirmDialogBindings
       discardDialog: ConfirmDialogBindings
       detailDialog: LegalDetailDialogBindings<R>
+      /** 그림 첨부 레지스트리 — 편집기로 그대로 간다(useLegalDocuments 옵션 `attachments` 가 바인딩에 싣는다) */
+      attachments?: ImageAttachments
       /** 이력 표에 더할 열 — [보기] 앞에 붙는다. 값은 슬롯 `item.<key>`(없으면 원값) */
       historyHeaders?: readonly AdminTableHeader[]
       /** 날짜 표기. 기본 `YYYY-MM-DD HH:mm`(현지 시각) — `SessionTable` 과 같은 이름 · 같은 기본값 */
@@ -74,6 +77,7 @@
       messages?: Partial<LegalDocumentEditorMessages>
     }>(),
     {
+      attachments: undefined,
       historyHeaders: () => [],
       formatDate: undefined,
       editorHeight: '420px',
@@ -220,6 +224,7 @@
 
     <div class="legal-document-editor__split">
       <MarkdownEditor
+        :attachments="attachments"
         :height="editorHeight"
         :label="text.editorLabel(kindLabel)"
         :model-value="modelValue"

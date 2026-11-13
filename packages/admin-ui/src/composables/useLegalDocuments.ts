@@ -19,6 +19,7 @@ import {
   type LegalMessages,
   type LegalPublishBlock,
 } from '../components/legal/legal-document.js'
+import type { ImageAttachments } from './useImageAttachments.js'
 import { useWriteFlow, type ConfirmDialogBindings } from './useWriteFlow.js'
 
 // 약관 화면의 흐름 — 종류 전환(초안 확인) · 현재본 · 이력 · 원문 조회 · 발행(확인 → 저장 → 충돌).
@@ -41,6 +42,9 @@ import { useWriteFlow, type ConfirmDialogBindings } from './useWriteFlow.js'
 // 🔴 발행 성공 즉시 `baseBody = 보낸 본문`, 그다음 재조회(D11). 번호 · 해시 · 발행일은 낙관적으로 채우지 않는다.
 // 🔴 초안은 받은 그대로 보관한다(D3) — 고쳐서 돌려주면 한글 조합 중에 편집기 문서가 치환된다.
 // 🔴 읽기 실패는 처리됨으로 표시하지 않는다(D13) — 화면 안 경고와 전역 토스트가 둘 다 뜬다(3d useTeamTree 와 같음).
+// 🔴 그림 첨부(`attachments` — 이미지 업로드 스펙 C7)가 있으면 발행은 `attachments.commit(초안, 발행)` 이다 — 그림을 올리고 주소를
+//    바꾼 본문(치환본)이 서버로 간다. 성공하면 초안 · 기준도 치환본으로 바꾼다(C14) — 재조회가 실패해도 해제된 blob: 이 초안에
+//    남지 않게. 실패하면 commit 이 올린 것을 지우고, 초안(blob: 그대로)은 남는다.
 
 export interface LegalDoneEvent<K extends string = string> {
   action: 'published'
@@ -69,6 +73,11 @@ export interface UseLegalDocumentsOptions<
   messages?: Partial<LegalMessages>
   /** 기본 true — 만들자마자 첫 종류를 불러온다 */
   immediate?: boolean
+  /**
+   * 그림 첨부 레지스트리(useImageAttachments — 용도는 페이지가 upload 어댑터에서 정한다, 보통 `LEGAL_UPLOAD_PURPOSE`).
+   * 있으면 편집기에 그림 넣기가 켜지고 발행이 그림을 올린 뒤 치환본을 보낸다
+   */
+  attachments?: ImageAttachments
 }
 
 export interface LegalDetailDialogBindings<R> {
@@ -102,6 +111,8 @@ export interface LegalDocumentEditorBindings<K extends string, R> {
   publishDialog: ConfirmDialogBindings
   discardDialog: ConfirmDialogBindings
   detailDialog: LegalDetailDialogBindings<R>
+  /** 옵션 `attachments` 그대로 — 편집기로 간다 */
+  attachments?: ImageAttachments
   onSelectKind: (kind: K) => void
   'onUpdate:modelValue': (value: string) => void
   onPublish: () => void
@@ -268,6 +279,12 @@ export function useLegalDocuments<
     if (draft.value.trim() === '') return 'empty'
     if (draft.value.length > LEGAL_BODY_MAX_LENGTH) return 'tooLong'
     if (draft.value === baseBody.value) return 'unchanged'
+    // 등록에 없는 blob: 그림은 올라가지 않아 발행하면 공개 화면에서 깨진다 — 그림 첨부가 있을 때만 본다.
+    // 🔴 등록(레지스트리의 Map)은 반응형이 아니다 — 초안은 그대로인데 등록만 바뀌면 publishBlock(computed)이 낡은 판정을
+    //    들고 있을 수 있다. 그 틈은 확인 순간의 재검사(D10 — action 이 이 함수를 직접 다시 부른다)가 메운다
+    if (options.attachments != null && options.attachments.strays(draft.value).length > 0) {
+      return 'strayImages'
+    }
     return null
   }
 
@@ -326,6 +343,9 @@ export function useLegalDocuments<
     const label = labelOf(k)
     const text = messages.publishConfirm(label)
     let attempted = false
+    /** 확인 순간의 초안(그림이 있으면 blob: 주소 그대로) */
+    let drafted = ''
+    /** 서버로 보낸 본문 — 그림이 있으면 치환본 */
     let sent = ''
     const ok = await flow.run({
       gate: 'confirm',
@@ -340,12 +360,14 @@ export function useLegalDocuments<
         if (kind.value !== k || (current.value?.legalDocNo ?? null) !== baseNo) return
         if (publishable() !== null) return
         attempted = true
-        sent = draft.value
-        await doPublish({
-          kind: k,
-          body: sent,
-          baseLegalDocNo: current.value?.legalDocNo ?? null,
-        })
+        drafted = draft.value
+        // 🔴 기준 판은 확인한 그 번호(baseNo)로 보낸다 — 그림을 올리는 사이 재조회가 current 를 새 판으로 바꿔도 409 가 난다
+        const send = async (body: string): Promise<void> => {
+          sent = body
+          await doPublish({ kind: k, body, baseLegalDocNo: baseNo })
+        }
+        const attachments = options.attachments
+        await (attachments == null ? send(drafted) : attachments.commit(drafted, send))
       },
       onConflict: async () => {
         // 409 revision — 다른 관리자가 그사이 발행했다. 초안을 지키고 기준만 새 판으로(D9 · D12). 이 함수가 끝날 때까지
@@ -355,7 +377,8 @@ export function useLegalDocuments<
       },
     })
     if (!ok || !attempted) return
-    // 🔴 재조회보다 먼저(D11)
+    // 🔴 재조회보다 먼저(D11). 그림을 올렸으면 초안도 치환본으로(C14) — 발행 중에는 편집기가 잠겨 초안이 그대로다
+    if (draft.value === drafted) draft.value = sent
     baseBody.value = sent
     conflict.value = false
     await load(k)
@@ -450,6 +473,7 @@ export function useLegalDocuments<
         if (row != null) void openDetail(row)
       },
     },
+    attachments: options.attachments,
     onSelectKind: selectKind,
     'onUpdate:modelValue': setDraft,
     onPublish: () => {

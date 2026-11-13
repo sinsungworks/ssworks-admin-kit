@@ -4,6 +4,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h, type Component } from 'vue'
 import type { AdminLegalDocument, AdminLegalHistoryItem } from '@ssworks/admin-shared'
+import { useImageAttachments } from '../../composables/useImageAttachments.js'
 import type { ConfirmDialogBindings } from '../../composables/useWriteFlow.js'
 import { buttonByText, installVisualViewport, vuetify } from '../../test/setup.js'
 import { formatDateTime } from '../../utils/format-date-time.js'
@@ -215,6 +216,22 @@ describe('LegalDocumentEditor — 편집기 · 미리보기', () => {
     expect(content('이용약관 본문')?.getAttribute('aria-readonly')).toBe('true')
   })
 
+  it('attachments 를 편집기에 그대로 넘긴다 — 있으면 그림 단추, 없으면 없다(이미지 업로드 C7)', () => {
+    const imageButton = () =>
+      document.querySelector('[role="toolbar"] button[aria-label="이미지 넣기"]')
+    mountEditor()
+    expect(imageButton()).toBeNull()
+    wrapper!.unmount()
+    wrapper = null
+    document.body.innerHTML = ''
+    const attachments = useImageAttachments({
+      upload: async () => Promise.reject(new Error('올리지 않는다')),
+    })
+    const w = mountEditor({ attachments })
+    expect(imageButton()).toBeTruthy()
+    expect(w.findComponent(MarkdownEditor).props('attachments')).toBe(attachments)
+  })
+
   it('입력하면 update:modelValue — 포커스를 잃을 때(디바운스 flush)', () => {
     const w = mountEditor()
     const editor = (w.findComponent(MarkdownEditor).vm as unknown as { editor: Editor }).editor
@@ -274,6 +291,10 @@ describe('LegalDocumentEditor — 발행', () => {
     ['empty', '본문을 입력하세요.'],
     ['tooLong', '본문은 1,000,000자를 넘을 수 없습니다.'],
     ['unchanged', '시행 중인 판과 내용이 같습니다.'],
+    [
+      'strayImages',
+      '발행할 수 없는 그림이 있습니다(다른 곳에서 복사한 그림). 그 그림을 지우고 파일로 다시 넣으세요.',
+    ],
   ] as const)('막힌 이유 %s → 「%s」', (block, message) => {
     const w = mountEditor({ canPublish: false, publishBlock: block })
     expect(w.find('.legal-document-editor__hint').text()).toBe(message)
