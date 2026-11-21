@@ -4,7 +4,11 @@ import type { Kysely } from 'kysely'
 import type { AdminClientIpSource } from '../auth/request-meta.js'
 import { AdminSessionStore } from '../auth/session.store.js'
 import type { AdminDatabase } from '../database/types.js'
-import type { ResolvedIpAccessConfig } from '../ip-access/options.js'
+import {
+  resolveIpAccessConfig,
+  type AdminIpAccessOptions,
+  type ResolvedIpAccessConfig,
+} from '../ip-access/options.js'
 
 // 테스트 전용 — IP 규칙 시드 · 초기화(2f-1). 🔴 빌드에서 빠진다(tsconfig.build.json 의 test-support 제외).
 // 🔴 규칙은 DB 전역 상태다 — 규칙을 바꾸는 테스트 파일은 beforeEach 로 resetIpRules 를 부른다.
@@ -55,12 +59,17 @@ export function ipRulesOf(db: Kysely<AdminDatabase>) {
     .execute()
 }
 
-/** IP 서비스 설정 — 재인증 기본 꺼짐 · 출처 req.ip */
+/** IP 서비스 설정 — 재인증 기본 꺼짐 · 출처 req.ip · 확장 범위 없음. 🔴 앱과 같은 해석 함수를 지난다 */
 export function ipAccessConfig(
   reauth = false,
   clientIp: AdminClientIpSource = 'req.ip',
+  ipAccess?: AdminIpAccessOptions,
 ): ResolvedIpAccessConfig {
-  return Object.freeze({ reauth, clientIp })
+  return resolveIpAccessConfig({
+    reauth,
+    clientIp,
+    ...(ipAccess === undefined ? {} : { ipAccess }),
+  })
 }
 
 /** 주소가 남은 살아 있는 세션 하나(하루 뒤 만료) — 미리보기 시드 */
