@@ -1,6 +1,6 @@
 # admin-kit IP 접근 제어 — 확장 범위 설계
 
-작성일: 2026-11-21 · 상태: 확정(구현 전) · 요청: `C:\workspace\ssworks-atlas-launcher-admin\docs\superpowers\specs\2026-11-21-admin-kit-ip-extra-scope-request.md`(출고 관리 서비스 — 읽기만) · 선행: 2f-1 스펙 `docs/superpowers/specs/2026-10-15-admin-server-ip-access-design.md`(층 · 평가 · 잔존 · 자기 잠금 · 미리보기), 2f-2b 스펙 `docs/superpowers/specs/2026-10-15-admin-server-publish-prep-design.md` §5-5(IP 파서), 3g 스펙 `docs/superpowers/specs/2026-10-18-admin-ui-audit-ip-design.md`(IP 화면), 3i 스펙 `docs/superpowers/specs/2026-10-20-admin-kit-ringside-feedback-2-design.md`(층 목록 `scopes`), 2g(전권 전용 `ipAccess.manage`)
+작성일: 2026-11-21 · 상태: 구현 완료(2026-11-21, 브랜치 `feat/ip-extra-scopes` — push · 발행 전. 구현 중 바뀐 줄은 §11) · 요청: `C:\workspace\ssworks-atlas-launcher-admin\docs\superpowers\specs\2026-11-21-admin-kit-ip-extra-scope-request.md`(출고 관리 서비스 — 읽기만) · 선행: 2f-1 스펙 `docs/superpowers/specs/2026-10-15-admin-server-ip-access-design.md`(층 · 평가 · 잔존 · 자기 잠금 · 미리보기), 2f-2b 스펙 `docs/superpowers/specs/2026-10-15-admin-server-publish-prep-design.md` §5-5(IP 파서), 3g 스펙 `docs/superpowers/specs/2026-10-18-admin-ui-audit-ip-design.md`(IP 화면), 3i 스펙 `docs/superpowers/specs/2026-10-20-admin-kit-ringside-feedback-2-design.md`(층 목록 `scopes`), 2g(전권 전용 `ipAccess.manage`)
 
 이 문서는 IP 접근 제어에 **확장 범위**(관리자 밖 주체에 거는 IP 규칙)를 더하는 범위만 쓴다. 코어 층(사용자 > 팀 > 전체)의 평가 · 잔존 · 자기 잠금 · 미리보기는 2f-1 스펙이 그대로 유효하고, 이 문서가 바꾸는 줄은 §8 에 모았다.
 
@@ -49,7 +49,7 @@
 | X5  | **대상 훅** — 확장 범위마다 `target.lock(trx, refNo) → Promise<boolean>`(쓰기 트랜잭션 안 · 대상 행 `FOR UPDATE` · 있으면 true)와 `target.names(db, refNos) → Promise<ReadonlyMap<bigint, string>>`(목록 · 응답 · 없는 번호는 뺀다). 요청 문서의 `exists` 는 `lock` 으로 합쳤다 — 있는지 확인과 잠금 읽기가 같은 쿼리다. 🔴 훅은 **메서드 꼴**로 선언한다 — 쓰는 쪽이 `Transaction<Database>` 로 적어도 들어간다(메서드 매개변수 이변성) |
 | X6  | **잠금 순서** — 킷: 규칙 행 → 쓰는 쪽 대상 행. 🔴 쓰는 쪽은 자기 트랜잭션에서 `ipAccessRules` 행을 잠그지 않는다(토큰 행 → 규칙 행 순서가 되어 교착). 규칙 수는 `countRulesOf` 로 비잠금으로 센다                                                                                                                                                                                                                                        |
 | X7  | **범위 전체 층(R2)** — `wholeScope`(기본 true). 꺼지면 ⓐ `scopeRefNo: null` 만들기 · 수정이 400 `issues[scopeRefNo]` ⓑ 서버 읽기(`rulesOf` · `allows`)가 그 범위의 NULL 행을 뺀다(판정에서 빠진다) ⓒ 이미 있는 NULL 행은 목록에 남고 지울 수 있다. 공유 판정 함수는 이 설정을 모른다 — 읽기가 거른 규칙을 받는다                                                                                                                         |
-| X8  | **등록이 빠진 범위의 행**(옵션에서 지운 범위) — 목록에 보이고(`scopeName: null`) 삭제만 된다. 수정은 400 `issues[scopeType]`. 판정에는 어디서도 쓰이지 않는다                                                                                                                                                                                                                                                                            |
+| X8  | **등록이 빠진 범위의 행**(옵션에서 지운 범위) — 목록에 보이고(`scopeName: null`) 삭제만 된다. 수정은 400 `issues[scopeType]`(재인증 앞 — §11). 판정에는 어디서도 쓰이지 않는다                                                                                                                                                                                                                                                           |
 | X9  | **미리보기는 코어만** — 쿼리 스키마는 코어 셋 그대로라 확장 `scopeType` 은 400. 미리보기의 규칙 읽기도 코어 셋만이라 확장 규칙 번호의 `op=update` · `delete` 는 404. 화면은 확장 규칙에 미리보기를 부르지 않는다(§5-4)                                                                                                                                                                                                                   |
 | X10 | **쓰는 쪽 읽기는 서비스** — `AdminIpExtraScopeService`(전역 IP 모듈이 낸다). 등록되지 않은 범위 이름을 받으면 `Error` 를 던진다(설정 오류 — 쓰는 쪽 가드가 500 → 막힘, fail-closed). 쓰는 쪽이 `ipAccessRules` 를 직접 질의하는 데 기대지 않게 한다(R4b)                                                                                                                                                                                 |
 | X11 | **화면 선택지 키** — 확장 범위마다 선택지가 둘이다: 대상 하나(키 = 범위 이름)와 범위 전체(키 = `<이름>:*`). 폼의 `scopeType` 은 이 키이고, 본문을 만들 때 `{ scopeType: <이름>, scopeRefNo: null }` 로 푼다. `:*` 는 서버 이름에 들어갈 수 없어 대상 칸에 친 글자와 섞이지 않는다                                                                                                                                                        |
@@ -130,9 +130,9 @@ export interface AdminIpExtraScope<DB extends AdminDatabase = AdminDatabase> {
 }
 
 export interface AdminIpScopeTarget<DB extends AdminDatabase = AdminDatabase> {
-  /** 🔴 쓰기 트랜잭션 안 — 대상 행을 FOR UPDATE 로 잠그고, 있으면 true. 메서드 꼴(X5) */
+  /** 🔴 쓰기 트랜잭션 안 — 대상 행을 FOR UPDATE 로 잠그고, 있으면 true. 메서드 꼴(X5). 🔴 첫 문장은 잠금 읽기(§11) */
   lock(trx: Transaction<DB>, refNo: bigint): Promise<boolean>
-  /** 목록 · 응답의 대상 이름. 없는 번호는 빼고 돌려준다 → scopeName null */
+  /** 목록 · 응답의 대상 이름. 없는 번호는 빼고 돌려준다 → scopeName null. 🔴 Map 키는 받은 bigint 그대로(§11) */
   names(db: Kysely<DB>, refNos: readonly bigint[]): Promise<ReadonlyMap<bigint, string>>
 }
 ```
@@ -141,28 +141,28 @@ export interface AdminIpScopeTarget<DB extends AdminDatabase = AdminDatabase> {
 
 ### 4-2. 본문 파이프
 
-- **만들기**: `scopeType` 이 코어 ∪ 등록된 이름이 아니면 400 `issues[scopeType]`(`IP_ACCESS_MESSAGES.unknownScopeType`). 코어면 지금처럼 `ipScopeProblem`. 확장이면 `scopeRefNo === null ∧ !wholeScope` → 400 `issues[scopeRefNo]`(`wholeScopeOff`).
-- **수정**: `scopeType` 이 있으면 같은 등록 검사. 범위 불변식 · 갈래 검사는 병합 결과를 보는 서비스 몫(지금처럼).
-- `extraScopes` 가 없으면 파이프가 받는 이름은 코어 셋뿐 — 모르는 `scopeType` 은 지금처럼 400 `ERR_COMMON_VALIDATION` · `issues[scopeType]` 이다. 바뀌는 것은 그 칸 오류의 문구뿐이다(zod enum 기본 글자 → `unknownScopeType`).
+- **만들기**: `scopeType` 이 코어 ∪ 등록된 이름이 아니면 400 `issues[scopeType]` — 문구는 둘이다(§11): 이름 형식 밖(`Global` · `a_b` · 17자 이상 — 공유 스키마 `ipRuleScopeTypeSchema`)은 `IP_ACCESS_SCHEMA_MESSAGES.scopeTypeInvalid`, 형식은 맞는데 등록되지 않은 이름은 `IP_ACCESS_MESSAGES.unknownScopeType`(한 칸에 둘을 함께 싣지 않는다). 코어면 지금처럼 `ipScopeProblem`. 확장이면 `scopeRefNo === null ∧ !wholeScope` → 400 `issues[scopeRefNo]`(`wholeScopeOff`).
+- **수정**: `scopeType` 이 있으면 같은 등록 검사(문구 둘도 같다). 범위 불변식 · 갈래 검사는 병합 결과를 보는 서비스 몫(지금처럼).
+- `extraScopes` 가 없으면 파이프가 받는 이름은 코어 셋뿐 — 모르는 `scopeType` 은 지금처럼 400 `ERR_COMMON_VALIDATION` · `issues[scopeType]` 이다. 바뀌는 것은 그 칸 오류의 문구뿐이다(zod enum 기본 글자 → 형식 밖이면 `scopeTypeInvalid` · 형식이 맞으면 `unknownScopeType`).
 
 ### 4-3. 쓰기 (`AdminIpAccessService`)
 
-| 단계             | 코어 갈래(지금 그대로)                                  | 확장 갈래                                                                                   |
-| ---------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 갈래 고르기      | 본문 · 대상 규칙의 `scopeType`(X4)                      | 같음                                                                                        |
-| 갈래 검사(수정)  | 본문 `scopeType` 이 확장이면 400 `issues[scopeType]`    | 본문 `scopeType` 이 대상과 다르면 400 `issues[scopeType]`(`scopeTypeLocked`) — 재인증 앞    |
-| 재인증           | 트랜잭션 밖                                             | 같음                                                                                        |
-| 트랜잭션 첫 문장 | 잔존 가드 행                                            | 대상 규칙 행 `FOR UPDATE`(수정 · 삭제) — 만들기는 `target.lock`(범위 전체면 잠글 것이 없다) |
-| 잠금 단계        | 대상 규칙 → `revision` → 병합 불변식 → 팀 · 사용자 행   | 대상 규칙 → 갈래 재확인(X4) → `revision` → 등록 확인(X8) → `wholeScope`(X7) → `target.lock` |
-| 대상 없음        | 400 `issues[scopeRefNo]`(`noScopeTeam` · `noScopeUser`) | 400 `issues[scopeRefNo]`(`noScopeTarget`)                                                   |
-| 쓰기 뒤          | 자기 잠금 판정 · 후 셈                                  | 없음(X3)                                                                                    |
-| 응답 · 감사      | `{ item }` · `setting.ipAccess.*` · diff 네 칸          | 같음 — `item.scopeName` 은 `target.names(trx, [refNo])`                                     |
+| 단계             | 코어 갈래(지금 그대로)                                  | 확장 갈래                                                                                                                                                                  |
+| ---------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 갈래 고르기      | 본문 · 대상 규칙의 `scopeType`(X4)                      | 같음                                                                                                                                                                       |
+| 갈래 검사(수정)  | 본문 `scopeType` 이 확장이면 400 `issues[scopeType]`    | 본문 `scopeType` 이 대상과 다르면 400 `issues[scopeType]`(`scopeTypeLocked`), 등록이 빠진 범위의 행이면 400 `issues[scopeType]`(`unknownScopeType`) — 둘 다 재인증 앞(§11) |
+| 재인증           | 트랜잭션 밖                                             | 같음                                                                                                                                                                       |
+| 트랜잭션 첫 문장 | 잔존 가드 행                                            | 대상 규칙 행 `FOR UPDATE`(수정 · 삭제) — 만들기는 `target.lock`(범위 전체면 잠글 것이 없다)                                                                                |
+| 잠금 단계        | 대상 규칙 → `revision` → 병합 불변식 → 팀 · 사용자 행   | 대상 규칙 → 갈래 재확인(X4) → `revision` → 등록 확인(X8) → `wholeScope`(X7) → `target.lock`                                                                                |
+| 대상 없음        | 400 `issues[scopeRefNo]`(`noScopeTeam` · `noScopeUser`) | 400 `issues[scopeRefNo]`(`noScopeTarget`) — 수정은 그대로인 대상도 다시 잠근다(§11)                                                                                        |
+| 쓰기 뒤          | 자기 잠금 판정 · 후 셈                                  | 없음(X3)                                                                                                                                                                   |
+| 응답 · 감사      | `{ item }` · `setting.ipAccess.*` · diff 네 칸          | 같음 — `item.scopeName` 은 `target.names(trx, [refNo])`                                                                                                                    |
 
 삭제는 갈래 검사 · 등록 확인 없이 된다(X8 — 등록이 빠진 범위의 행도 지운다).
 
 ### 4-4. 목록 (R6a · R8)
 
-`GET /admin/ip-access` — 행 전부(정렬 지금 그대로: `scopeType` 문자 순 → `ruleNo`). 확장 행은 범위마다 그 범위의 `scopeRefNo` 를 모아 `target.names(db, refNos)` 를 **한 번** 부르고, 돌려받은 이름을 `scopeName` 에 싣는다. 받지 못한 번호 · NULL 대상 · 등록이 빠진 범위는 `scopeName: null`. `scopeUserId` 는 확장 행에서 늘 `null`. 훅이 던지면 목록이 500 이다(숨기지 않는다).
+`GET /admin/ip-access` — 행 전부(정렬 지금 그대로: `scopeType` 바이트 순(`ascii_bin`) → `ruleNo`. 확장 범위 행은 이름의 알파벳 자리에 끼어든다 — 예: `global` · `shippingToken` · `team` · `user`). 확장 행은 범위마다 그 범위의 `scopeRefNo` 를 모아 `target.names(db, refNos)` 를 **한 번** 부르고, 돌려받은 이름을 `scopeName` 에 싣는다. 받지 못한 번호 · NULL 대상 · 등록이 빠진 범위는 `scopeName: null`. `scopeUserId` 는 확장 행에서 늘 `null`. 훅이 던지면 목록이 500 이다(숨기지 않는다).
 
 ### 4-5. 관리자 판정과 떼어 놓기 (R3a)
 
@@ -182,9 +182,15 @@ export class AdminIpExtraScopeService {
   /** 이 주소로 이 주체가 들어올 수 있는가 — 그 대상 · 범위 전체 행만 읽어 evaluateScopedIpAccess */
   allows(scopeType: string, scopeRefNo: bigint, clientIp: string | null): Promise<boolean>
   /** 이 대상을 가리키는 규칙 수. db 에 쓰는 쪽 트랜잭션을 넘길 수 있다 — 🔴 대상 행을 잠근 뒤 첫 비잠금 읽기로 */
-  countRulesOf(scopeType: string, scopeRefNo: bigint, db?: Kysely<AdminDatabase>): Promise<number>
+  countRulesOf(
+    scopeType: string,
+    scopeRefNo: bigint,
+    db?: Kysely<AdminDatabase> | Transaction<AdminDatabase>,
+  ): Promise<number>
 }
 ```
+
+- `countRulesOf` 의 `db` 는 쓰는 쪽 `Transaction<Database>` · `Kysely<Database>`(`Database extends AdminDatabase`)를 형변환 없이 받는다(§11 — `options.types.test.ts` 가 typecheck 로 잰다).
 
 - 등록되지 않은 `scopeType` 은 `Error`(X10). 코어 이름도 등록되지 않은 이름이다.
 - `allows` 의 SQL: `scopeType = ? AND (scopeRefNo = ? OR scopeRefNo IS NULL)`(범위 전체가 꺼졌으면 `scopeRefNo = ?` 만) — 인덱스 `idxIpAccessRulesScope`. 매 요청 DB 왕복 하나(요청 문서 R4 — 설치 한 번에 세 번 정도).
@@ -236,8 +242,8 @@ setup 에서 던진다: `type` 이 이름 규칙 밖 · 코어 이름 · 범위�
 
 - 선택지 순서: 코어 층(`scopes`, 평가 순서) 뒤에 `extraScopes` 순서. 확장 범위마다 「`label`」(대상 하나)과 「`wholeLabel`」(범위 전체 — 있을 때)(X11).
 - 수정 중에는 같은 갈래의 선택지만 — 코어 규칙이면 `scopes` 의 코어 층(목록 밖 지금 층은 3i S2 그대로), 확장 규칙이면 그 범위의 둘(X2). 만들기에는 전부.
-- 대상 칸: 확장 대상 하나면 `RemoteSearchField`(사용자 칸과 같은 부품 — 후보 글자 = `name`), `search` 가 없거나 `canSearch` 거짓이면 번호 칸 + 이유. 범위 전체 · 전체 층은 대상 칸이 없다.
-- 목록 범위 칸: 대상 하나 `출고 토큰 · 작업대 1`(아래 줄 `#12`), 범위 전체 `모든 출고 USB`, 이름 `null` 이면 `출고 토큰 #12` + 「대상 없음 — 아무에게도 걸리지 않음」(지금 `deadTarget`). 화면이 모르는 범위(옵션에 없는 이름)는 이름 그대로 보이고 **삭제만** 된다(수정 버튼 비활성 — X8).
+- 대상 칸: 확장 대상 하나면 `RemoteSearchField`(사용자 칸과 같은 부품 — 후보 글자 = `name`), `search` 가 없으면 번호 칸, `canSearch` 거짓이면 번호 칸 + 이유(`targetNoPermissionHint`). 범위 전체 · 전체 층은 대상 칸이 없다.
+- 목록 범위 칸: 대상 하나 `출고 토큰 · 작업대 1`(아래 줄 `#12`), 범위 전체 `모든 출고 USB`, 이름 `null` 이면 `출고 토큰 #12` + 「대상 없음 — 아무에게도 걸리지 않음」(지금 `deadTarget`). 대상이 지워진 행의 수정 버튼은 미리 막지 않는다 — 같은 대상으로 저장하면 서버 400 `noScopeTarget`, 있는 대상으로 바꾸면 된다(§11). 화면이 모르는 범위(옵션에 없는 이름)는 이름 그대로 보이고(`<이름>` · 범위 전체 `<이름> 전체` · 대상 행은 서버가 이름을 붙이지 않아 `<이름> #12` + `deadTarget` 줄 — §11) **삭제만** 된다(수정 버튼 비활성 — X8).
 - 권한은 지금 그대로 — `canManage`(= `ipAccess.manage`) 하나가 만들기 · 수정 · 삭제를 가른다(①).
 
 ### 5-3. 한 범위 모드 (R6-1)
@@ -252,8 +258,9 @@ export interface IpRuleFocus {
 ```
 
 - 목록은 화면에서 거른다(서버 목록 그대로 — 어댑터 변화 없음).
-- 선택지는 그 범위의 둘(또는 하나). `scopeRefNo` 를 주면 대상 칸이 그 대상으로 고정된다(바꿀 수 없음 — 글자는 `openCreate` 의 `scopeName` · 목록의 `scopeName` · 없으면 `#번호`).
-- 접속 상태와 변경 영향 카드를 그리지 않는다(바인딩 `showPreviewCard: false`) — 관리자 접속과 무관하다.
+- 선택지는 그 범위의 둘(또는 하나). `scopeRefNo` 를 주면 대상 칸이 그 대상으로 고정된다(바꿀 수 없음 — 글자는 `openCreate` 의 `scopeName` · 목록의 `scopeName` · 검색 결과, 아는 이름이 없으면 `#번호`).
+- 접속 상태와 변경 영향 카드를 그리지 않는다(바인딩 `showPreviewCard: false`) — 관리자 접속과 무관하다. 서버 미리보기도 부르지 않는다 — 처음 부르기를 끄고(`immediate: false`), 편집 · 삭제 · 닫기 뒤 미리보기 대상이 늘 `'unrelated'` 다(§11 — 남은 틈 하나도 거기).
+- `openEdit(rule)` 은 범위 밖 규칙(목록에서 걸러진 규칙)에 `false` 다 — 열면 고정 대상이 그 규칙의 대상을 조용히 덮어쓴다(§11).
 - 값이다(X12).
 
 ### 5-4. 미리보기 (R6b)
@@ -281,20 +288,20 @@ openCreate: (prefill?: IpRulePrefill) => Promise<boolean>
 
 - 미리 채운 편집 패널을 연다 → 저장 → 확인 또는 재인증 창 → 409(자기 잠금 · 잔존) · `revision` · 400 칸 오류 처리 — 지금 흐름 그대로.
 - 미리 채운 값은 고친 값이다(닫을 때 버릴지 묻는다). 열 때 고친 값이 있으면 먼저 묻는 것도 지금 그대로.
-- `false` 를 돌려준다: `canManage` 거짓 · 진행 중 · 이 화면이 고를 수 없는 선택지(코어면 `scopes` 밖 · `global` 에 대상 · `team`/`user` 에 대상 없음, 확장이면 `extraScopes` 밖 · `wholeLabel` 없는 범위 전체, `focus` 밖).
+- `false` 를 돌려준다: `canManage` 거짓 · 진행 중 · 이 화면이 고를 수 없는 선택지(코어면 `scopes` 밖 · `global` 에 대상 · `team`/`user` 에 대상 없음, 확장이면 `extraScopes` 밖 · `wholeLabel` 없는 범위 전체, `focus` 밖) · 버리기 확인을 취소함. 🔴 버리기 확인 뒤 권한 · 진행 중을 다시 본다 — 묻는 사이 권한이 회수되거나 쓰기가 시작됐으면 `false`(`openEdit` 도 같다 — §11).
 - 바인딩 `onOpenCreate` 는 지금처럼 인자 없이 부른다.
 
 ### 5-6. 바뀌는 공개 모양
 
-| 자리                       | 변화                                                                                                                                                                                                                           |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `IpRuleForm.scopeType`     | `IpScopeType` → `string`(선택지 키 — X11)                                                                                                                                                                                      |
-| `IpPreviewState`           | `'unrelated'` 추가                                                                                                                                                                                                             |
-| `IpAccessMessages`         | 키 추가 — 미리보기 · 관문 · 힌트(§5-4)와 대상 칸(`targetSearchHint` · `targetSearchEmpty` · `targetSearchFailed` · `targetNoPermissionHint` · `targetNumberLabel` 류). 기본 문구에 섞여 있어 `messages` 덮어쓰기는 그대로 된다 |
-| `UseIpAccessRulesOptions`  | `extraScopes` · `focus` 추가                                                                                                                                                                                                   |
-| `IpAccessRules.openCreate` | 선택 인자 `prefill`                                                                                                                                                                                                            |
-| `IpAccessManagerBindings`  | 확장 대상 칸 바인딩 · `showPreviewCard` · 행 수정 가능 판정 추가 — `v-bind` 로 넘기므로 쓰는 쪽 변화 없음                                                                                                                      |
-| 새 export                  | 타입 `IpExtraScopeOption` · `IpTargetOption` · `IpRuleFocus` · `IpRulePrefill`                                                                                                                                                 |
+| 자리                       | 변화                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IpRuleForm.scopeType`     | `IpScopeType` → `string`(선택지 키 — X11)                                                                                                                                                                                                                                                                                                                                                                |
+| `IpPreviewState`           | `'unrelated'` 추가                                                                                                                                                                                                                                                                                                                                                                                       |
+| `IpAccessMessages`         | 필수 키 열 개 추가 — `scopeWhole` · `previewUnrelated` · `hintExtraScopes` · `gateImpactUnrelated` · `targetLabel` · `targetNumberLabel` · `targetSearchHint` · `targetSearchEmpty` · `targetSearchFailed` · `targetNoPermissionHint`. 기본 문구에 섞여 있어 `messages`(`Partial`) 덮어쓰기는 그대로 된다 — `IpAccessMessages` 를 통째로 만드는 쪽만 더한다(`DEFAULT_IP_ACCESS_MESSAGES` 를 펼치면 된다) |
+| `UseIpAccessRulesOptions`  | `extraScopes` · `focus` 추가                                                                                                                                                                                                                                                                                                                                                                             |
+| `IpAccessRules.openCreate` | 선택 인자 `prefill`                                                                                                                                                                                                                                                                                                                                                                                      |
+| `IpAccessManagerBindings`  | `scopeCatalog` · `extraTarget` · `onSearchTargets` · `canEditRule` · `showPreviewCard` 추가 — `v-bind` 로 넘기므로 쓰는 쪽 변화 없음                                                                                                                                                                                                                                                                     |
+| 새 export                  | 타입 `IpExtraScopeOption` · `IpTargetOption` · `IpRuleFocus` · `IpRulePrefill` · `IpExtraTargetView` · `IpScopeCatalog`(§11)                                                                                                                                                                                                                                                                             |
 
 ## 6. 시험 (R9)
 
@@ -373,6 +380,8 @@ ipAccess: {
 
 - 이름 규칙: 영소문자로 시작하는 영숫자 1~16자 · 코어 이름(대소문자 무시)과 다름. 어기면 기동에서 멈춘다. `permissions` 같은 키도 멈춘다(R7 없음).
 - 훅은 메서드 꼴로 적는다(위처럼). `names` 는 빈 배열로 불리지 않는다.
+- 🔴 `lock` 의 첫 문장은 잠금 읽기(`FOR UPDATE`)다 — 비잠금 SELECT 가 먼저 가면 읽기 뷰가 일찍 열려 MariaDB 12.3 스냅샷 격리에서 뒤따르는 쓰기가 1020 이 될 수 있다. 폐기 여부를 보려면 그 열도 같은 잠금 읽기에서 읽는다.
+- 🔴 `names` 가 돌려주는 `Map` 의 키는 받은 `refNos` 와 같은 `bigint` 다 — `number` · `string` 키는 조용히 빗나가 목록의 `scopeName` 이 `null`(「대상 없음」)이 된다. 위 예처럼 `tokenNo` 열이 `bigint` 로 읽히면 그대로 된다.
 
 **노트북 API 가드**(`@Public()` 컨트롤러 — 매 요청):
 
@@ -394,8 +403,8 @@ export class ShippingIpGuard implements CanActivate {
 ```
 
 - `clientIpOf(req)` 는 관리자 판정과 같은 출처(코어 `clientIp: 'x-real-ip'` — 템플릿 그대로)다. 직접 헤더를 읽지 않는다.
-- 판정 함수만 필요하면 admin-shared `evaluateScopedIpAccess(ip, rules, { scopeType, scopeRefNo })` 와 `this.ip.rulesOf(scopeType)` 를 쓴다 — `allows` 가 그 둘이다.
-- 규칙 수: `this.ip.countRulesOf(SHIPPING_TOKEN_SCOPE, tokenNo, trx?)` — 토큰을 지우는 길을 만들면 토큰 행을 `FOR UPDATE` 로 잠근 **뒤** 첫 비잠금 읽기로 센다. 🔴 쓰는 쪽 트랜잭션에서 `ipAccessRules` 행을 잠그지 않는다(킷 순서는 규칙 행 → 토큰 행 — 교착).
+- 판정 함수만 필요하면 admin-shared `evaluateScopedIpAccess(ip, rules, { scopeType, scopeRefNo })` 와 `this.ip.rulesOf(scopeType)` 를 쓴다 — `allows` 는 그 대상 · 범위 전체 행만 읽어 같은 함수로 판정한다(결과가 같다).
+- 규칙 수: `this.ip.countRulesOf(SHIPPING_TOKEN_SCOPE, tokenNo, trx?)` — `trx` 는 쓰는 쪽 `Transaction<Database>` 를 형변환 없이 넘긴다(`Kysely<Database>` 도 된다). 토큰을 지우는 길을 만들면 토큰 행을 `FOR UPDATE` 로 잠근 **뒤** 첫 비잠금 읽기로 센다. 🔴 쓰는 쪽 트랜잭션에서 `ipAccessRules` 행을 잠그지 않는다(킷 순서는 규칙 행 → 토큰 행 — 교착).
 - 등록되지 않은 범위 이름을 넘기면 `Error`(500) — 오타가 막힘으로 드러난다.
 
 **화면**(`useIpAccessRules` — 어댑터는 지금 그대로 `/ip-access`):
@@ -429,12 +438,16 @@ await tokenIp.openCreate({
 })
 ```
 
-- `openCreate` 는 미리 채운 편집 패널을 연다 — 같은 `<IpAccessManager v-bind="tokenIp.manager.value" />` 가 화면에 있어야 한다(대화상자 · 옆 패널 배치는 쓰는 쪽). 저장 → 확인 또는 재인증 창 → 오류 처리는 킷 흐름이다. 돌려받는 값이 `false` 면 열리지 않았다(권한 · 진행 중 · 고를 수 없는 선택지).
+- `openCreate` 는 미리 채운 편집 패널을 연다 — 같은 `<IpAccessManager v-bind="tokenIp.manager.value" />` 가 화면에 있어야 한다(대화상자 · 옆 패널 배치는 쓰는 쪽). 저장 → 확인 또는 재인증 창 → 오류 처리는 킷 흐름이다. 돌려받는 값이 `false` 면 열리지 않았다(권한 · 진행 중 · 고를 수 없는 선택지 · 고치던 값의 버리기 확인을 사용자가 취소함). 버리기 확인 뒤 권한 · 진행 중을 다시 본다 — 묻는 사이 권한이 회수되거나 쓰기가 시작됐으면 `false`(`openEdit` 도 같다).
+- 한 범위 모드(`focus`)는 접속 상태 · 변경 영향 카드를 그리지 않고 서버 미리보기(`GET /admin/ip-access/preview`)를 부르지 않는다 — 마운트 · 편집 열고 닫기 · 저장 · 삭제 모두. 단 편집 패널(만들기 · 수정) · 삭제를 한 번도 열지 않은 채 `reload()` 나 목록 오류의 다시 시도를 누르면 현행 미리보기가 한 번 나간다(남은 틈 — §11, 결과는 그리지 않는다). `openEdit(rule)` 은 범위 밖 규칙(목록에서 걸러진 규칙)에 `false` 다.
+- 고정 대상 칸(`focus.scopeRefNo`)의 글자는 아는 이름이다 — `openCreate` 의 `scopeName` · 목록에 그 토큰의 규칙 행(서버 `names`) · 검색 결과. 하나도 없으면 `#<번호>` 로 보인다(새 토큰의 첫 규칙이면 `prefill.scopeName` 을 넘긴다).
 - 목록의 대상 칸은 서버가 `names` 로 붙인 이름이다. 검색 어댑터(`search`)는 쓰는 쪽 API 다.
+- 타입: `IpExtraScopeOption` · `IpTargetOption` · `IpRuleFocus` · `IpRulePrefill` · `IpExtraTargetView` · `IpScopeCatalog`(모두 `@ssworks/admin-ui` 에서). `IpAccessManagerBindings` 에 `scopeCatalog` · `extraTarget` · `onSearchTargets` · `canEditRule` · `showPreviewCard` 가 더해졌다 — `v-bind="….manager.value"` 로 넘기므로 쓰는 쪽이 이을 것은 없다.
 
 ### 10-2. 권한 동작
 
 - **R7 은 하지 않았다**(사용자 결정 2026-11-21). 확장 범위 규칙도 코어 슬롯으로만 다룬다 — 목록 `ipAccess.read`, 만들기 · 수정 · 삭제 `ipAccess.manage`(킷이 전권 전용으로 강제 — 일반 역할에 넣으면 400 · 기동 검사).
+- 🔴 목록(`GET /admin/ip-access`)의 `scopeName` 은 `names()` 가 돌려준 이름(토큰 이름)이다 — `ipAccess.read` 보유자에게 보인다. 그 권한자에게 보이면 안 되는 글자는 `names()` 가 돌려주지 않는다.
 - 출고 담당자는 IP 를 직접 추가하지 않는다. 출고장 IP 추가가 필요하면 IP 규칙 권한자(전권 관리자)에게 요청한다 — 「출고 시도」 화면의 [이 IP 허용]은 `ipAccess.manage` 키가 있을 때만 보이고, 누르는 사람은 IP 규칙 권한자다.
 - 범위별 권한 키 옵션은 없다 — 적으면 기동에서 멈춘다.
 
@@ -444,9 +457,10 @@ await tokenIp.openCreate({
 - **`wholeScope: false`**: 범위 전체 규칙을 만들 · 고칠 수 없고(400), 이미 있는 행은 판정에서 빠진다(목록에는 남아 지울 수 있다).
 - **관리자 → 확장 차단(R3b)**: 코어 규칙(장 0012 의 `global` 시드 `0.0.0.0/0` · `::/0` 포함)은 확장 판정에 쓰이지 않는다 — 읽기가 그 범위만 고르고, 판정 함수가 그 범위 행만 보며 코어 이름이면 던진다. 출고 규칙이 하나도 없으면 노트북 API 는 어디서도 거부다.
 - **확장 → 관리자 차단(R3a)**: 확장 규칙은 관리자 로그인 · 매 요청 · 토큰 갱신의 IP 판정, 전권자 잔존 셈, 자기 잠금 판정, 미리보기의 잠김 목록 어디에도 쓰이지 않는다 — 관리자 판정의 규칙 읽기가 코어 셋만 고르고, 관리자 평가 함수도 모르는 범위를 무시한다. 확장 규칙 쓰기는 잔존 가드 · 자기 잠금 검사를 지나지 않는다(바꿀 수 있는 것이 없다).
-- **대상이 사라진 규칙(R8)**: 목록 `scopeName: null` — 화면은 「출고 토큰 #12 · 대상 없음 — 아무에게도 걸리지 않음」. 판정은 그 번호로 오는 토큰이 없으니 아무도 통과하지 못한다. 연쇄 검사(토큰 삭제 409)는 쓰는 쪽 몫 — `countRulesOf` 를 쓴다.
-- **수정 제한**: 확장 규칙의 범위 종류는 바꿀 수 없다(코어로 · 다른 확장 범위로 400 — 지우고 새로 만든다). 대상(토큰 ↔ 다른 토큰 ↔ 모든 출고 USB) · CIDR · 설명은 바꿀 수 있다.
-- **옵션에서 범위를 지우면**: 남은 행은 목록에 보이고 삭제만 된다. 판정에는 쓰이지 않는다(`allows` 는 등록되지 않은 이름에 던진다).
+- **대상이 사라진 규칙(R8)**: 목록 `scopeName: null` — 화면은 「출고 토큰 #12」 아래 줄 「대상 없음 — 아무에게도 걸리지 않음」. 판정은 그 번호로 오는 토큰이 없으니 아무도 통과하지 못한다. 🔴 같은 대상을 둔 채로는 고칠 수 없다 — 서버가 수정에서도 병합된 대상을 다시 잠가(`lock()` false) 400 `issues[scopeRefNo]`(「규칙이 가리킬 대상을 찾을 수 없습니다.」). 있는 토큰이나 「모든 출고 USB」 로 대상을 바꾸는 수정은 된다. 화면의 수정 버튼은 미리 막지 않는다(저장 때 400 이 대상 칸 오류로 보인다). 삭제는 된다. `lock()` 에서 폐기 토큰에 `false` 를 돌려주면 폐기 토큰의 규칙도 같다 — 목록에는 `names()` 가 준 이름이 보이지만 같은 대상으로는 고칠 수 없다(지우거나 대상을 바꾼다). 연쇄 검사(토큰 삭제 409)는 쓰는 쪽 몫 — `countRulesOf` 를 쓴다.
+- **수정 제한**: 확장 규칙의 범위 종류는 바꿀 수 없다(코어로 · 다른 확장 범위로 400 `issues[scopeType]` — 재인증 앞 · 지우고 새로 만든다). 대상(토큰 ↔ 다른 토큰 ↔ 모든 출고 USB) · CIDR · 설명은 바꿀 수 있다.
+- **옵션에서 범위를 지우면**: 남은 행은 목록에 보이고(화면은 `<이름>` · `<이름> 전체` · 대상 행은 `<이름> #12` + 「대상 없음」 줄 — 서버가 이름을 붙이지 않는다) 삭제만 된다. 수정은 비밀번호를 묻기 전에 400 `issues[scopeType]`(「등록되지 않은 범위입니다.」), 화면은 수정 버튼을 끈다. 판정에는 쓰이지 않는다(`allows` 는 등록되지 않은 이름에 던진다).
+- **400 문구 둘**(`issues[scopeType]`): 형식은 맞는데 등록되지 않은 이름은 「등록되지 않은 범위입니다.」, 형식 밖 이름(`Global` · `a_b` · 17자 이상)은 「범위 이름이 형식에 맞지 않습니다.」.
 
 ### 10-4. 판 · peer
 
@@ -456,12 +470,30 @@ await tokenIp.openCreate({
 
 ### 10-5. 요구 중 하지 않은 것 · 바꾼 것
 
-| 요구                               | 처리                                                                                                                                               |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R7 범위별 권한                     | **하지 않음** — 사용자 결정(2026-11-21): IP 규칙 관리는 IP 규칙 권한자만. 출고 담당자는 권한자에게 요청한다(§10-2)                                 |
-| R4 예시 `ipRulesOfScope(db, type)` | 쿼리 함수 대신 주입 서비스 `AdminIpExtraScopeService`(`rulesOf` · `allows`) — 범위 등록 · `wholeScope` 를 아는 쪽이 읽어야 거른 결과가 판정과 같다 |
-| R5 예시 훅 `exists · lock · names` | `exists` 를 `lock` 으로 합쳤다 — 있는지 확인과 잠금 읽기가 같은 쿼리(X5)                                                                           |
-| R5 수정의 범위 종류 바꾸기         | 킷 결정: 코어 안에서만. 확장 규칙의 범위 종류는 바꿀 수 없다(X2)                                                                                   |
-| R2 옵션 이름 `allowAll`            | `wholeScope` — `allowAll` 은 「모든 주소 허용」 으로 읽힌다                                                                                        |
-| R6b 확장 범위 미리보기             | 미리보기를 부르지 않고 「관리자 접속과 무관」 으로 보인다(§5-4) — 확장 규칙의 쓰는 쪽 영향(어느 토큰이 막히나) 미리보기는 없다                     |
-| R6-1 한 범위 모드                  | 게터가 아니라 값(`focus`) — 토큰을 바꿔 보이려면 `:key` 로 다시 만든다(X12)                                                                        |
+| 요구                               | 처리                                                                                                                                                                                                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R7 범위별 권한                     | **하지 않음** — 사용자 결정(2026-11-21): IP 규칙 관리는 IP 규칙 권한자만. 출고 담당자는 권한자에게 요청한다(§10-2)                                                                                                                                                                                |
+| R4 예시 `ipRulesOfScope(db, type)` | 쿼리 함수 대신 주입 서비스 `AdminIpExtraScopeService`(`rulesOf` · `allows`) — 범위 등록 · `wholeScope` 를 아는 쪽이 읽어야 거른 결과가 판정과 같다                                                                                                                                                |
+| R5 예시 훅 `exists · lock · names` | `exists` 를 `lock` 으로 합쳤다 — 있는지 확인과 잠금 읽기가 같은 쿼리(X5)                                                                                                                                                                                                                          |
+| R5 수정의 범위 종류 바꾸기         | 킷 결정: 코어 안에서만. 확장 규칙의 범위 종류는 바꿀 수 없다(X2)                                                                                                                                                                                                                                  |
+| R2 옵션 이름 `allowAll`            | `wholeScope` — `allowAll` 은 「모든 주소 허용」 으로 읽힌다                                                                                                                                                                                                                                       |
+| R6b 확장 범위 미리보기             | 미리보기를 부르지 않고 「관리자 접속과 무관」 으로 보인다(§5-4) — 확장 규칙의 쓰는 쪽 영향(어느 토큰이 막히나) 미리보기는 없다                                                                                                                                                                    |
+| R6-1 한 범위 모드                  | 게터가 아니라 값(`focus`) — 토큰을 바꿔 보이려면 `:key` 로 다시 만든다(X12). 카드도 서버 미리보기도 없고(남은 틈 하나 — §10-1), 범위 밖 규칙의 `openEdit` 는 `false`                                                                                                                              |
+| R8 대상이 사라졌을 때              | 표시(`scopeName: null` · 「대상 없음」) · 판정(아무도 통과 못 함) · 규칙 수(`countRulesOf`)는 요구대로. 더해 정함: 수정은 그대로인 대상도 다시 잠근다 — `lock()` 이 `false` 인 대상(지운 토큰 · 막기로 한 폐기 토큰)을 둔 규칙은 같은 대상으로 고칠 수 없다(400 — 지우거나 대상을 바꾼다 · §10-3) |
+
+## 11. 구현 중 정정
+
+설계(§1 ~ §9)와 다르게 · 더 좁게 정한 줄. 위 절의 해당 자리는 이 절을 가리킨다. 마지막 넷(⑦ ~ ⑩)은 브랜치 전체 리뷰 뒤 고친 것이다(`docs/verification/2026-11-21-admin-kit-ip-extra-scopes.md` §6).
+
+| #   | 자리                   | 정정                                                                                                                                                                                                                                                                                                                                                                                     |
+| --- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ①   | §4-1 훅 계약           | 🔴 `lock` 의 첫 문장은 잠금 읽기(`FOR UPDATE`) — 비잠금 SELECT 가 먼저 가면 읽기 뷰가 일찍 열려 MariaDB 12.3 스냅샷 격리에서 뒤따르는 쓰기가 1020 이 될 수 있다(2e R5-5 와 같은 이유 · `85081de`). 🔴 `names` 의 `Map` 키는 받은 `refNos` 와 같은 `bigint` — `number` · `string` 키는 조용히 빗나가 `scopeName` 이 `null` 이 된다(`3fbe827`)                                             |
+| ②   | §4-2 · §4-7 400 문구   | `issues[scopeType]` 의 문구가 둘이다 — 형식 밖 이름(`Global` · `a_b` · 17자 이상)은 공유 스키마의 `IP_ACCESS_SCHEMA_MESSAGES.scopeTypeInvalid`(「범위 이름이 형식에 맞지 않습니다.」), 형식은 맞는데 등록되지 않은 이름은 `IP_ACCESS_MESSAGES.unknownScopeType`(「등록되지 않은 범위입니다.」). 파이프는 한 칸에 둘을 함께 싣지 않는다(`aebf1a3`)                                        |
+| ③   | §4-3 수정 · R8         | 수정은 `scopeRefNo` 가 그대로여도 병합된 대상을 `target.lock` 으로 다시 잠근다(코어 갈래의 병합 참조와 같다) — 대상이 지워진 규칙은 같은 대상으로 고칠 수 없고(400 `noScopeTarget`) 있는 대상으로 바꾸거나 지운다. 화면은 수정 버튼을 미리 막지 않는다                                                                                                                                   |
+| ④   | §4-4 목록 정렬         | `scopeType` 은 `ascii_bin` 이라 정렬이 바이트 순이다 — 확장 범위 행은 이름의 알파벳 자리에 끼어든다(`global` · `shippingToken` · `team` · `user`). 전체 · 팀 · 사용자가 늘 앞이라는 보장은 없다                                                                                                                                                                                          |
+| ⑤   | §5-2 모르는 범위 표기  | 화면이 모르는 범위는 `<이름>`(대상 하나) · `<이름> 전체`(`messages.scopeWhole` — 범위 전체)로 보인다. 서버가 등록이 빠진 범위에 이름을 붙이지 않아 대상 행은 `<이름> #12` + `deadTarget` 줄이다. 🔴 `parseScopeChoice` 는 코어 이름의 `:*`(`team:*` 등)를 범위 전체로 보지 않는다 — 원문 그대로 두어 서버 · 이름 검증이 거부한다(`0786d9d`)                                              |
+| ⑥   | §5-5 · §5-6 화면 공개  | `openCreate` · `openEdit` 는 버리기 확인 뒤 권한 · 진행 중을 다시 본다(`8205eb5`). 새 export 에 `IpExtraTargetView` · `IpScopeCatalog` 를 더했다(`100b714` · `4e4a5b6`). `IpAccessManagerBindings` 에 더한 것은 `scopeCatalog` · `extraTarget` · `onSearchTargets` · `canEditRule` · `showPreviewCard` 다                                                                                |
+| ⑦   | §4-6 `countRulesOf`    | `db` 가 `Kysely<AdminDatabase> \| Transaction<AdminDatabase>` — 쓰는 쪽 `Transaction<Database>` · `Kysely<Database>` 를 형변환 없이 받는다(`8577385` · `options.types.test.ts` 가 typecheck 로 잰다)                                                                                                                                                                                     |
+| ⑧   | §5-3 한 범위 모드 카드 | 서버 미리보기를 부르지 않는다 — 처음 부르기를 끄고(`immediate: false`), 편집 · 삭제가 끝나 닫힌 상태의 미리보기 대상도 `'unrelated'` 다(`bb4e5a5`). 🔴 남은 틈: 편집 패널(만들기 · 수정) · 삭제를 한 번도 열지 않은 채 `reload()` · 목록 오류의 다시 시도(`onRetry`)를 부르면 미리보기 대상이 아직 처음 값(`{ op: null }`)이라 현행 미리보기가 한 번 나간다(카드가 없어 그리지는 않는다) |
+| ⑨   | §5-3 한 범위 모드 열기 | `openEdit(rule)` 은 범위 밖 규칙(목록에서 걸러진 규칙)에 `false` — 열면 고정 대상(`pinFocus`)이 그 규칙의 대상을 조용히 덮어쓴다(`eae3188`)                                                                                                                                                                                                                                              |
+| ⑩   | §4-3 · X8 지운 범위    | 등록이 빠진 범위의 행 수정은 비밀번호를 묻기 전에 400 `issues[scopeType]`(`unknownScopeType`) — 트랜잭션 안 `assertRuleScope` 가 권위 있는 판정으로 남는다. 삭제는 그대로 된다(`4876bae`)                                                                                                                                                                                                |

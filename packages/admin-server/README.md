@@ -815,13 +815,13 @@ imports: [
 export { up, down } from '@ssworks/admin-server/migrations/0012_ip_access_rules'
 ```
 
-| 라우트                            | 슬롯              | 본문 → 응답                                                                                                                            | 감사                                      |
-| --------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `GET /admin/ip-access`            | `ipAccess.read`   | → `{ items }` 전량 — 정렬 전체 · 팀 · 사용자 → 번호, 행에 `scopeName`(팀 · 사용자 이름) · `scopeUserId` · 확장 범위 행(대상 이름은 훅) | —                                         |
-| `GET /admin/ip-access/preview`    | `ipAccess.manage` | 쿼리 `op?`(create · update · delete) · `ruleNo` · `scopeType` · `scopeRefNo` · `cidr` → `{ clientIp, clientPasses, summary, items }`   | —                                         |
-| `POST /admin/ip-access`           | `ipAccess.manage` | `{ scopeType, scopeRefNo, cidr, description? }` → 201 `{ item }`                                                                       | `setting.ipAccess.create`(after)          |
-| `PATCH /admin/ip-access/:ruleNo`  | `ipAccess.manage` | `{ revision, scopeType?, scopeRefNo?, cidr?, description? }` → `{ item }`                                                              | `setting.ipAccess.update`(before · after) |
-| `DELETE /admin/ip-access/:ruleNo` | `ipAccess.manage` | `{ revision }` → `{}`                                                                                                                  | `setting.ipAccess.delete`(before)         |
+| 라우트                            | 슬롯              | 본문 → 응답                                                                                                                                                                                       | 감사                                      |
+| --------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `GET /admin/ip-access`            | `ipAccess.read`   | → `{ items }` 전량 — 정렬 범위 이름(`scope_type` 바이트 순 — 확장 범위는 이름의 알파벳 자리에 끼어든다) → 번호, 행에 `scopeName`(팀 · 사용자 이름) · `scopeUserId` · 확장 범위 행(대상 이름은 훅) | —                                         |
+| `GET /admin/ip-access/preview`    | `ipAccess.manage` | 쿼리 `op?`(create · update · delete) · `ruleNo` · `scopeType` · `scopeRefNo` · `cidr` → `{ clientIp, clientPasses, summary, items }`                                                              | —                                         |
+| `POST /admin/ip-access`           | `ipAccess.manage` | `{ scopeType, scopeRefNo, cidr, description? }` → 201 `{ item }`                                                                                                                                  | `setting.ipAccess.create`(after)          |
+| `PATCH /admin/ip-access/:ruleNo`  | `ipAccess.manage` | `{ revision, scopeType?, scopeRefNo?, cidr?, description? }` → `{ item }`                                                                                                                         | `setting.ipAccess.update`(before · after) |
+| `DELETE /admin/ip-access/:ruleNo` | `ipAccess.manage` | `{ revision }` → `{}`                                                                                                                                                                             | `setting.ipAccess.delete`(before)         |
 
 - **판정**: 매 요청 · 토큰 갱신이 IP 를 본다(갱신은 퇴사보다 먼저). 막히면 403 `ERR_IP_NOT_ALLOWED` + `details.clientIp` — admin-ui `IpBlockedDialog` 가 읽는 값이다. 🔴 로그인은 비밀번호보다 먼저 IP 를 보고, 막히면 비밀번호를 확인하지 않은 채 틀린 비밀번호와 같은 401 `ERR_LOGIN_FAILED` 다(문구 "… 허용되지 않은 접속 위치입니다." — IP 접근 제어를 켜면 모든 로그인 실패가 이 문구다). 막힌 주소에서는 정답을 알아낼 수 없고 실패 카운터도 움직이지 않는다. 그래서 로그인 화면은 `IpBlockedDialog` 를 띄우지 않는다 — 로그인 뒤 막히면(매 요청 · 갱신) 띄운다. 감사 행 `auth.login.blocked.ip`(401) · `auth.access.blocked.ip`(403). 규칙을 바꿔도 세션은 끊지 않는다 — 막힌 주소의 요청이 403 을 받고, 규칙을 풀면 같은 세션이 다시 된다.
 - **팀 규칙**은 그 사람의 **대표 팀**(가장 작은 팀 번호) 하나에만 걸린다(로그인 · 잔존 · 미리보기가 같은 팀을 본다). 하위 팀으로 내려가지 않는다.
@@ -881,8 +881,8 @@ ipAccess: {
 
 - **훅**: `lock` 은 쓰기 트랜잭션 안에서 대상 행을 잠그고 있으면 `true`. 🔴 첫 문장은 잠금 읽기(`FOR UPDATE`)다 — 비잠금 SELECT 가 먼저 가면 읽기 뷰가 일찍 열려 MariaDB 12.3 스냅샷 격리에서 뒤따르는 쓰기가 1020 이 될 수 있다. `names` 는 없는 번호를 빼고 돌려준다(빈 배열로는 부르지 않는다). 🔴 돌려주는 `Map` 의 키는 받은 `refNos` 와 같은 `bigint` 다 — number · string 키는 조용히 빗나가 `scopeName` 이 `null` 이 된다.
 - **기동 검사**: 이름 규칙 밖 · 코어 이름과 겹침 · 범위끼리 겹침 · `wholeScope` 가 boolean 아님 · 훅 없음 · 모르는 키는 멈춘다(문제를 모아 한 번에). `permissions` 키는 "범위별 권한 키는 없다 — 코어 슬롯이 다룬다" 로 멈춘다. 새 장이 없다 — 스텁을 더하지 않는다.
-- **권한**: 슬롯 그대로 — 목록 `ipAccess.read`, 쓰기 `ipAccess.manage`(전권 전용). 범위별 권한 키는 없다.
-- **라우트**: 위 다섯 라우트가 그대로 받는다. 목록 행의 `scopeName` 은 `names()` 가 준 이름(범위마다 한 번 · 없는 번호는 `null`). 만들기 · 수정은 대상이 없으면(`lock()` 이 false) 400 `issues[scopeRefNo]` — 그래서 대상이 지워진 규칙은 지우기만 된다(수정은 그대로인 대상도 다시 잠근다). 🔴 확장 규칙의 범위 종류는 바꿀 수 없다(코어로 · 다른 확장 범위로 400 `issues[scopeType]` — 지우고 새로 만든다). `wholeScope: false` 면 범위 전체 규칙은 400. 미리보기는 코어만이다(확장 `scopeType` 400 · 확장 규칙 번호 404).
+- **권한**: 슬롯 그대로 — 목록 `ipAccess.read`, 쓰기 `ipAccess.manage`(전권 전용). 범위별 권한 키는 없다. 🔴 `names()` 가 돌려준 이름은 목록 `scopeName` 으로 `ipAccess.read` 보유자에게 보인다.
+- **라우트**: 위 다섯 라우트가 그대로 받는다. 목록 행의 `scopeName` 은 `names()` 가 준 이름(범위마다 한 번 · 없는 번호는 `null`). 만들기 · 수정은 대상이 없으면(`lock()` 이 false) 400 `issues[scopeRefNo]`. 🔴 수정은 `scopeRefNo` 가 그대로여도 대상을 다시 잠근다 — 대상이 지워진(또는 `lock()` 이 막는) 규칙은 같은 대상으로 고칠 수 없고, 있는 대상 · 범위 전체로 바꾸는 수정과 삭제는 된다(admin-ui 는 수정 버튼을 미리 막지 않는다 — 저장 때 대상 칸 오류). 🔴 확장 규칙의 범위 종류는 바꿀 수 없다(코어로 · 다른 확장 범위로 400 `issues[scopeType]` — 재인증 앞 · 지우고 새로 만든다). `scopeType` 400 문구는 둘이다 — 형식은 맞는데 등록되지 않은 이름 「등록되지 않은 범위입니다.」, 형식 밖 이름(`Global` · `a_b` · 17자 이상) 「범위 이름이 형식에 맞지 않습니다.」. `wholeScope: false` 면 범위 전체 규칙은 400. 미리보기는 코어만이다(확장 `scopeType` 400 · 확장 규칙 번호 404).
 - **두 층 판정**: 그 범위 행만 본다 → 그 대상의 규칙이 하나라도 있으면 그것만 → 없으면 범위 전체 규칙 → 둘 다 없으면 거부. 주소 `null` 은 거부. 🔴 대상 규칙 한 줄이 범위 전체 허용을 그 대상에 대해 지운다.
 - **분리 보장**: 확장 규칙은 관리자 로그인 · 매 요청 · 갱신 판정, 전권자 잔존, 자기 잠금, 미리보기에 쓰이지 않는다(관리자 판정은 코어 행만 읽는다). 반대로 코어 규칙(장 0012 의 전체 허용 시드 포함)은 확장 판정에 쓰이지 않는다 — 확장 규칙이 없으면 그 주체는 어디서도 거부다. 확장 쓰기는 잔존 가드 · 자기 잠금 검사를 지나지 않는다(재인증 · `revision` · 감사는 같다).
 - **쓰는 쪽 판정**: `AdminIpExtraScopeService`(전역).
@@ -901,10 +901,10 @@ ipAccess: {
   }
   ```
 
-  `allows(type, refNo, clientIp)` · `rulesOf(type)` · `countRulesOf(type, refNo, db?)`(쓰는 쪽 트랜잭션을 넘길 수 있다) · `clientIpOf(req)`(관리자와 같은 출처 — 헤더를 직접 읽지 않는다). 등록되지 않은 이름은 던진다(오타가 500 으로 드러난다). 판정 함수만 쓰려면 admin-shared `evaluateScopedIpAccess`(`allows` = `rulesOf` + 그 함수). 타입은 `AdminIpAccessOptions` · `AdminIpExtraScope` · `AdminIpScopeTarget`.
+  `allows(type, refNo, clientIp)` · `rulesOf(type)` · `countRulesOf(type, refNo, db?)`(`db` 에 쓰는 쪽 `Transaction<Database>` · `Kysely<Database>` 를 형변환 없이 넘긴다) · `clientIpOf(req)`(관리자와 같은 출처 — 헤더를 직접 읽지 않는다). 등록되지 않은 이름은 던진다(오타가 500 으로 드러난다). 판정 함수만 쓰려면 admin-shared `evaluateScopedIpAccess`(`allows` 는 그 대상 · 범위 전체 행만 읽어 같은 함수로 판정한다 — `rulesOf` + 그 함수와 결과가 같다). 타입은 `AdminIpAccessOptions` · `AdminIpExtraScope` · `AdminIpScopeTarget`.
 
 - 🔴 **잠금 순서**: 킷은 규칙 행 → 대상 행이다. 쓰는 쪽은 자기 트랜잭션에서 `ip_access_rules` 행을 잠그지 않는다. 대상을 지우기 전 규칙 수는 대상 행을 `FOR UPDATE` 로 잠근 뒤 `countRulesOf(…, trx)` 로 센다.
-- **옵션에서 범위를 지우면**: 남은 행은 목록에 보이고 삭제만 된다(수정 400 · 판정에 쓰이지 않음).
+- **옵션에서 범위를 지우면**: 남은 행은 목록에 보이고(`scopeName: null`) 삭제만 된다 — 수정은 비밀번호를 묻기 전에 400 `issues[scopeType]`(「등록되지 않은 범위입니다.」). 판정에는 쓰이지 않는다.
 
 ## admin-ui 와 맞물리기
 
