@@ -191,6 +191,16 @@ describe('한 범위 모드(focus — 스펙 §5-3)', () => {
     expect(preview).not.toHaveBeenCalled()
   })
 
+  it('🔴 마운트 직후 reload · 다시 시도도 서버 미리보기를 부르지 않는다 — 처음부터 대상이 unrelated', async () => {
+    const { ip, preview } = await setup({ focus: FOCUS_7 })
+    await ip.reload()
+    await flushPromises()
+    ip.manager.value.onRetry()
+    await flushPromises()
+    expect(preview).not.toHaveBeenCalled()
+    expect(ip.preview.value.state).toBe('unrelated')
+  })
+
   it('🔴 openEdit 는 focus 밖 규칙을 열지 않는다 — 같은 범위의 다른 대상', async () => {
     const { ip } = await setup({ focus: FOCUS_7 })
     expect(await ip.openEdit(TOKEN_8)).toBe(false)

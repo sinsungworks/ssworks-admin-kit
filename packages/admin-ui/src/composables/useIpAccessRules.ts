@@ -328,6 +328,9 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     // 🔴 한 범위 모드는 카드를 그리지 않고 확장 범위만 다룬다 — 현행 미리보기(활성 사용자 · 세션 전수 스캔)를 부르지 않는다
     immediate: catalog.focus === null ? options.immediate : false,
   })
+  // 🔴 처음 대상도 syncTarget 하나로 — 한 범위 모드는 setup 부터 'unrelated' 라 마운트 직후 reload · 다시 시도도 부르지 않는다.
+  //    한 범위 모드가 아니면 처음 값({ op: null })과 같아 아무것도 바뀌지 않는다
+  syncTarget()
 
   function syncTarget(): void {
     const deleting = removing.value
