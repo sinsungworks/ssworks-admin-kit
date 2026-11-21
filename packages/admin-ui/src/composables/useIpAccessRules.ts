@@ -54,9 +54,12 @@ import {
 import {
   isExtraChoice,
   parseScopeChoice,
+  prefillScopeChoice,
   resolveIpScopeCatalog,
   scopeChoiceItems,
   type IpExtraScopeOption,
+  type IpRuleFocus,
+  type IpRulePrefill,
   type IpScopeCatalog,
   type IpScopeFamily,
   type IpTargetOption,
@@ -82,6 +85,7 @@ import {
 //  - 층 목록 scopes(3i — ringside 보고 §1). 목록 밖 층의 기존 규칙은 고치는 동안만 선택지에 남는다(S2 · S4).
 //  - 확장 범위(확장 범위 스펙 §5): extraScopes — 선택지 키(범위 전체 `<이름>:*`) · 쓰는 쪽 대상 검색 · 확장 규칙은 미리보기 대신
 //    'unrelated' · 수정은 갈래를 넘지 않는다 · 화면이 모르는 범위의 행은 삭제만.
+//  - 한 범위 모드 focus(값 — X12) · 미리 채운 openCreate(prefill)(확장 범위 스펙 §5-3 · §5-5).
 //
 // 🔴 편집 · 삭제 · 열기는 `busy`(쓰기 진행 중) 동안 막힌다 — 그래서 재조회 중에 다른 규칙을 여는 경합이 생기지 않는다(I24).
 
@@ -122,6 +126,12 @@ export interface UseIpAccessRulesOptions<R extends AdminIpRule = AdminIpRule> {
    * 🔴 이름 규칙 밖 · 코어 이름 · 겹침은 setup 에서 던진다. 확장 규칙도 canManage(= ipAccess.manage)가 쓴다(R7 없음).
    */
   extraScopes?: readonly IpExtraScopeOption[]
+  /**
+   * 한 범위 모드(R6-1) — 목록을 그 범위(대상을 주면 그 대상 + 범위 전체)로 거르고, 선택지를 그 범위로 좁히고, 대상을 주면
+   * 대상 칸을 고정하고, 관리자 접속 카드를 그리지 않는다. 🔴 값이다 — 다른 대상은 쓰는 쪽이 :key 로 다시 만든다(X12).
+   * extraScopes 에 있는 범위여야 한다(아니면 setup 에서 던진다).
+   */
+  focus?: IpRuleFocus
   messages?: Partial<IpAccessMessages>
   /** 기본 true */
   immediate?: boolean
@@ -190,8 +200,11 @@ export interface IpAccessRules<R> {
   editing: Readonly<Ref<R | 'new' | null>>
   form: Readonly<Ref<IpRuleForm>>
   preview: Readonly<Ref<IpPreviewView>>
-  /** 고친 값이 있으면 버릴지 묻는다(I21). 취소 · 막힘이면 false */
-  openCreate: () => Promise<boolean>
+  /**
+   * 고친 값이 있으면 버릴지 묻는다(I21). 취소 · 막힘이면 false. prefill 을 주면 그 값으로 연다(R6c — 다른 화면의 [이 IP 허용]) —
+   * 🔴 미리 채운 값은 고친 값이다. 이 화면이 고를 수 없는 선택지면 false.
+   */
+  openCreate: (prefill?: IpRulePrefill) => Promise<boolean>
   openEdit: (rule: R) => Promise<boolean>
   closeEditor: () => Promise<boolean>
   save: () => Promise<boolean>
@@ -209,7 +222,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   // 🔴 setup 첫머리에서 던진다 — 층을 고를 수 없는 화면은 설정 실수다(3i S1)
   const scopes = resolveIpScopes(options.scopes)
   // 🔴 setup 첫머리에서 던진다 — 고를 수 없는 범위는 설정 실수다(확장 범위 스펙 §5-1)
-  const catalog = resolveIpScopeCatalog(scopes, options.extraScopes ?? [], null)
+  const catalog = resolveIpScopeCatalog(scopes, options.extraScopes ?? [], options.focus ?? null)
   const newScope = defaultIpScope(scopes)
   const flow = useWriteFlow()
   // 기본값을 쓸 때만 컨텍스트를 찾는다 — 플러그인이 없으면 본인 표시만 빠진다(I6)
@@ -224,7 +237,19 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
 
   // ── 목록 ──────────────────────────────────────────────────────────
 
-  const rules = shallowRef<readonly R[]>([])
+  const allRules = shallowRef<readonly R[]>([])
+  /** 한 범위 모드면 그 범위만(화면에서 거른다 — 서버 목록 그대로) */
+  const rules = computed<readonly R[]>(() => {
+    const focus = catalog.focus
+    if (focus === null) return allRules.value
+    return allRules.value.filter(
+      (rule) =>
+        rule.scopeType === focus.scopeType &&
+        (focus.scopeRefNo === undefined ||
+          rule.scopeRefNo === null ||
+          rule.scopeRefNo === focus.scopeRefNo),
+    )
+  })
   const loading = ref(false)
   const loadError = shallowRef<ApiError | null>(null)
   let listSeq = 0
@@ -237,7 +262,8 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     try {
       const items = await options.list()
       if (mine !== listSeq || disposed) return false
-      rules.value = items
+      allRules.value = items
+      for (const item of items) rememberTarget(item)
       return true
     } catch (error) {
       if (mine !== listSeq || disposed) return false
@@ -250,7 +276,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   }
 
   function findRule(ruleNo: bigint): R | undefined {
-    return rules.value.find((item) => item.ruleNo === ruleNo)
+    return allRules.value.find((item) => item.ruleNo === ruleNo)
   }
 
   // ── 알림 ──────────────────────────────────────────────────────────
@@ -265,9 +291,26 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   // ── 편집 상태 · 미리보기 ───────────────────────────────────────────
 
   const editing: ShallowRef<R | 'new' | null> = shallowRef<R | 'new' | null>(null)
-  const form = ref<IpRuleForm>(emptyIpRuleForm(newScope))
+  /** 새 규칙 폼 — 한 범위 모드면 그 범위(대상이 있으면 그 대상) */
+  function emptyForm(): IpRuleForm {
+    const focus = catalog.focus
+    if (focus === null) return emptyIpRuleForm(newScope)
+    return {
+      ...emptyIpRuleForm(focus.scopeType),
+      scopeRefNo: focus.scopeRefNo === undefined ? '' : String(focus.scopeRefNo),
+    }
+  }
+
+  /** 🔴 한 범위 모드의 대상은 바꿀 수 없다 — 대상 하나 선택지면 늘 그 대상 */
+  function pinFocus(next: IpRuleForm): IpRuleForm {
+    const focus = catalog.focus
+    if (focus?.scopeRefNo === undefined || next.scopeType !== focus.scopeType) return next
+    return { ...next, scopeRefNo: String(focus.scopeRefNo) }
+  }
+
+  const form = ref<IpRuleForm>(emptyForm())
   /** 연 순간의 폼 — 고친 값 판정의 기준(I21) */
-  let baseline: IpRuleForm = emptyIpRuleForm(newScope)
+  let baseline: IpRuleForm = emptyForm()
   const clientErrors = shallowRef<Record<string, string[]>>({})
   const removing = shallowRef<R | null>(null)
   const working = ref(false)
@@ -395,16 +438,19 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
       knownTargets.set(`${choice.scopeType}:${item.value}`, item.title)
       return item
     })
+    const fixed =
+      catalog.focus?.scopeRefNo !== undefined && catalog.focus.scopeType === choice.scopeType
+    const refNo = form.value.scopeRefNo.trim()
     const searchable = canSearchExtra(choice.scopeType)
     return {
       label: messages.targetLabel(scope.label),
       numberLabel: messages.targetNumberLabel(scope.label),
-      mode: searchable ? 'search' : 'number',
+      mode: fixed ? 'fixed' : searchable ? 'search' : 'number',
       items: withCurrent(found, choice.scopeType),
       searching: search?.searching.value ?? false,
       failed: search?.failed.value ?? false,
-      hint: search != null && !searchable ? messages.targetNoPermissionHint : null,
-      fixedTitle: null,
+      hint: !fixed && search != null && !searchable ? messages.targetNoPermissionHint : null,
+      fixedTitle: fixed ? (knownTargets.get(`${choice.scopeType}:${refNo}`) ?? `#${refNo}`) : null,
     }
   })
 
@@ -461,10 +507,12 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     return scopeChoiceItems(messages, catalog, familyOf(editing.value), form.value.scopeType)
   }
 
-  function setEditor(next: R | 'new' | null): void {
+  function setEditor(next: R | 'new' | null, seed?: IpRuleForm): void {
     editing.value = next
-    form.value = next === null || next === 'new' ? emptyIpRuleForm(newScope) : ruleToForm(next)
-    baseline = { ...form.value }
+    form.value =
+      next === null ? emptyForm() : next === 'new' ? (seed ?? emptyForm()) : ruleToForm(next)
+    // 🔴 만들기의 기준선은 빈 폼 — 미리 채운 값은 고친 값이다(닫을 때 묻는다)
+    baseline = next === 'new' ? emptyForm() : { ...form.value }
     clientErrors.value = {}
     flow.clearFieldErrors()
     if (next !== null && next !== 'new') rememberTarget(next)
@@ -472,12 +520,26 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     if (next !== null) loadTeams()
   }
 
-  async function openCreate(): Promise<boolean> {
+  async function openCreate(prefill?: IpRulePrefill): Promise<boolean> {
     // 🔴 첫 줄 가드 — :disabled 는 마우스만 막는다
     if (!options.canManage() || busy.value) return false
+    let seed: IpRuleForm | undefined
+    if (prefill !== undefined) {
+      const key = prefillScopeChoice(prefill, catalog)
+      if (key === null) return false
+      seed = {
+        scopeType: key,
+        scopeRefNo: prefill.scopeRefNo === null ? '' : String(prefill.scopeRefNo),
+        cidr: prefill.cidr ?? '',
+        description: prefill.description ?? '',
+      }
+    }
     if (!(await askDiscard())) return false
     alerts.value = []
-    setEditor('new')
+    if (prefill?.scopeName != null && prefill.scopeRefNo !== null) {
+      knownTargets.set(`${prefill.scopeType}:${prefill.scopeRefNo}`, prefill.scopeName)
+    }
+    setEditor('new', seed)
     return true
   }
 
@@ -506,7 +568,9 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     )
       return
     // 🔴 범위를 바꾸면 대상을 비운다(I19) — 팀 번호가 사용자 번호로, 본 적 없는 번호가 남지 않게
-    form.value = withScopeType({ ...next, scopeType: form.value.scopeType }, next.scopeType)
+    form.value = pinFocus(
+      withScopeType({ ...next, scopeType: form.value.scopeType }, next.scopeType),
+    )
     clientErrors.value = {}
     flow.clearFieldErrors()
     syncTarget()
