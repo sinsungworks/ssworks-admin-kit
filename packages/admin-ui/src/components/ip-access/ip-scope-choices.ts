@@ -79,7 +79,10 @@ export interface IpScopeChoice {
 
 export function parseScopeChoice(key: string): IpScopeChoice {
   if (key.endsWith(WHOLE_SUFFIX)) {
-    return { scopeType: key.slice(0, -WHOLE_SUFFIX.length), whole: true }
+    const type = key.slice(0, -WHOLE_SUFFIX.length)
+    // 🔴 코어 이름의 `:*` 는 전체가 아니다 — 원문 그대로 두어 서버 · 이름 검증이 거부하게 한다(코어는 `:*` 키를 쓰지 않는다)
+    if (isCoreIpScopeType(type)) return { scopeType: key, whole: false }
+    return { scopeType: type, whole: true }
   }
   return { scopeType: key, whole: key === 'global' }
 }
@@ -136,7 +139,7 @@ export function scopeChoiceLabel(
   const { scopeType, whole } = parseScopeChoice(key)
   if (isCoreIpScopeType(scopeType)) return coreLabel(scopeType, messages)
   const extra = catalog.extra.get(scopeType)
-  if (extra === undefined) return scopeType
+  if (extra === undefined) return whole ? messages.scopeWhole(scopeType) : scopeType
   if (!whole) return extra.label
   return extra.wholeLabel ?? messages.scopeWhole(extra.label)
 }
@@ -146,7 +149,9 @@ export type IpScopeFamily = 'all' | 'core' | { extra: string }
 
 /**
  * 선택지 — 코어는 평가 순서, 확장은 넘긴 순서(대상 하나 → 범위 전체). `current` 가 목록 밖이면(편집을 연 기존 규칙) 그 자리에
- * 둔다 — 폼이 다른 선택지로 바뀌면 사라진다(3i S2).
+ * 둔다 — 폼이 다른 선택지로 바뀌면 사라진다(3i S2). 코어 층과 등록된 범위의 범위 전체 키가 그렇다.
+ * 🔴 등록이 빠진 범위의 규칙은 수정하지 않는다 — 선택지에 넣지 않는다(그 `current` 는 목록에 더하지 않는다. 컴포저블이
+ * `canEditRule` 을 거짓으로 낸다).
  */
 export function scopeChoiceItems(
   messages: IpAccessMessages,

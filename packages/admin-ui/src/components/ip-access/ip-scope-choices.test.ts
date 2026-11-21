@@ -34,7 +34,25 @@ describe('선택지 키(확장 범위 스펙 X11)', () => {
     expect(scopeChoiceLabel('shippingToken:*', M, catalog)).toBe('모든 출고 USB')
     expect(scopeChoiceLabel('apiKey:*', M, catalog)).toBe(M.scopeWhole('API 키'))
     expect(scopeChoiceLabel('goneScope', M, catalog)).toBe('goneScope')
-    expect(scopeChoiceLabel('goneScope:*', M, catalog)).toBe('goneScope')
+    expect(scopeChoiceLabel('goneScope:*', M, catalog)).toBe(M.scopeWhole('goneScope'))
+  })
+
+  it('코어 이름의 :* 는 전체가 아니다 · 키 왕복', () => {
+    expect(parseScopeChoice('team:*')).toEqual({ scopeType: 'team:*', whole: false })
+    expect(parseScopeChoice('global:*')).toEqual({ scopeType: 'global:*', whole: false })
+    const cases: [string, bigint | null][] = [
+      ['global', null],
+      ['team', 4n],
+      ['user', 3n],
+      ['shippingToken', 7n],
+      ['shippingToken', null],
+    ]
+    for (const [type, ref] of cases) {
+      expect(parseScopeChoice(scopeChoiceKey(type, ref))).toEqual({
+        scopeType: type,
+        whole: ref === null,
+      })
+    }
   })
 })
 
