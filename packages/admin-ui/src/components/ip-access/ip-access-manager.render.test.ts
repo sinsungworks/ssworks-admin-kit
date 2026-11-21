@@ -11,6 +11,7 @@ import {
 } from '../../composables/useIpAccessRules.js'
 import { buttonByText, installVisualViewport, vuetify } from '../../test/setup.js'
 import IpAccessManager from './IpAccessManager.vue'
+import { CORE_SCOPE_CATALOG } from './ip-scope-choices.js'
 import { DEFAULT_IP_ACCESS_MESSAGES as M, emptyIpRuleForm, scopeTypeItems } from './ip-access.js'
 
 // 정본: hangang-home ip-access.render.test.ts(편집 패널이 대화상자가 아님 · 전체면 대상 칸 없음 · 저장 흐름)를
@@ -117,6 +118,11 @@ function bindings(
       onConfirm: vi.fn(),
     },
     discardDialog: { ...closedDialog },
+    scopeCatalog: CORE_SCOPE_CATALOG,
+    extraTarget: null,
+    onSearchTargets: vi.fn(),
+    canEditRule: () => true,
+    showPreviewCard: true,
     messages: M,
     ...over,
   }

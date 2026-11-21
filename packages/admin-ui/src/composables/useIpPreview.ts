@@ -18,6 +18,7 @@ import {
 //  - 404 는 수정 · 삭제 미리보기만 stale(지워진 규칙) — 현행 · 만들기의 404 는 failed.
 //  - 400 을 "입력 중"이 아니라 failed 로 — 킷은 화면 · 서버가 같은 CIDR 파서라 400 은 계약 어긋남이다(I11).
 //  - 🔴 `flush()` — 관문을 열기 전에 미리보기를 끝낸다(I12). hangang 은 창을 먼저 열고 그 안 문구가 바뀌었다.
+//  - 'unrelated'(확장 범위 스펙 §5-4) — 확장 규칙은 부르지 않고 상태만.
 
 export const IP_PREVIEW_DEBOUNCE_MS = 300
 
@@ -107,6 +108,11 @@ export function useIpPreview(options: IpPreviewOptions): IpPreviewController {
       show('forbidden', null)
       return
     }
+    // 🔴 관리자 접속과 무관한 규칙(확장 범위) — 서버 미리보기를 부르지 않는다(확장 범위 스펙 §5-4 · X9)
+    if (target.value.op === 'unrelated') {
+      show('unrelated', null)
+      return
+    }
     const query = previewQueryOf(target.value)
     if (query === null) {
       show('pending-input', null)
@@ -128,9 +134,12 @@ export function useIpPreview(options: IpPreviewOptions): IpPreviewController {
     }
   }
 
-  const key = computed(() =>
-    options.canManage() ? previewQueryKey(previewQueryOf(target.value)) : 'forbidden',
-  )
+  const key = computed(() => {
+    if (!options.canManage()) return 'forbidden'
+    return target.value.op === 'unrelated'
+      ? 'unrelated'
+      : previewQueryKey(previewQueryOf(target.value))
+  })
   // 🔴 질의 문자열 하나만 본다(I10). sync 라야 setTarget 바로 뒤의 flush 가 새 질의를 본다.
   watch(key, schedule, { flush: 'sync' })
 

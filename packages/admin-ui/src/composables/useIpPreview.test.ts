@@ -262,3 +262,23 @@ describe('useIpPreview', () => {
     expect(c.view.value.state).not.toBe('ready')
   })
 })
+
+describe("'unrelated' — 확장 범위(확장 범위 스펙 §5-4)", () => {
+  it('🔴 서버 미리보기를 부르지 않는다 · op 는 null · flush 는 바로', async () => {
+    const preview = vi.fn<PreviewFn>(async () => result())
+    const c = setup(preview, { immediate: false })
+    c.setTarget({ op: 'unrelated' })
+    expect(c.view.value).toMatchObject({ state: 'unrelated', op: null, result: null })
+    expect((await c.flush()).state).toBe('unrelated')
+    await vi.advanceTimersByTimeAsync(1000)
+    await flushPromises()
+    expect(preview).not.toHaveBeenCalled()
+  })
+
+  it('관리 권한이 없으면 unrelated 보다 forbidden', () => {
+    const preview = vi.fn<PreviewFn>(async () => result())
+    const c = setup(preview, { canManage: () => false })
+    c.setTarget({ op: 'unrelated' })
+    expect(c.view.value.state).toBe('forbidden')
+  })
+})
