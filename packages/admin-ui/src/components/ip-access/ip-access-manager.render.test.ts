@@ -440,5 +440,7 @@ describe('흐름 + 화면 — useIpAccessRules 와 함께', () => {
     await flushPromises()
     const target = document.querySelector<HTMLInputElement>('input[name="scopeRefNo"]')
     expect(target?.disabled).toBe(true)
+    // RULES 에 출고 토큰 규칙이 없으니 이름을 모른다 — 번호 표기
+    expect(target?.value).toBe('#7')
   })
 })

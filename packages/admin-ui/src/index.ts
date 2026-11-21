@@ -308,6 +308,7 @@ export type {
   IpTargetOption,
   IpRuleFocus,
   IpRulePrefill,
+  IpScopeCatalog,
 } from './components/ip-access/ip-scope-choices.js'
 export {
   useIpAccessRules,

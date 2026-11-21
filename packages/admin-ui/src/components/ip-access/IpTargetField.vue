@@ -66,8 +66,10 @@
   <div class="ip-target-field">
     <VTextField
       v-if="extraMode === 'fixed'"
+      autocomplete="off"
       density="compact"
       disabled
+      :error-messages="errors"
       :label="extraTarget?.label"
       :model-value="extraTarget?.fixedTitle ?? ''"
       name="scopeRefNo"
