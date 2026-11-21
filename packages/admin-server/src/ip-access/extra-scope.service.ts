@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { evaluateScopedIpAccess, type IpRule } from '@ssworks/admin-shared'
 import type { Request } from 'express'
-import type { Kysely } from 'kysely'
+import type { Kysely, Transaction } from 'kysely'
 import { clientIpOf } from '../auth/request-meta.js'
 import { runQuery } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
@@ -52,7 +52,7 @@ export class AdminIpExtraScopeService {
   async countRulesOf(
     scopeType: string,
     scopeRefNo: bigint,
-    db: Kysely<AdminDatabase> = this.db,
+    db: Kysely<AdminDatabase> | Transaction<AdminDatabase> = this.db,
   ): Promise<number> {
     const scope = this.registered(scopeType)
     const row = await runQuery(() =>

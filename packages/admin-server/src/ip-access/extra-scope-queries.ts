@@ -1,4 +1,4 @@
-import type { Kysely } from 'kysely'
+import type { Kysely, Transaction } from 'kysely'
 import type { AdminDatabase } from '../database/types.js'
 
 // 정본: 없음 — 확장 범위 스펙 §4-6(쓰는 쪽 판정 · 규칙 수). 🔴 비잠금 · 캐시 없음(코어 정책과 같은 이유 — 2f-1 P2).
@@ -32,7 +32,11 @@ export function scopeRulesQuery(
 }
 
 /** 이 대상을 가리키는 규칙 수 — wholeScope 와 무관하게 그 번호의 행만 */
-export function countScopeRulesQuery(db: Kysely<AdminDatabase>, scopeType: string, refNo: bigint) {
+export function countScopeRulesQuery(
+  db: Kysely<AdminDatabase> | Transaction<AdminDatabase>,
+  scopeType: string,
+  refNo: bigint,
+) {
   return db
     .selectFrom('ipAccessRules')
     .select((eb) => eb.fn.countAll<number | string | bigint>().as('n'))
