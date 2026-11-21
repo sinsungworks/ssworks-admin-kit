@@ -239,17 +239,19 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
 
   const allRules = shallowRef<readonly R[]>([])
   /** 한 범위 모드면 그 범위만(화면에서 거른다 — 서버 목록 그대로) */
-  const rules = computed<readonly R[]>(() => {
+  const inFocus = (rule: AdminIpRule): boolean => {
     const focus = catalog.focus
-    if (focus === null) return allRules.value
-    return allRules.value.filter(
-      (rule) =>
-        rule.scopeType === focus.scopeType &&
-        (focus.scopeRefNo === undefined ||
-          rule.scopeRefNo === null ||
-          rule.scopeRefNo === focus.scopeRefNo),
+    if (focus === null) return true
+    return (
+      rule.scopeType === focus.scopeType &&
+      (focus.scopeRefNo === undefined ||
+        rule.scopeRefNo === null ||
+        rule.scopeRefNo === focus.scopeRefNo)
     )
-  })
+  }
+  const rules = computed<readonly R[]>(() =>
+    catalog.focus === null ? allRules.value : allRules.value.filter(inFocus),
+  )
   const loading = ref(false)
   const loadError = shallowRef<ApiError | null>(null)
   let listSeq = 0
@@ -323,7 +325,8 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     onStale: () => {
       void onStale()
     },
-    immediate: options.immediate,
+    // 🔴 한 범위 모드는 카드를 그리지 않고 확장 범위만 다룬다 — 현행 미리보기(활성 사용자 · 세션 전수 스캔)를 부르지 않는다
+    immediate: catalog.focus === null ? options.immediate : false,
   })
 
   function syncTarget(): void {
@@ -336,8 +339,10 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
           ? { op: 'delete', ruleNo: deleting.ruleNo }
           : { op: 'unrelated' },
       )
-    } else if (current === null) preview.setTarget({ op: null })
-    else if (isExtraChoice(form.value.scopeType)) preview.setTarget({ op: 'unrelated' })
+    } else if (current === null) {
+      // 한 범위 모드의 범위는 늘 확장이다 — 닫혀 있어도 현행 미리보기가 아니라 'unrelated'
+      preview.setTarget(catalog.focus === null ? { op: null } : { op: 'unrelated' })
+    } else if (isExtraChoice(form.value.scopeType)) preview.setTarget({ op: 'unrelated' })
     else if (current === 'new') preview.setTarget({ op: 'create', form: { ...form.value } })
     else preview.setTarget({ op: 'update', ruleNo: current.ruleNo, form: { ...form.value } })
   }

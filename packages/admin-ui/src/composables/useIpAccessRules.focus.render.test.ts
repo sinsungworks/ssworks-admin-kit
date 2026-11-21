@@ -170,6 +170,27 @@ describe('한 범위 모드(focus — 스펙 §5-3)', () => {
     expect(ip.manager.value.extraTarget).toMatchObject({ mode: 'fixed', fixedTitle: '#99' })
   })
 
+  it('🔴 서버 미리보기를 부르지 않는다 — 마운트 · 편집 열고 닫기 · 저장 · reload · 다시 시도', async () => {
+    const { ip, preview } = await setup({ focus: FOCUS_7 })
+    expect(preview).not.toHaveBeenCalled()
+    await ip.openEdit(TOKEN_7)
+    await ip.closeEditor()
+    await ip.openCreate()
+    ip.manager.value['onUpdate:form']({ ...ip.form.value, cidr: '203.0.113.9/32' })
+    const saving = ip.save()
+    await flushPromises()
+    ip.manager.value.confirmDialog.onConfirm()
+    expect(await saving).toBe(true)
+    const removing = ip.remove(TOKEN_7)
+    await flushPromises()
+    ip.manager.value.confirmDialog.onConfirm()
+    await removing
+    await ip.reload()
+    ip.manager.value.onRetry()
+    await flushPromises()
+    expect(preview).not.toHaveBeenCalled()
+  })
+
   it('저장 뒤 재조회 — 다시 걸러 보인다', async () => {
     const { ip, list } = await setup({ focus: FOCUS_7 })
     list.mockResolvedValueOnce([
