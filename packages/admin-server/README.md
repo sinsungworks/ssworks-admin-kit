@@ -850,9 +850,12 @@ export { up, down } from '@ssworks/admin-server/migrations/0012_ip_access_rules'
 
 ### 확장 범위(관리자 밖 주체)
 
-장치 토큰 · 외부 API 키처럼 **관리자가 아닌 주체**의 IP 를 같은 규칙 표 · 같은 화면으로 제한한다(첫 소비자 — 출고 관리 서비스의 출고 토큰). 범위 이름은 쓰는 쪽이 정하고, 대상(토큰 표)은 훅으로만 들어온다. 옵션은 코어(`AdminServerModule.forRootAsync` 의 `useFactory` 결과)에 둔다 — `AdminIpAccessModule` 은 그대로 옵션이 없다.
+장치 토큰 · 외부 API 키처럼 **관리자가 아닌 주체**의 IP 를 같은 규칙 표 · 같은 화면으로 제한한다. 범위 이름은 쓰는 쪽이 정하고, 대상(토큰 표)은 훅으로만 들어온다. 옵션은 코어(`AdminServerModule.forRootAsync` 의 `useFactory` 결과)에 둔다 — `AdminIpAccessModule` 은 그대로 옵션이 없다.
 
 ```ts
+import type { Kysely, Transaction } from 'kysely'
+import type { Database } from './database/types' // interface Database extends AdminDatabase
+
 ipAccess: {
   extraScopes: [
     {
