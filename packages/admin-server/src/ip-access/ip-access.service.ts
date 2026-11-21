@@ -312,6 +312,10 @@ export class AdminIpAccessService {
     if (body.scopeType !== undefined && body.scopeType !== scopeType) {
       throw scopeTypeError(IP_ACCESS_MESSAGES.scopeTypeLocked)
     }
+    // 🔴 지운 범위의 행은 고칠 수 없다(X8) — 비밀번호를 묻기 전에 400. 트랜잭션 안 assertRuleScope 가 권위 있는 판정이다
+    if (!this.config.extraScopes.has(scopeType)) {
+      throw scopeTypeError(IP_ACCESS_MESSAGES.unknownScopeType)
+    }
     await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     return runWriteTransaction(this.db, async (trx) => {
       const target = await lockRule(trx, ruleNo)

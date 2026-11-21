@@ -446,6 +446,33 @@ describe('재인증', () => {
     )
     expect(reauth.calls).toEqual(['wrong', 'right-password'])
   })
+
+  it('🔴 지운 범위 행의 수정은 재인증 앞에서 400 이다 — 비밀번호를 묻지 않는다', async () => {
+    const reauth = new FakeReauth()
+    const guarded = new AdminIpAccessService(
+      t.db,
+      ipAccessConfig(true, 'req.ip', { extraScopes: [probeScope()] }),
+      reauth as unknown as AdminReauthService,
+    )
+    const ruleNo = await seedIpRule(t.db, {
+      scopeType: 'goneScope',
+      scopeRefNo: 1n,
+      cidr: '10.0.0.0/8',
+    })
+    expect(
+      issueOf(
+        await failure(
+          guarded.update(
+            ruleNo,
+            { cidr: '10.2.0.0/16', revision: 0, currentPassword: 'wrong' },
+            me(),
+            ACTOR_IP,
+          ),
+        ),
+      ),
+    ).toEqual([['scopeType', IP_ACCESS_MESSAGES.unknownScopeType]])
+    expect(reauth.calls).toEqual([])
+  })
 })
 
 it('형식 메시지 상수가 공유 표와 같은 출처다', () => {
