@@ -3,23 +3,26 @@ import {
   adminIpRuleCreateSchema,
   adminIpRuleRemoveSchema,
   adminIpRuleUpdateSchema,
-  ipScopeProblem,
-  ipScopeTypeSchema,
+  isCoreIpScopeType,
+  isIpExtraScopeTypeName,
 } from '@ssworks/admin-shared'
 import { currentPasswordField } from '../accounts/reauth-body.js'
 import { ZodValidationPipe } from '../http/pipes.js'
 import { ADMIN_IP_ACCESS_CONFIG } from '../tokens.js'
+import { IP_ACCESS_MESSAGES } from './errors.js'
 import type {
   AdminIpRuleCreateBody,
   AdminIpRuleRemoveBody,
   AdminIpRuleUpdateBody,
 } from './ip-access.service.js'
 import type { ResolvedIpAccessConfig } from './options.js'
+import { isKnownScopeType, ruleScopeProblem } from './scope-check.js'
 
 // 정본: hangang-home apps/api/src/modules/ip-access/ip-access.dto.ts(cidr · 범위 불변식 · 재인증 칸) + admin-shared IP 스키마
 // 바꾼 점: 재인증 칸이 런타임 옵션(reauth)에 달려 주입형 파이프로 만든다(역할 · 사용자와 같은 방식, 2d B5). 범위 불변식은 extend
 //   뒤에 superRefine 으로 건다 — admin-shared 스키마에 refine 이 있으면 extend 가 던진다(zod 4). 수정의 불변식은 병합 결과라
 //   서비스가 본다. `@Body(클래스)` 로 넘기면 Nest 가 모듈 안에서 만든다 — 모듈 providers 에 적지 않는다.
+//   확장 범위(스펙 §4-2): 범위 판정은 scope-check 하나 — 코어 ∪ 등록된 확장 범위만 받는다. 형식 밖 이름은 공유 스키마가 먼저 막는다.
 
 @Injectable()
 export class IpRuleCreateBodyPipe implements PipeTransform<unknown, AdminIpRuleCreateBody> {
@@ -28,15 +31,13 @@ export class IpRuleCreateBodyPipe implements PipeTransform<unknown, AdminIpRuleC
   constructor(@Inject(ADMIN_IP_ACCESS_CONFIG) config: ResolvedIpAccessConfig) {
     this.pipe = new ZodValidationPipe(
       adminIpRuleCreateSchema
-        // Task 1 — 공유 스키마가 넓어졌다. 확장 범위를 받는 것은 Task 4 의 파이프다 — 그때까지 코어 셋만(지금 동작)
-        .extend({
-          scopeType: ipScopeTypeSchema,
-          currentPassword: currentPasswordField(config.reauth),
-        })
+        .extend({ currentPassword: currentPasswordField(config.reauth) })
         .superRefine((body, ctx) => {
-          const problem = ipScopeProblem(body)
+          // 🔴 형식 밖 이름은 공유 스키마(ipRuleScopeTypeSchema)가 이미 알렸다 — 같은 칸에 두 번 싣지 않는다
+          if (!isCoreIpScopeType(body.scopeType) && !isIpExtraScopeTypeName(body.scopeType)) return
+          const problem = ruleScopeProblem(config, body)
           if (problem !== null) {
-            ctx.addIssue({ code: 'custom', path: ['scopeRefNo'], message: problem })
+            ctx.addIssue({ code: 'custom', path: [problem.path], message: problem.message })
           }
         }),
     )
@@ -53,10 +54,21 @@ export class IpRuleUpdateBodyPipe implements PipeTransform<unknown, AdminIpRuleU
 
   constructor(@Inject(ADMIN_IP_ACCESS_CONFIG) config: ResolvedIpAccessConfig) {
     this.pipe = new ZodValidationPipe(
-      adminIpRuleUpdateSchema.extend({
-        scopeType: ipScopeTypeSchema.optional(),
-        currentPassword: currentPasswordField(config.reauth),
-      }),
+      adminIpRuleUpdateSchema
+        .extend({ currentPassword: currentPasswordField(config.reauth) })
+        .superRefine((body, ctx) => {
+          const type = body.scopeType
+          if (type === undefined || (!isCoreIpScopeType(type) && !isIpExtraScopeTypeName(type)))
+            return
+          // 병합 결과의 범위 불변식 · 갈래는 서비스가 본다 — 여기는 이름 등록만
+          if (!isKnownScopeType(config, type)) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['scopeType'],
+              message: IP_ACCESS_MESSAGES.unknownScopeType,
+            })
+          }
+        }),
     )
   }
 

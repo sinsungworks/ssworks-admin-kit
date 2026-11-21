@@ -7,7 +7,6 @@ import {
   type AdminIpRuleRemove,
   type AdminIpRuleUpdate,
   type IpScope,
-  type IpScopeType,
   type IpSubject,
 } from '@ssworks/admin-shared'
 import type { Request } from 'express'
@@ -20,8 +19,14 @@ import { clientIpOf } from '../auth/request-meta.js'
 import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { ADMIN_IP_ACCESS_CONFIG, KYSELY } from '../tokens.js'
-import { assertIpScope, ruleNotFound, ruleRevisionConflict, selfLockout } from './errors.js'
-import type { ResolvedIpAccessConfig } from './options.js'
+import {
+  IP_ACCESS_MESSAGES,
+  assertIpScope,
+  ruleRevisionConflict,
+  scopeTypeError,
+  selfLockout,
+} from './errors.js'
+import type { ResolvedIpAccessConfig, ResolvedIpExtraScope } from './options.js'
 import {
   buildLockoutCandidates,
   nextRulesOf,
@@ -36,9 +41,10 @@ import {
   ruleViewQuery,
   teamMappingsQuery,
 } from './queries.js'
-import { lockRule, lockScopeRef, type LockedRule } from './rule-locks.js'
+import { lockExtraScopeTarget, lockRule, lockScopeRef, type LockedRule } from './rule-locks.js'
 import { ipRuleSetQuery } from './rule-set.js'
 import { toRuleViews, type AdminIpRuleView } from './rule-views.js'
+import { assertRuleScope, sameScopeFamily } from './scope-check.js'
 
 // 정본: hangang-home apps/api/src/modules/ip-access/ip-access.service.ts(목록 · 미리보기 · 만들기 · 수정 · 삭제)
 // 바꾼 점:
@@ -48,18 +54,16 @@ import { toRuleViews, type AdminIpRuleView } from './rule-views.js'
 //    규칙 시뮬레이션" 은 미리보기에만 남는다.
 //  - 재인증은 코어 reauth 옵션(hangang 은 늘), 규칙 행에 revision(Phase 0 §4 #4).
 //  - 감사 diff 는 컨트롤러가 커밋 뒤에 붙인다 — 409 로 롤백된 변경을 after 로 남기지 않는다(hangang I3).
+//  - 확장 범위(확장 범위 스펙 §4-3 · X2 ~ X8): 쓰기를 갈래로 나눈다. 코어 갈래는 위 그대로. 확장 갈래는 잔존 · 가드 행 · 자기 잠금
+//    밖이다 — 대상 규칙 행 FOR UPDATE → (revision · 등록 · wholeScope) → 쓰는 쪽 target.lock → 쓰기. 수정 · 삭제는 트랜잭션 밖
+//    비잠금 한 줄로 갈래를 고르고(대상이 없으면 코어 갈래 — 지금처럼 재인증 → 404), 안에서 잠근 행이 같은 갈래인지 다시 본다.
+//    범위 종류는 갈래를 넘어 바꾸지 않는다(400 scopeType).
 // 🔴 재인증은 트랜잭션 밖이다 — argon2 가 가드 행을 쥔 채 돌면 모든 잔존 쓰기가 그 뒤에 줄을 선다(hangang Task 12).
 
 export type { AdminIpRuleView } from './rule-views.js'
 
-export type AdminIpRuleCreateBody = Omit<AdminIpRuleCreate, 'scopeType'> & {
-  scopeType: IpScopeType
-  currentPassword?: string
-}
-export type AdminIpRuleUpdateBody = Omit<AdminIpRuleUpdate, 'scopeType'> & {
-  scopeType?: IpScopeType
-  currentPassword?: string
-}
+export type AdminIpRuleCreateBody = AdminIpRuleCreate & { currentPassword?: string }
+export type AdminIpRuleUpdateBody = AdminIpRuleUpdate & { currentPassword?: string }
 export type AdminIpRuleRemoveBody = AdminIpRuleRemove & { currentPassword?: string }
 
 /** 감사 before · after — 규칙 행 전체가 변경 대상이다(hangang I3) */
@@ -173,6 +177,7 @@ export class AdminIpAccessService {
     principal: AdminPrincipal,
     clientIp: string | null,
   ): Promise<{ item: AdminIpRuleView }> {
+    if (!isCoreIpScopeType(body.scopeType)) return this.createExtra(body, principal)
     const scope: IpScope = { scopeType: body.scopeType, scopeRefNo: body.scopeRefNo }
     assertIpScope(scope)
     await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
@@ -203,27 +208,67 @@ export class AdminIpAccessService {
     )
   }
 
+  /** 🔴 확장 갈래 — 잔존 · 가드 행 · 자기 잠금이 없다(X3). 첫 문장은 쓰는 쪽 대상 행 잠금 */
+  private async createExtra(
+    body: AdminIpRuleCreateBody,
+    principal: AdminPrincipal,
+  ): Promise<{ item: AdminIpRuleView }> {
+    const scope = { scopeType: body.scopeType, scopeRefNo: body.scopeRefNo }
+    assertRuleScope(this.config, scope)
+    const extra = this.extraScopeOf(scope.scopeType)
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
+    return runWriteTransaction(this.db, async (trx) => {
+      await lockExtraScopeTarget(trx, extra, scope.scopeRefNo)
+      const inserted = await trx
+        .insertInto('ipAccessRules')
+        .values({
+          scopeType: scope.scopeType,
+          scopeRefNo: scope.scopeRefNo,
+          cidr: body.cidr,
+          description: body.description ?? null,
+        })
+        .executeTakeFirstOrThrow()
+      return { item: await this.readRuleView(trx, inserted.insertId as bigint) }
+    })
+  }
+
   async update(
     ruleNo: bigint,
     body: AdminIpRuleUpdateBody,
     principal: AdminPrincipal,
     clientIp: string | null,
   ): Promise<{ item: AdminIpRuleView; before: IpRuleAuditView; after: IpRuleAuditView }> {
+    const current = await this.peekScopeType(ruleNo)
+    if (current !== null && !isCoreIpScopeType(current)) {
+      return this.updateExtra(ruleNo, current, body, principal)
+    }
+    // 🔴 갈래를 넘는 수정은 재인증 앞에서 400(X2). 대상이 없으면(current null) 지금처럼 재인증 → 404
+    if (
+      current !== null &&
+      body.scopeType !== undefined &&
+      !sameScopeFamily(current, body.scopeType)
+    ) {
+      throw scopeTypeError(IP_ACCESS_MESSAGES.scopeTypeLocked)
+    }
     await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const actor = subjectOf(principal)
     return runWriteTransaction(this.db, (trx) =>
       withSuperAdminSurvival(
         trx,
         {
-          // 🔴 잠금 읽기 · 판정만 — 대상 규칙 → revision → 병합 결과 불변식 → 병합 결과의 참조 행
+          // 🔴 잠금 읽기 · 판정만 — 대상 규칙 → 갈래 → revision → 병합 결과 불변식 → 병합 결과의 참조 행
           lock: async (): Promise<{ target: LockedRule; scope: IpScope }> => {
             const target = await lockRule(trx, ruleNo)
-            // 🔴 임시(Task 4 가 확장 갈래로 나눈다) — 확장 범위 행은 코어 갈래에서 찾을 수 없다(X9 와 같은 404)
-            if (!isCoreIpScopeType(target.scopeType)) throw ruleNotFound()
+            // 🔴 먼저 읽은 갈래와 다르면 낡은 요청이다(X4 — 범위 종류가 갈래를 넘지 않으니 일어날 수 없지만 막는다)
+            if (!isCoreIpScopeType(target.scopeType)) throw ruleRevisionConflict()
             if (body.revision !== target.revision) throw ruleRevisionConflict()
+            const scopeType = body.scopeType ?? target.scopeType
+            if (!isCoreIpScopeType(scopeType)) {
+              throw scopeTypeError(IP_ACCESS_MESSAGES.scopeTypeLocked)
+            }
             // 🔴 병합 결과가 판정 대상이다(hangang R30) — global 행에 scopeType: 'user' 만 보내면 어느 층에도 안 걸리는 행이 된다
             const scope: IpScope = {
-              scopeType: body.scopeType ?? target.scopeType,
+              scopeType,
               scopeRefNo: body.scopeRefNo !== undefined ? body.scopeRefNo : target.scopeRefNo,
             }
             assertIpScope(scope)
@@ -253,12 +298,53 @@ export class AdminIpAccessService {
     )
   }
 
+  /** 🔴 확장 갈래 — 대상 규칙 → 갈래 재확인 → revision → 등록 · wholeScope → target.lock(X3 · X4 · X7 · X8) */
+  private async updateExtra(
+    ruleNo: bigint,
+    scopeType: string,
+    body: AdminIpRuleUpdateBody,
+    principal: AdminPrincipal,
+  ): Promise<{ item: AdminIpRuleView; before: IpRuleAuditView; after: IpRuleAuditView }> {
+    if (body.scopeType !== undefined && body.scopeType !== scopeType) {
+      throw scopeTypeError(IP_ACCESS_MESSAGES.scopeTypeLocked)
+    }
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
+    return runWriteTransaction(this.db, async (trx) => {
+      const target = await lockRule(trx, ruleNo)
+      if (target.scopeType !== scopeType) throw ruleRevisionConflict()
+      if (body.revision !== target.revision) throw ruleRevisionConflict()
+      const scope = {
+        scopeType,
+        scopeRefNo: body.scopeRefNo !== undefined ? body.scopeRefNo : target.scopeRefNo,
+      }
+      assertRuleScope(this.config, scope)
+      await lockExtraScopeTarget(trx, this.extraScopeOf(scopeType), scope.scopeRefNo)
+      await trx
+        .updateTable('ipAccessRules')
+        .set((eb) => ({
+          scopeRefNo: scope.scopeRefNo,
+          ...(body.cidr === undefined ? {} : { cidr: body.cidr }),
+          ...(body.description === undefined ? {} : { description: body.description }),
+          revision: eb('revision', '+', 1),
+          updateAt: sql<Date>`current_timestamp`,
+        }))
+        .where('ruleNo', '=', ruleNo)
+        .execute()
+      const item = await this.readRuleView(trx, ruleNo)
+      return { item, before: auditViewOf(target), after: auditViewOf(item) }
+    })
+  }
+
   async remove(
     ruleNo: bigint,
     body: AdminIpRuleRemoveBody,
     principal: AdminPrincipal,
     clientIp: string | null,
   ): Promise<{ before: IpRuleAuditView }> {
+    const current = await this.peekScopeType(ruleNo)
+    if (current !== null && !isCoreIpScopeType(current)) {
+      return this.removeExtra(ruleNo, current, body, principal)
+    }
     await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
     const actor = subjectOf(principal)
     return runWriteTransaction(this.db, (trx) =>
@@ -267,6 +353,7 @@ export class AdminIpAccessService {
         {
           lock: async () => {
             const target = await lockRule(trx, ruleNo)
+            if (!isCoreIpScopeType(target.scopeType)) throw ruleRevisionConflict()
             if (body.revision !== target.revision) throw ruleRevisionConflict()
             return target
           },
@@ -280,5 +367,43 @@ export class AdminIpAccessService {
         IP_WRITE,
       ),
     )
+  }
+
+  /** 🔴 확장 갈래 — 등록이 빠진 범위의 행도 지운다(X8) */
+  private async removeExtra(
+    ruleNo: bigint,
+    scopeType: string,
+    body: AdminIpRuleRemoveBody,
+    principal: AdminPrincipal,
+  ): Promise<{ before: IpRuleAuditView }> {
+    await reauthenticate(this.config, this.reauthService, principal, body.currentPassword)
+    return runWriteTransaction(this.db, async (trx) => {
+      const target = await lockRule(trx, ruleNo)
+      if (target.scopeType !== scopeType || body.revision !== target.revision) {
+        throw ruleRevisionConflict()
+      }
+      await trx.deleteFrom('ipAccessRules').where('ruleNo', '=', ruleNo).execute()
+      // 🔴 지운 규칙은 감사의 before 로만 복원된다
+      return { before: auditViewOf(target) }
+    })
+  }
+
+  /** 🔴 트랜잭션 밖 비잠금 한 줄 — 갈래를 고른다(X4). 없으면 null(코어 갈래가 지금처럼 404 를 낸다) */
+  private async peekScopeType(ruleNo: bigint): Promise<string | null> {
+    const row = await runQuery(() =>
+      this.db
+        .selectFrom('ipAccessRules')
+        .select('scopeType')
+        .where('ruleNo', '=', ruleNo)
+        .executeTakeFirst(),
+    )
+    return row?.scopeType ?? null
+  }
+
+  /** 등록된 확장 범위 — assertRuleScope 뒤에만 부른다(없으면 400 scopeType) */
+  private extraScopeOf(scopeType: string): ResolvedIpExtraScope {
+    const scope = this.config.extraScopes.get(scopeType)
+    if (scope === undefined) throw scopeTypeError(IP_ACCESS_MESSAGES.unknownScopeType)
+    return scope
   }
 }

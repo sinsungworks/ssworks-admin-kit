@@ -2,6 +2,7 @@ import type { IpScope } from '@ssworks/admin-shared'
 import type { Transaction } from 'kysely'
 import type { AdminDatabase } from '../database/types.js'
 import { IP_ACCESS_MESSAGES, ruleNotFound, scopeRefError } from './errors.js'
+import type { ResolvedIpExtraScope } from './options.js'
 
 // 정본: hangang-home apps/api/src/modules/ip-access/ip-access.service.ts lockAllRules · assertScopeRefExists
 // 바꾼 점:
@@ -56,4 +57,17 @@ export async function lockScopeRef(trx: Transaction<AdminDatabase>, scope: IpSco
     .forUpdate()
     .executeTakeFirst()
   if (user === undefined) throw scopeRefError(IP_ACCESS_MESSAGES.noScopeUser)
+}
+
+/**
+ * 확장 범위 대상 — 쓰는 쪽 훅(target.lock)이 FOR UPDATE 로 잠근다. 없으면 400 scopeRefNo. 범위 전체(null)는 잠글 것이 없다
+ * (확장 범위 스펙 X3 · X5). 🔴 잠금 순서는 규칙 행 → 쓰는 쪽 대상 행(X6) — 쓰는 쪽은 ipAccessRules 를 잠그지 않는다.
+ */
+export async function lockExtraScopeTarget(
+  trx: Transaction<AdminDatabase>,
+  scope: ResolvedIpExtraScope,
+  refNo: bigint | null,
+): Promise<void> {
+  if (refNo === null) return
+  if (!(await scope.target.lock(trx, refNo))) throw scopeRefError(IP_ACCESS_MESSAGES.noScopeTarget)
 }
