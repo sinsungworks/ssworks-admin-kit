@@ -764,8 +764,9 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     scopeCatalog: catalog,
     extraTarget: extraTarget.value,
     onSearchTargets: (keyword) => {
-      const type = parseScopeChoice(form.value.scopeType).scopeType
-      if (canSearchExtra(type)) extraSearches.get(type)?.search(keyword)
+      const choice = parseScopeChoice(form.value.scopeType)
+      if (choice.whole) return
+      if (canSearchExtra(choice.scopeType)) extraSearches.get(choice.scopeType)?.search(keyword)
     },
     canEditRule,
     showPreviewCard: catalog.focus === null,

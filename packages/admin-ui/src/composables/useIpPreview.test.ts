@@ -1,6 +1,6 @@
 import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, type EffectScope } from 'vue'
+import { effectScope, ref, type EffectScope } from 'vue'
 import type { AdminIpPreview } from '@ssworks/admin-shared'
 import { ApiError } from '../api/error.js'
 import { emptyIpRuleForm, type IpRuleForm } from '../components/ip-access/ip-access.js'
@@ -276,9 +276,13 @@ describe("'unrelated' — 확장 범위(확장 범위 스펙 §5-4)", () => {
   })
 
   it('관리 권한이 없으면 unrelated 보다 forbidden', () => {
+    const allowed = ref(true)
     const preview = vi.fn<PreviewFn>(async () => result())
-    const c = setup(preview, { canManage: () => false })
+    const c = setup(preview, { immediate: false, canManage: () => allowed.value })
     c.setTarget({ op: 'unrelated' })
+    expect(c.view.value.state).toBe('unrelated')
+    allowed.value = false
     expect(c.view.value.state).toBe('forbidden')
+    expect(preview).not.toHaveBeenCalled()
   })
 })
