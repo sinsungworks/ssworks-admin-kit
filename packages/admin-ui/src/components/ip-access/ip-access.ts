@@ -16,6 +16,15 @@ import {
   type IpScopeType,
 } from '@ssworks/admin-shared'
 import type { ApiError } from '../../api/error.js'
+import {
+  CORE_SCOPE_CATALOG,
+  IP_SCOPE_ORDER,
+  parseScopeChoice,
+  scopeChoiceItems,
+  scopeChoiceKey,
+  scopeChoiceLabel,
+  type IpScopeCatalog,
+} from './ip-scope-choices.js'
 
 // IP 접근 제어 화면의 타입 · 문구 · 순수 함수 — `useIpAccessRules` · `useIpPreview` · `IpAccessManager` 가 함께 쓴다(3g 스펙 C1).
 //
@@ -29,6 +38,7 @@ import type { ApiError } from '../../api/error.js'
 //  - 세션 끊기 제안 문구 전부를 버렸다(⑥ S2 — 킷 서버는 매 요청 IP 를 본다).
 //  - 문구는 `messages` 부분 덮어쓰기로 바꾼다(C2).
 //  - 층 목록(3i S1 — ringside 보고 §1): 팀 모듈 없는 앱이 사용자 · 전체만 고른다. 표시 순서는 늘 평가 순서.
+//  - 확장 범위(확장 범위 스펙 §5): 범위 선택지 · 카탈로그는 ip-scope-choices.ts. 폼의 scopeType 은 선택지 키, 확장 규칙은 미리보기 대신 'unrelated'.
 
 export interface IpUserOption {
   userNo: bigint
@@ -41,7 +51,7 @@ export interface IpWriteContext {
   currentPassword?: string
 }
 
-/** 칸 값은 문자열 — scopeRefNo '' = 없음 */
+/** 칸 값은 문자열 — scopeRefNo '' = 없음. 🔴 scopeType 은 범위 선택지 키다 — 확장 범위 전체는 `<이름>:*`(X11) */
 export interface IpRuleForm {
   scopeType: string
   scopeRefNo: string
@@ -62,7 +72,7 @@ export const IP_RULE_FORM_FIELDS: readonly IpRuleFormField[] = Object.freeze([
 export type IpPreviewOp = 'create' | 'update' | 'delete'
 
 export type IpPreviewState =
-  'loading' | 'ready' | 'pending-input' | 'forbidden' | 'stale' | 'failed'
+  'loading' | 'ready' | 'pending-input' | 'forbidden' | 'stale' | 'failed' | 'unrelated'
 
 export interface IpPreviewView {
   state: IpPreviewState
@@ -72,9 +82,10 @@ export interface IpPreviewView {
   clientIp: string | null
 }
 
-/** 미리보기가 무엇을 묻는가 — op null = 현행 */
+/** 미리보기가 무엇을 묻는가 — op null = 현행 · 'unrelated' = 관리자 접속과 무관한 규칙(확장 범위 — 부르지 않는다) */
 export type IpPreviewTarget =
   | { op: null }
+  | { op: 'unrelated' }
   | { op: 'create'; form: IpRuleForm }
   | { op: 'update'; ruleNo: bigint; form: IpRuleForm }
   | { op: 'delete'; ruleNo: bigint }
@@ -82,6 +93,22 @@ export type IpPreviewTarget =
 export interface IpSelectItem {
   value: string
   title: string
+}
+
+/** 확장 범위 대상 칸의 바인딩 — 확장 범위의 「대상 하나」 선택지일 때만 */
+export interface IpExtraTargetView {
+  /** 검색 칸 제목(「대상 출고 토큰」) */
+  label: string
+  /** 번호 칸 제목(「출고 토큰 번호」) */
+  numberLabel: string
+  /** search = 쓰는 쪽 검색 · number = 번호 칸 · fixed = 한 범위 모드의 고정 대상(바꿀 수 없음) */
+  mode: 'search' | 'number' | 'fixed'
+  items: readonly IpSelectItem[]
+  searching: boolean
+  failed: boolean
+  hint: string | null
+  /** fixed 일 때 보일 글자 */
+  fixedTitle: string | null
 }
 
 export interface IpAccessAlert {
@@ -95,6 +122,16 @@ export interface IpAccessMessages {
   scopeUser: string
   scopeTeam: string
   scopeGlobal: string
+  scopeWhole: (label: string) => string
+  previewUnrelated: string
+  hintExtraScopes: string
+  gateImpactUnrelated: string
+  targetLabel: (scope: string) => string
+  targetNumberLabel: (scope: string) => string
+  targetSearchHint: string
+  targetSearchEmpty: string
+  targetSearchFailed: string
+  targetNoPermissionHint: string
   layer: (scope: string) => string
   layerNone: string
   statusLocked: string
@@ -199,6 +236,18 @@ export const DEFAULT_IP_ACCESS_MESSAGES: Readonly<IpAccessMessages> =
     scopeUser: '사용자',
     scopeTeam: '팀',
     scopeGlobal: '전체',
+    scopeWhole: (label) => `${label} 전체`,
+    // 🔴 "영향 없음"과 다르다 — 확인하지 못한 것이 아니라 관리자 판정에 쓰이지 않는 규칙이다(확장 범위 스펙 R3a)
+    previewUnrelated: '이 규칙은 관리자 접속과 무관합니다 — 이 변경으로 잠기는 관리자는 없습니다.',
+    hintExtraScopes:
+      '사용자 · 팀 · 전체 밖의 범위 규칙은 관리자 접속 판정에 쓰이지 않고, 관리자 규칙(사용자 · 팀 · 전체)도 그 범위의 판정에 쓰이지 않습니다.',
+    gateImpactUnrelated: '관리자 접속과 무관한 규칙입니다 — 이 변경으로 잠기는 관리자는 없습니다.',
+    targetLabel: (scope) => `대상 ${scope}`,
+    targetNumberLabel: (scope) => `${scope} 번호`,
+    targetSearchHint: '이름을 입력하세요.',
+    targetSearchEmpty: '맞는 대상이 없습니다.',
+    targetSearchFailed: '대상을 검색하지 못했습니다. 다시 입력해 보세요.',
+    targetNoPermissionHint: '대상 목록을 볼 권한이 없어 번호로 고릅니다.',
     layer: (scope) => `${scope} 층`,
     // 🔴 "없음"으로 적지 않는다 — 채택된 층이 없으면 어떤 주소로도 못 들어온다(기본 거부 · hangang)
     layerNone: '규칙 없음(기본 거부)',
@@ -335,8 +384,9 @@ export const DEFAULT_IP_ACCESS_MESSAGES: Readonly<IpAccessMessages> =
 /** 서버 `queryBigIntSchema` 와 같은 폭(부호 없는 20자리) */
 const UNSIGNED_DIGITS = /^[0-9]{1,20}$/
 
-/** 🔴 가까운 층부터 — 그 순서가 곧 평가 순서다(hangang) */
-export const IP_SCOPE_ORDER: readonly IpScopeType[] = Object.freeze(['user', 'team', 'global'])
+// 🔴 IP_SCOPE_ORDER(가까운 층부터 — 그 순서가 곧 평가 순서다)는 ip-scope-choices.ts 에 있다 — 그쪽이 이 파일의 값을 import 하지
+//    않게(타입만 import). 이 이름을 import 하던 곳이 그대로 돌도록 다시 낸다.
+export { IP_SCOPE_ORDER }
 
 /**
  * `useIpAccessRules({ scopes })` 를 평가 순서로 편다(3i S1). 넘긴 순서는 따르지 않고 중복은 한 번이다.
@@ -359,10 +409,12 @@ export function defaultIpScope(scopes: readonly IpScopeType[]): IpScopeType {
   return scopes.includes('global') ? 'global' : (scopes[0] ?? 'global')
 }
 
-export function scopeTypeLabel(scopeType: string, messages: IpAccessMessages): string {
-  if (scopeType === 'user') return messages.scopeUser
-  if (scopeType === 'team') return messages.scopeTeam
-  return messages.scopeGlobal
+export function scopeTypeLabel(
+  scopeType: string,
+  messages: IpAccessMessages,
+  catalog: IpScopeCatalog = CORE_SCOPE_CATALOG,
+): string {
+  return scopeChoiceLabel(scopeType, messages, catalog)
 }
 
 /**
@@ -374,9 +426,7 @@ export function scopeTypeItems(
   scopes: readonly IpScopeType[] = IP_SCOPE_ORDER,
   current?: string,
 ): IpSelectItem[] {
-  return IP_SCOPE_ORDER.filter((value) => scopes.includes(value) || value === current).map(
-    (value) => ({ value, title: scopeTypeLabel(value, messages) }),
-  )
+  return scopeChoiceItems(messages, { ...CORE_SCOPE_CATALOG, core: scopes }, 'core', current)
 }
 
 export function emptyIpRuleForm(scopeType: string = 'global'): IpRuleForm {
@@ -387,7 +437,7 @@ export function ruleToForm(
   rule: Pick<AdminIpRule, 'scopeType' | 'scopeRefNo' | 'cidr' | 'description'>,
 ): IpRuleForm {
   return {
-    scopeType: rule.scopeType,
+    scopeType: scopeChoiceKey(rule.scopeType, rule.scopeRefNo),
     scopeRefNo: rule.scopeRefNo == null ? '' : String(rule.scopeRefNo),
     cidr: rule.cidr,
     description: rule.description ?? '',
@@ -412,7 +462,7 @@ export function ipRuleFormProblems(
   messages: IpAccessMessages,
 ): Record<string, string[]> {
   const problems: Record<string, string[]> = {}
-  if (form.scopeType !== 'global') {
+  if (!parseScopeChoice(form.scopeType).whole) {
     const refNo = form.scopeRefNo.trim()
     if (refNo === '') problems.scopeRefNo = [messages.scopeRefRequired]
     else if (!UNSIGNED_DIGITS.test(refNo)) problems.scopeRefNo = [messages.scopeRefDigits]
@@ -429,7 +479,9 @@ export function ipRuleFormProblems(
 
 /** 미리보기를 부를 만한가 — CIDR 이 그 파서를 통과하고, 전체가 아니면 대상 번호가 숫자다(I9) */
 export function isIpRuleFormPreviewable(form: IpRuleForm): boolean {
-  if (form.scopeType !== 'global' && !UNSIGNED_DIGITS.test(form.scopeRefNo.trim())) return false
+  if (!parseScopeChoice(form.scopeType).whole && !UNSIGNED_DIGITS.test(form.scopeRefNo.trim())) {
+    return false
+  }
   return ipCidrSchema.safeParse(form.cidr).success
 }
 
@@ -439,17 +491,20 @@ export function isIpRuleFormPreviewable(form: IpRuleForm): boolean {
  */
 export function previewQueryOf(target: IpPreviewTarget): AdminIpPreviewQuery | null {
   if (target.op === null) return {}
+  if (target.op === 'unrelated') return null
   if (target.op === 'delete') return { op: 'delete', ruleNo: target.ruleNo }
   const { form } = target
-  if (!isCoreIpScopeType(form.scopeType)) return null
+  const choice = parseScopeChoice(form.scopeType)
+  // 🔴 확장 범위는 미리보기 대상이 아니다(X9) — 흐름은 'unrelated' 로 보내 여기까지 오지 않는다
+  if (!isCoreIpScopeType(choice.scopeType)) return null
   if (!isIpRuleFormPreviewable(form)) return null
   const query: AdminIpPreviewQuery = {
     op: target.op,
-    scopeType: form.scopeType,
+    scopeType: choice.scopeType,
     cidr: form.cidr.trim(),
   }
   if (target.op === 'update') query.ruleNo = target.ruleNo
-  if (form.scopeType !== 'global') query.scopeRefNo = BigInt(form.scopeRefNo.trim())
+  if (!choice.whole) query.scopeRefNo = BigInt(form.scopeRefNo.trim())
   return query
 }
 
@@ -472,11 +527,12 @@ function descriptionOf(form: IpRuleForm): string | null {
   return text === '' ? null : text
 }
 
-/** 만들기 본문. bigint 는 킷 API 클라이언트 코덱이 싣는다 */
+/** 만들기 본문. bigint 는 킷 API 클라이언트 코덱이 싣는다. 🔴 선택지 키를 서버 범위로 푼다(X11) */
 export function toCreateBody(form: IpRuleForm): AdminIpRuleCreate {
+  const choice = parseScopeChoice(form.scopeType)
   return {
-    scopeType: form.scopeType,
-    scopeRefNo: form.scopeType === 'global' ? null : BigInt(form.scopeRefNo.trim()),
+    scopeType: choice.scopeType,
+    scopeRefNo: choice.whole ? null : BigInt(form.scopeRefNo.trim()),
     cidr: form.cidr.trim(),
     description: descriptionOf(form),
   }
@@ -512,9 +568,14 @@ export function userOptionTitle(option: Pick<IpUserOption, 'userName' | 'userId'
 type RuleScope = Pick<AdminIpRule, 'scopeType' | 'scopeRefNo' | 'scopeName' | 'scopeUserId'>
 
 /** 규칙 범위 한 줄. 🔴 대상이 지워졌으면(scopeName null) 이름을 지어내지 않는다 — 번호만(I22 · hangang) */
-export function ruleScopeTitle(rule: RuleScope, messages: IpAccessMessages): string {
-  const label = scopeTypeLabel(rule.scopeType, messages)
-  if (rule.scopeType === 'global') return label
+export function ruleScopeTitle(
+  rule: RuleScope,
+  messages: IpAccessMessages,
+  catalog: IpScopeCatalog = CORE_SCOPE_CATALOG,
+): string {
+  const key = scopeChoiceKey(rule.scopeType, rule.scopeRefNo)
+  const label = scopeChoiceLabel(key, messages, catalog)
+  if (parseScopeChoice(key).whole) return label
   if (rule.scopeName == null) return `${label} #${rule.scopeRefNo ?? '?'}`
   const name =
     rule.scopeType === 'user' && rule.scopeUserId != null
@@ -523,9 +584,9 @@ export function ruleScopeTitle(rule: RuleScope, messages: IpAccessMessages): str
   return `${label} · ${name}`
 }
 
-/** 범위 아래 줄 — 번호, 또는 대상 없음 안내. 전체는 없음 */
+/** 범위 아래 줄 — 번호, 또는 대상 없음 안내. 전체 · 범위 전체는 없음 */
 export function ruleScopeSub(rule: RuleScope, messages: IpAccessMessages): string | null {
-  if (rule.scopeType === 'global') return null
+  if (parseScopeChoice(scopeChoiceKey(rule.scopeType, rule.scopeRefNo)).whole) return null
   if (rule.scopeName == null) return messages.deadTarget
   return `#${rule.scopeRefNo}`
 }
@@ -535,9 +596,10 @@ export function formScopeTitle(
   form: IpRuleForm,
   targetTitle: string | null,
   messages: IpAccessMessages,
+  catalog: IpScopeCatalog = CORE_SCOPE_CATALOG,
 ): string {
-  const label = scopeTypeLabel(form.scopeType, messages)
-  if (form.scopeType === 'global') return label
+  const label = scopeChoiceLabel(form.scopeType, messages, catalog)
+  if (parseScopeChoice(form.scopeType).whole) return label
   return targetTitle != null ? `${label} · ${targetTitle}` : `${label} #${form.scopeRefNo.trim()}`
 }
 
@@ -662,6 +724,7 @@ export function impactLine(view: IpPreviewView, messages: IpAccessMessages): str
   if (view.state === 'loading') return messages.previewLoading
   if (view.state === 'pending-input') return messages.previewPendingInput
   if (view.state === 'forbidden') return messages.previewForbidden
+  if (view.state === 'unrelated') return messages.previewUnrelated
   if (view.state === 'stale') return messages.previewStale
   return messages.previewFailed
 }
@@ -695,6 +758,7 @@ export function removesGlobalAllow(before: string | null, after: string | null):
 
 /** 관문 창의 영향 한 줄. 🔴 미리보기를 못 받았으면 "0명"이 아니라 "확인하지 못했다"(I12) */
 export function gateImpact(view: IpPreviewView, messages: IpAccessMessages): string {
+  if (view.state === 'unrelated') return messages.gateImpactUnrelated
   if (view.state !== 'ready' || view.result == null) return messages.gateImpactUnknown
   const count = view.result.summary.newlyLocked
   return count > 0 ? messages.gateImpactLocked(count) : messages.gateImpactNone

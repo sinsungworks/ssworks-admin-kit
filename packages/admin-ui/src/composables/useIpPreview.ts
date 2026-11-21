@@ -61,7 +61,8 @@ export function useIpPreview(options: IpPreviewOptions): IpPreviewController {
     result: AdminIpPreview | null,
     clientIp = view.value.clientIp,
   ): void {
-    view.value = { state, op: target.value.op, result, clientIp }
+    const op = target.value.op
+    view.value = { state, op: op === 'unrelated' ? null : op, result, clientIp }
   }
 
   async function run(query: AdminIpPreviewQuery, mine: number): Promise<void> {
