@@ -80,6 +80,7 @@ describe('🔴 R3a — 확장 규칙은 관리자 판정에 쓰이지 않는다'
     const count = () =>
       t.db.transaction().execute((trx) => countSuperAdmins(trx, { ipAware: true }))
     const before = await count()
+    expect(before).toBe(1)
     await seedShadowingExtraRules()
     expect(await count()).toBe(before)
   })

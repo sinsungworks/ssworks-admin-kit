@@ -139,7 +139,8 @@ describe('라우트로 확장 범위를 쓴다', () => {
     }).expect(200)
     expect(adminIpRuleItemSchema.parse(data(updated)).item.revision).toBe(1)
     await sendJson(agent.delete(`${IP_PATH}/${ruleNo}`), { revision: 1 }).expect(200)
-    expect(await auditRows(CoreAuditActions.IP_ACCESS_DELETE)).toHaveLength(1)
+    const rows = await auditRows(CoreAuditActions.IP_ACCESS_DELETE)
+    expect(rows.filter((row) => String(row.targetRefNo) === String(ruleNo))).toHaveLength(1)
   })
 
   it('🔴 슬롯은 그대로 — 권한 없는 사람은 403', async () => {
