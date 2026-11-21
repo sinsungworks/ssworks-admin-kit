@@ -535,6 +535,8 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
       }
     }
     if (!(await askDiscard())) return false
+    // 🔴 확인 순간에 다시 본다 — 묻는 사이 권한이 회수되거나 쓰기가 시작됐을 수 있다
+    if (!options.canManage() || busy.value) return false
     alerts.value = []
     if (prefill?.scopeName != null && prefill.scopeRefNo !== null) {
       knownTargets.set(`${prefill.scopeType}:${prefill.scopeRefNo}`, prefill.scopeName)
@@ -546,6 +548,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   async function openEdit(rule: R): Promise<boolean> {
     if (!options.canManage() || busy.value || !canEditRule(rule)) return false
     if (!(await askDiscard())) return false
+    if (!options.canManage() || busy.value || !canEditRule(rule)) return false
     alerts.value = []
     setEditor(rule)
     return true

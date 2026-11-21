@@ -164,6 +164,12 @@ describe('한 범위 모드(focus — 스펙 §5-3)', () => {
     ).toThrow(/focus/)
   })
 
+  it('고정 대상의 이름을 모르면 번호로 표기한다', async () => {
+    const { ip } = await setup({ focus: { scopeType: 'shippingToken', scopeRefNo: 99n } })
+    await ip.openCreate()
+    expect(ip.manager.value.extraTarget).toMatchObject({ mode: 'fixed', fixedTitle: '#99' })
+  })
+
   it('저장 뒤 재조회 — 다시 걸러 보인다', async () => {
     const { ip, list } = await setup({ focus: FOCUS_7 })
     list.mockResolvedValueOnce([
@@ -229,6 +235,20 @@ describe('미리 채운 만들기(openCreate(prefill) — 스펙 §5-5 · R6c)',
     expect(ip.manager.value.discardDialog.modelValue).toBe(true)
     ip.manager.value.discardDialog.onConfirm()
     expect(await closing).toBe(true)
+  })
+
+  it('🔴 버리기 확인 뒤 권한을 다시 본다 — 회수됐으면 편집기는 그대로', async () => {
+    let allowed = true
+    const { ip } = await setup({ canManage: () => allowed })
+    await ip.openCreate(PREFILL)
+    const reopening = ip.openCreate({ ...PREFILL, scopeRefNo: 7n, cidr: '203.0.113.60/32' })
+    await flushPromises()
+    expect(ip.manager.value.discardDialog.modelValue).toBe(true)
+    allowed = false
+    ip.manager.value.discardDialog.onConfirm()
+    expect(await reopening).toBe(false)
+    expect(ip.editing.value).toBe('new')
+    expect(ip.form.value).toMatchObject({ scopeRefNo: '8', cidr: '203.0.113.50/32' })
   })
 
   it('범위 전체로 연다', async () => {
