@@ -191,6 +191,14 @@ describe('한 범위 모드(focus — 스펙 §5-3)', () => {
     expect(preview).not.toHaveBeenCalled()
   })
 
+  it('🔴 openEdit 는 focus 밖 규칙을 열지 않는다 — 같은 범위의 다른 대상', async () => {
+    const { ip } = await setup({ focus: FOCUS_7 })
+    expect(await ip.openEdit(TOKEN_8)).toBe(false)
+    expect(ip.editing.value).toBeNull()
+    expect(await ip.openEdit(GLOBAL_V4)).toBe(false)
+    expect(await ip.openEdit(TOKEN_7)).toBe(true)
+  })
+
   it('저장 뒤 재조회 — 다시 걸러 보인다', async () => {
     const { ip, list } = await setup({ focus: FOCUS_7 })
     list.mockResolvedValueOnce([

@@ -551,7 +551,8 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   }
 
   async function openEdit(rule: R): Promise<boolean> {
-    if (!options.canManage() || busy.value || !canEditRule(rule)) return false
+    // 🔴 한 범위 모드의 목록 밖 규칙은 열지 않는다 — pinFocus 가 대상을 조용히 고정 대상으로 바꿔 쓰게 된다
+    if (!options.canManage() || busy.value || !canEditRule(rule) || !inFocus(rule)) return false
     if (!(await askDiscard())) return false
     if (!options.canManage() || busy.value || !canEditRule(rule)) return false
     alerts.value = []
