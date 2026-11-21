@@ -2691,14 +2691,12 @@ describe('400 · 404', () => {
     })
     const agent = await signIn(manager)
     expectError(
-      await agent
-        .get(`${IP_PATH}/preview`)
-        .query({
-          op: 'create',
-          scopeType: PROBE_SCOPE,
-          scopeRefNo: String(token),
-          cidr: '10.0.0.0/8',
-        }),
+      await agent.get(`${IP_PATH}/preview`).query({
+        op: 'create',
+        scopeType: PROBE_SCOPE,
+        scopeRefNo: String(token),
+        cidr: '10.0.0.0/8',
+      }),
       400,
       CommonErrorCodes.ERR_COMMON_VALIDATION,
     )
