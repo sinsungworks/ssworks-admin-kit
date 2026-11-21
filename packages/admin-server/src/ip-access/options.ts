@@ -125,7 +125,7 @@ function resolveExtraScope(
   }
   if (typeof type !== 'string' || !isIpExtraScopeTypeName(type)) {
     problems.push(
-      `${place}.type 은 영소문자로 시작하는 영숫자 1~16자이고 global · team · user 와 달라야 한다: ${JSON.stringify(type)}`,
+      `${place}.type 은 영소문자로 시작하는 영숫자 1~16자이고 global · team · user 와 달라야 한다: ${typeof type === 'string' ? JSON.stringify(type) : typeof type}`,
     )
   }
   if (wholeScope !== undefined && typeof wholeScope !== 'boolean') {

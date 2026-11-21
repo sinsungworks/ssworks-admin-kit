@@ -62,6 +62,7 @@ describe('resolveIpAccessConfig — ipAccess', () => {
       { extraScopes: [{ type: 'gLOBAL', target }] },
       'ipAccess.extraScopes[0].type 은',
     ],
+    ['type 이 bigint', { extraScopes: [{ type: 1n, target }] }, 'ipAccess.extraScopes[0].type 은'],
     [
       'wholeScope 가 boolean 아님',
       { extraScopes: [{ type: 'a', wholeScope: 'yes', target }] },

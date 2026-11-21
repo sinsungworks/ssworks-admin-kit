@@ -1,8 +1,13 @@
-import { IP_ACCESS_SCHEMA_MESSAGES } from '@ssworks/admin-shared'
+import { BusinessError, IP_ACCESS_SCHEMA_MESSAGES } from '@ssworks/admin-shared'
 import { describe, expect, it } from 'vitest'
 import { IP_ACCESS_MESSAGES } from './errors.js'
 import { resolveIpAccessConfig, type AdminIpScopeTarget } from './options.js'
-import { isKnownScopeType, ruleScopeProblem, sameScopeFamily } from './scope-check.js'
+import {
+  assertRuleScope,
+  isKnownScopeType,
+  ruleScopeProblem,
+  sameScopeFamily,
+} from './scope-check.js'
 
 const target: AdminIpScopeTarget = {
   async lock() {
@@ -63,5 +68,22 @@ describe('범위 판정(scope-check — 스펙 §4-2 · X2)', () => {
     expect(sameScopeFamily('shippingToken', 'global')).toBe(false)
     expect(sameScopeFamily('shippingToken', 'apiKey')).toBe(false)
     expect(sameScopeFamily('shippingToken', 'shippingToken')).toBe(true)
+  })
+
+  it('assertRuleScope — 400 의 칸(scopeType · scopeRefNo) · 맞으면 던지지 않는다', () => {
+    const pathOf = (scope: { scopeType: string; scopeRefNo: bigint | null }) => {
+      try {
+        assertRuleScope(config, scope)
+      } catch (error) {
+        expect(error).toBeInstanceOf(BusinessError)
+        const details = (error as BusinessError).details as { issues: { path: string[] }[] }
+        return details.issues[0]?.path
+      }
+      return null
+    }
+    expect(pathOf({ scopeType: 'gone', scopeRefNo: 1n })).toEqual(['scopeType'])
+    expect(pathOf({ scopeType: 'apiKey', scopeRefNo: null })).toEqual(['scopeRefNo'])
+    expect(pathOf({ scopeType: 'shippingToken', scopeRefNo: 7n })).toBeNull()
+    expect(pathOf({ scopeType: 'global', scopeRefNo: null })).toBeNull()
   })
 })
