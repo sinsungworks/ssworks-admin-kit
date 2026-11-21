@@ -1,4 +1,9 @@
-import { CommonErrorCodes, IP_ACCESS_SCHEMA_MESSAGES } from '@ssworks/admin-shared'
+import {
+  CommonErrorCodes,
+  IP_ACCESS_SCHEMA_MESSAGES,
+  type BusinessError,
+} from '@ssworks/admin-shared'
+import type { Connection } from 'mariadb'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { GUARD_LOCK_SUPER_ADMIN } from '../accounts/super-admin.js'
 import type { AdminReauthService } from '../auth/reauth.service.js'
@@ -281,6 +286,7 @@ describe('🔴 확장 쓰기는 잔존 밖(X3)', () => {
           ACTOR_IP,
         ),
       () => service.update(ruleNo, { cidr: '10.1.0.0/16', revision: 0 }, me(), ACTOR_IP),
+      // revision: 1 — 바로 앞 수정이 올린 값에 기댄다(순서를 바꾸면 409)
       () => service.remove(ruleNo, { revision: 1 }, me(), ACTOR_IP),
     ]
     for (const write of writes) {
@@ -315,6 +321,101 @@ describe('🔴 확장 쓰기는 잔존 밖(X3)', () => {
       null,
     )
     expect(item.cidr).toBe('192.0.2.0/24')
+  })
+})
+
+describe('잠금 순서 · 갈래 재확인(X4 · X6)', () => {
+  const holdRule = (ruleNo: bigint) => (connection: Connection) =>
+    connection.query('select rule_no from ip_access_rules where rule_no = ? for update', [ruleNo])
+  const conflictCode = (result: { ok: boolean; error?: unknown }) => {
+    expect(result.ok).toBe(false)
+    expect((result.error as BusinessError).code).toBe(CommonErrorCodes.ERR_COMMON_REVISION_CONFLICT)
+  }
+
+  it('수정이 새 대상으로 옮길 때 그 대상 행을 기다린다', async () => {
+    const ruleNo = await seedIpRule(t.db, {
+      scopeType: PROBE_SCOPE,
+      scopeRefNo: token,
+      cidr: '10.0.0.0/8',
+    })
+    const result = await whileHeld(
+      t,
+      (connection) =>
+        connection.query('select token_no from probe_tokens where token_no = ? for update', [
+          other,
+        ]),
+      () => service.update(ruleNo, { scopeRefNo: other, revision: 0 }, me(), ACTOR_IP),
+      { expectWait: true },
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.value.item.scopeRefNo).toBe(other)
+  })
+
+  it('🔴 규칙 행이 먼저다 — 확장 수정 · 삭제는 규칙 행을 기다린다', async () => {
+    const ruleNo = await seedIpRule(t.db, {
+      scopeType: PROBE_SCOPE,
+      scopeRefNo: token,
+      cidr: '10.0.0.0/8',
+    })
+    const updated = await whileHeld(
+      t,
+      holdRule(ruleNo),
+      () => service.update(ruleNo, { cidr: '10.1.0.0/16', revision: 0 }, me(), ACTOR_IP),
+      { expectWait: true },
+    )
+    expect(updated.ok).toBe(true)
+    const removed = await whileHeld(
+      t,
+      holdRule(ruleNo),
+      () => service.remove(ruleNo, { revision: 1 }, me(), ACTOR_IP),
+      { expectWait: true },
+    )
+    expect(removed.ok).toBe(true)
+  })
+
+  it('🔴 갈래 재확인 409 — 기다리는 사이 갈래가 바뀐 확장 수정 · 삭제', async () => {
+    for (const write of ['update', 'remove'] as const) {
+      const ruleNo = await seedIpRule(t.db, {
+        scopeType: PROBE_SCOPE,
+        scopeRefNo: token,
+        cidr: '10.0.0.0/8',
+      })
+      const result = await whileHeld(
+        t,
+        holdRule(ruleNo),
+        () =>
+          write === 'update'
+            ? service.update(ruleNo, { cidr: '10.2.0.0/16', revision: 0 }, me(), ACTOR_IP)
+            : service.remove(ruleNo, { revision: 0 }, me(), ACTOR_IP),
+        {
+          expectWait: true,
+          afterReached: (c) =>
+            c.query(
+              "update ip_access_rules set scope_type = 'global', scope_ref_no = null where rule_no = ?",
+              [ruleNo],
+            ),
+        },
+      )
+      conflictCode(result)
+    }
+  })
+
+  it('🔴 갈래 재확인 409 — 기다리는 사이 확장으로 바뀐 코어 수정', async () => {
+    const ruleNo = await seedIpRule(t.db, { scopeType: 'global', cidr: '198.51.100.0/24' })
+    const result = await whileHeld(
+      t,
+      holdRule(ruleNo),
+      () => service.update(ruleNo, { cidr: '198.51.100.0/25', revision: 0 }, me(), ACTOR_IP),
+      {
+        expectWait: true,
+        afterReached: (c) =>
+          c.query(
+            "update ip_access_rules set scope_type = 'probeToken', scope_ref_no = ? where rule_no = ?",
+            [token, ruleNo],
+          ),
+      },
+    )
+    conflictCode(result)
   })
 })
 

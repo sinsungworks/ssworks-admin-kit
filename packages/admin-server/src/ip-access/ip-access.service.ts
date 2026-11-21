@@ -298,7 +298,11 @@ export class AdminIpAccessService {
     )
   }
 
-  /** 🔴 확장 갈래 — 대상 규칙 → 갈래 재확인 → revision → 등록 · wholeScope → target.lock(X3 · X4 · X7 · X8) */
+  /**
+   * 🔴 확장 갈래 — 대상 규칙 → 갈래 재확인 → revision → 등록 · wholeScope → target.lock(X3 · X4 · X7 · X8).
+   * `scopeRefNo` 가 그대로여도 병합된 대상을 다시 잠근다(코어 갈래의 병합 참조와 같다) — 대상이 지워진 규칙은 지우기만 되고
+   * 고칠 수는 없다.
+   */
   private async updateExtra(
     ruleNo: bigint,
     scopeType: string,

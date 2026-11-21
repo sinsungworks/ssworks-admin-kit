@@ -13,7 +13,11 @@ import type { AdminServerOptions } from '../options.js'
  *    옵션에 들어간다. 속성 꼴(`lock: (trx) => …`)로 바꾸면 strictFunctionTypes 가 막는다(options.types.test.ts).
  */
 export interface AdminIpScopeTarget<DB extends AdminDatabase = AdminDatabase> {
-  /** 🔴 쓰기 트랜잭션 안 — 대상 행을 FOR UPDATE 로 잠그고, 있으면 true. 없으면 400 issues[scopeRefNo] */
+  /**
+   * 🔴 쓰기 트랜잭션 안 — 대상 행을 FOR UPDATE 로 잠그고, 있으면 true. 없으면 400 issues[scopeRefNo].
+   * 🔴 훅의 첫 문장은 잠금 읽기(FOR UPDATE)여야 한다 — 비잠금 SELECT 가 먼저 가면 읽기 뷰가 일찍 열려 MariaDB 12.3 스냅샷
+   *    격리에서 뒤따르는 쓰기가 1020 이 될 수 있다(R5-5 와 같은 이유).
+   */
   lock(trx: Transaction<DB>, refNo: bigint): Promise<boolean>
   /** 목록 · 응답의 대상 이름. 없는 번호는 빼고 돌려준다(→ scopeName null). 빈 배열로는 부르지 않는다. 🔴 돌려주는 Map 의 키는 받은 refNos 와 같은 bigint 여야 한다(number · string 키는 조용히 빗나가 scopeName 이 null 이 된다) */
   names(db: Kysely<DB>, refNos: readonly bigint[]): Promise<ReadonlyMap<bigint, string>>
