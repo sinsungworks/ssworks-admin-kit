@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common'
 import {
   evaluateIpAccess,
+  isCoreIpScopeType,
   type AdminIpPreviewQuery,
   type AdminIpRuleCreate,
   type AdminIpRuleRemove,
@@ -19,7 +20,7 @@ import { clientIpOf } from '../auth/request-meta.js'
 import { runQuery, runWriteTransaction } from '../database/run.js'
 import type { AdminDatabase } from '../database/types.js'
 import { ADMIN_IP_ACCESS_CONFIG, KYSELY } from '../tokens.js'
-import { assertIpScope, ruleRevisionConflict, selfLockout } from './errors.js'
+import { assertIpScope, ruleNotFound, ruleRevisionConflict, selfLockout } from './errors.js'
 import type { ResolvedIpAccessConfig } from './options.js'
 import {
   buildLockoutCandidates,
@@ -37,6 +38,7 @@ import {
 } from './queries.js'
 import { lockRule, lockScopeRef, type LockedRule } from './rule-locks.js'
 import { ipRuleSetQuery } from './rule-set.js'
+import { toRuleViews, type AdminIpRuleView } from './rule-views.js'
 
 // 정본: hangang-home apps/api/src/modules/ip-access/ip-access.service.ts(목록 · 미리보기 · 만들기 · 수정 · 삭제)
 // 바꾼 점:
@@ -48,6 +50,8 @@ import { ipRuleSetQuery } from './rule-set.js'
 //  - 감사 diff 는 컨트롤러가 커밋 뒤에 붙인다 — 409 로 롤백된 변경을 after 로 남기지 않는다(hangang I3).
 // 🔴 재인증은 트랜잭션 밖이다 — argon2 가 가드 행을 쥔 채 돌면 모든 잔존 쓰기가 그 뒤에 줄을 선다(hangang Task 12).
 
+export type { AdminIpRuleView } from './rule-views.js'
+
 export type AdminIpRuleCreateBody = Omit<AdminIpRuleCreate, 'scopeType'> & {
   scopeType: IpScopeType
   currentPassword?: string
@@ -58,23 +62,9 @@ export type AdminIpRuleUpdateBody = Omit<AdminIpRuleUpdate, 'scopeType'> & {
 }
 export type AdminIpRuleRemoveBody = AdminIpRuleRemove & { currentPassword?: string }
 
-/** 목록 · 응답의 행 — admin-shared adminIpRuleSchema 와 같은 모양(시각은 ISO 문자열) */
-export type AdminIpRuleView = {
-  ruleNo: bigint
-  scopeType: IpScopeType
-  scopeRefNo: bigint | null
-  scopeName: string | null
-  scopeUserId: string | null
-  cidr: string
-  description: string | null
-  revision: number
-  createAt: string
-  updateAt: string
-}
-
 /** 감사 before · after — 규칙 행 전체가 변경 대상이다(hangang I3) */
 export type IpRuleAuditView = {
-  scopeType: IpScopeType
+  scopeType: string
   scopeRefNo: bigint | null
   cidr: string
   description: string | null
@@ -90,36 +80,6 @@ export type AdminIpPreviewView = IpLockoutPreview & {
 /** 🔴 IP 쓰기는 늘 IP 를 아는 셈이다 — 토큰 유무와 무관(P3) */
 const IP_WRITE: SurvivalCount = Object.freeze({ ipAware: true })
 
-type RuleViewRow = {
-  ruleNo: bigint
-  scopeType: IpScopeType
-  scopeRefNo: bigint | null
-  teamName: string | null
-  userName: string | null
-  userId: string | null
-  cidr: string
-  description: string | null
-  revision: number
-  createAt: Date
-  updateAt: Date
-}
-
-function toRuleView(row: RuleViewRow): AdminIpRuleView {
-  return {
-    ruleNo: row.ruleNo,
-    scopeType: row.scopeType,
-    scopeRefNo: row.scopeRefNo,
-    scopeName:
-      row.scopeType === 'team' ? row.teamName : row.scopeType === 'user' ? row.userName : null,
-    scopeUserId: row.scopeType === 'user' ? row.userId : null,
-    cidr: row.cidr,
-    description: row.description,
-    revision: row.revision,
-    createAt: row.createAt.toISOString(),
-    updateAt: row.updateAt.toISOString(),
-  }
-}
-
 function auditViewOf(rule: IpRuleAuditView): IpRuleAuditView {
   return {
     scopeType: rule.scopeType,
@@ -132,12 +92,6 @@ function auditViewOf(rule: IpRuleAuditView): IpRuleAuditView {
 /** 요청자 — 주체의 userNo · 대표 팀(인증이 고른 팀) */
 function subjectOf(principal: AdminPrincipal): IpSubject {
   return { userNo: principal.userNo, teamNos: principal.teamNo === null ? [] : [principal.teamNo] }
-}
-
-async function readRuleView(db: Kysely<AdminDatabase>, ruleNo: bigint): Promise<AdminIpRuleView> {
-  return toRuleView(
-    await ruleViewQuery(db).where('r.ruleNo', '=', ruleNo).executeTakeFirstOrThrow(),
-  )
 }
 
 /**
@@ -169,7 +123,14 @@ export class AdminIpAccessService {
 
   async list(): Promise<{ items: AdminIpRuleView[] }> {
     const rows = await runQuery(() => ruleViewQuery(this.db).execute())
-    return { items: rows.map(toRuleView) }
+    return { items: await toRuleViews(this.db, this.config, rows) }
+  }
+
+  /** 한 행의 응답 모양 — 쓰기 트랜잭션 안에서 부르면 자기 쓰기를 본다 */
+  private async readRuleView(db: Kysely<AdminDatabase>, ruleNo: bigint): Promise<AdminIpRuleView> {
+    const row = await ruleViewQuery(db).where('r.ruleNo', '=', ruleNo).executeTakeFirstOrThrow()
+    const [view] = await toRuleViews(db, this.config, [row])
+    return view as AdminIpRuleView
   }
 
   /** 🔴 잠금 · 트랜잭션 · 감사 · 재인증이 없다 — 읽은 순간의 스냅숏이라 저장이 409 일 수 있다 */
@@ -233,7 +194,7 @@ export class AdminIpAccessService {
               .executeTakeFirstOrThrow()
             const ruleNo = inserted.insertId as bigint
             await assertNotSelfLockout(trx, clientIp, actor)
-            return { item: await readRuleView(trx, ruleNo) }
+            return { item: await this.readRuleView(trx, ruleNo) }
           },
         },
         IP_WRITE,
@@ -256,6 +217,8 @@ export class AdminIpAccessService {
           // 🔴 잠금 읽기 · 판정만 — 대상 규칙 → revision → 병합 결과 불변식 → 병합 결과의 참조 행
           lock: async (): Promise<{ target: LockedRule; scope: IpScope }> => {
             const target = await lockRule(trx, ruleNo)
+            // 🔴 임시(Task 4 가 확장 갈래로 나눈다) — 확장 범위 행은 코어 갈래에서 찾을 수 없다(X9 와 같은 404)
+            if (!isCoreIpScopeType(target.scopeType)) throw ruleNotFound()
             if (body.revision !== target.revision) throw ruleRevisionConflict()
             // 🔴 병합 결과가 판정 대상이다(hangang R30) — global 행에 scopeType: 'user' 만 보내면 어느 층에도 안 걸리는 행이 된다
             const scope: IpScope = {
@@ -280,7 +243,7 @@ export class AdminIpAccessService {
               .where('ruleNo', '=', ruleNo)
               .execute()
             await assertNotSelfLockout(trx, clientIp, actor)
-            const item = await readRuleView(trx, ruleNo)
+            const item = await this.readRuleView(trx, ruleNo)
             return { item, before: auditViewOf(target), after: auditViewOf(item) }
           },
         },

@@ -9,6 +9,7 @@ import {
   ruleViewQuery,
   teamMappingsQuery,
 } from './queries.js'
+import { countScopeRulesQuery, scopeRulesQuery } from './extra-scope-queries.js'
 import { ipRuleSetQuery } from './rule-set.js'
 
 // 🔴 미리보기 · 목록 쿼리를 컴파일된 SQL 로 잰다(hangang ip-access.preview.test.ts) — 틀리면 화면은 그럴듯한데 사람이 목록에서
@@ -65,5 +66,51 @@ describe('규칙 읽기', () => {
       'left join `users` as `u` on `u`.`user_no` = `r`.`scope_ref_no` and `r`.`scope_type` = ?',
     )
     expect(sql).toContain('order by `r`.`scope_type`, `r`.`rule_no`')
+  })
+})
+
+describe('🔴 관리자 판정은 코어 셋만 읽는다(확장 범위 스펙 §4-5 · R3a)', () => {
+  it('정책 · 잔존 · 자기 잠금(ipRuleSetQuery) · 미리보기(identifiedRulesQuery)', () => {
+    for (const query of [ipRuleSetQuery(db), identifiedRulesQuery(db)]) {
+      const compiled = query.compile()
+      expect(compiled.sql).toContain('`scope_type` in (?, ?, ?)')
+      expect(compiled.parameters).toEqual(['global', 'team', 'user'])
+    }
+  })
+
+  it('목록은 전부 — 확장 범위 행도 싣는다', () => {
+    expect(ruleViewQuery(db).compile().sql).not.toContain('`scope_type` in')
+  })
+})
+
+describe('쓰는 쪽 읽기(extra-scope-queries — 스펙 §4-6)', () => {
+  it('rulesOf — 그 범위 전부 · 범위 전체를 끄면 NULL 행을 뺀다', () => {
+    const all = scopeRulesQuery(db, 'shippingToken', { wholeScope: true }).compile()
+    expect(all.sql).toBe(
+      'select `scope_type`, `scope_ref_no`, `cidr` from `ip_access_rules` where `scope_type` = ? order by `rule_no`',
+    )
+    expect(all.parameters).toEqual(['shippingToken'])
+    expect(scopeRulesQuery(db, 'shippingToken', { wholeScope: false }).compile().sql).toContain(
+      'where `scope_type` = ? and `scope_ref_no` is not null',
+    )
+  })
+
+  it('allows — 그 대상 · 범위 전체 행만(인덱스 idxIpAccessRulesScope)', () => {
+    const both = scopeRulesQuery(db, 'shippingToken', { wholeScope: true, refNo: 7n }).compile()
+    expect(both.sql).toContain(
+      'where `scope_type` = ? and (`scope_ref_no` = ? or `scope_ref_no` is null)',
+    )
+    expect(both.parameters).toEqual(['shippingToken', 7n])
+    expect(
+      scopeRulesQuery(db, 'shippingToken', { wholeScope: false, refNo: 7n }).compile().sql,
+    ).toContain('where `scope_type` = ? and `scope_ref_no` = ?')
+  })
+
+  it('countRulesOf — 그 대상 번호의 행만 · 잠금 없음', () => {
+    const compiled = countScopeRulesQuery(db, 'shippingToken', 7n).compile()
+    expect(compiled.sql).toBe(
+      'select count(*) as `n` from `ip_access_rules` where `scope_type` = ? and `scope_ref_no` = ?',
+    )
+    expect(compiled.sql.toLowerCase()).not.toContain('for update')
   })
 })

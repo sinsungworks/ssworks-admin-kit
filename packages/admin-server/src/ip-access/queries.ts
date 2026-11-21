@@ -1,3 +1,4 @@
+import { IP_SCOPE_TYPES } from '@ssworks/admin-shared'
 import type { Kysely } from 'kysely'
 import type { AdminDatabase } from '../database/types.js'
 
@@ -7,6 +8,7 @@ import type { AdminDatabase } from '../database/types.js'
 //  - 재직 조건은 resignAt IS NULL OR resignAt > now — 우리 resignAt 은 효력 시각이다(2b ④ R1). hangang 은 날짜 cutoff.
 //  - 🔴 팀 배정 조건(EXISTS teamUserMap)을 뺐다 — 우리 인증은 무소속 계정도 통과시킨다(빈 teamNos, 2f-1 스펙 P12).
 //  - 목록은 대상 이름을 범위별 LEFT JOIN 으로 싣는다(P13).
+//  - 미리보기 읽기는 코어 셋만(확장 범위 스펙 X9).
 // 🔴 모듈 수준 함수다 — DB 없이 컴파일된 SQL 을 단위 테스트가 잰다. 🔴 모두 비잠금이다(ipAccessRules 를 잠그는 곳은 IP 쓰기의
 //    대상 행뿐 — rule-locks lockRule).
 
@@ -37,11 +39,12 @@ export function ruleViewQuery(db: Kysely<AdminDatabase>) {
     .orderBy('r.ruleNo')
 }
 
-/** 미리보기의 지금 규칙 — 시뮬레이션이 대상을 지목하는 ruleNo 포함. 🔴 잠금 없음(화면이 칠 때마다 부른다) */
+/** 미리보기의 지금 규칙 — 시뮬레이션이 대상을 지목하는 ruleNo 포함. 🔴 코어 셋만(확장 범위 스펙 X9 — 확장 규칙 번호의 수정 · 삭제 미리보기는 404). 🔴 잠금 없음 */
 export function identifiedRulesQuery(db: Kysely<AdminDatabase>) {
   return db
     .selectFrom('ipAccessRules')
     .select(['ruleNo', 'scopeType', 'scopeRefNo', 'cidr'])
+    .where('scopeType', 'in', IP_SCOPE_TYPES)
     .orderBy('ruleNo')
 }
 

@@ -71,6 +71,12 @@ export type { AdminLegalOptions } from './legal/options.js'
 
 // IP 접근 제어(PR 2f-1)
 export { AdminIpAccessModule } from './ip-access/ip-access.module.js'
+export { AdminIpExtraScopeService } from './ip-access/extra-scope.service.js'
+export type {
+  AdminIpAccessOptions,
+  AdminIpExtraScope,
+  AdminIpScopeTarget,
+} from './ip-access/options.js'
 
 // 이미지 업로드(PR 2h)
 // 🔴 ./storage/s3.js 는 여기서 내보내지 않는다 — 서브패스 `@ssworks/admin-server/storage/s3` 만 SDK 를 끌어온다(s3-isolation.test.ts)

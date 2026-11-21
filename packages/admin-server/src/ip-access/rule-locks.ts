@@ -1,4 +1,4 @@
-import type { IpScope, IpScopeType } from '@ssworks/admin-shared'
+import type { IpScope } from '@ssworks/admin-shared'
 import type { Transaction } from 'kysely'
 import type { AdminDatabase } from '../database/types.js'
 import { IP_ACCESS_MESSAGES, ruleNotFound, scopeRefError } from './errors.js'
@@ -13,7 +13,7 @@ import { IP_ACCESS_MESSAGES, ruleNotFound, scopeRefError } from './errors.js'
 
 export interface LockedRule {
   ruleNo: bigint
-  scopeType: IpScopeType
+  scopeType: string
   scopeRefNo: bigint | null
   cidr: string
   description: string | null

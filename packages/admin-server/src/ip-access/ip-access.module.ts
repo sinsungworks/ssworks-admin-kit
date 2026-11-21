@@ -11,12 +11,14 @@ import {
 } from '../tokens.js'
 import { AdminIpAccessController } from './ip-access.controller.js'
 import { IpAccessPolicy } from './ip-access.policy.js'
+import { AdminIpExtraScopeService } from './extra-scope.service.js'
 import { AdminIpAccessService } from './ip-access.service.js'
 import { resolveIpAccessConfig } from './options.js'
 
 // 정본: hangang-home apps/api/src/modules/ip-access/ip-access.module.ts
-// 바꾼 점: 패키지 기능 모듈 — 쓰는 쪽 app.module.ts 가 import 하고 코어 모듈이 /admin prefix 를 붙인다. 옵션이 없다(import 하면
-//   켜진다, 2f-1 스펙 2-2 #3). 2b 의 ADMIN_ACCESS_POLICY 자리와 잔존 셈의 표시 토큰 IP_ACCESS_ENABLED 를 낸다.
+// 바꾼 점: 패키지 기능 모듈 — 쓰는 쪽 app.module.ts 가 import 하고 코어 모듈이 /admin prefix 를 붙인다. 모듈 옵션이 없다 —
+//   import 하면 켜진다(2f-1 2-2 #3). 확장 범위는 코어 옵션 ipAccess. 2b 의 ADMIN_ACCESS_POLICY 자리와 잔존 셈의 표시 토큰
+//   IP_ACCESS_ENABLED 를 낸다. 확장 범위(스펙 §4-6): 쓰는 쪽 판정 서비스 AdminIpExtraScopeService 를 전역으로 낸다.
 // 🔴 전역이다 — AdminAuthService 의 @Optional() ADMIN_ACCESS_POLICY · 역할 · 사용자 서비스의 @Optional() IP_ACCESS_ENABLED 가
 //    import 순서와 상관없이 받는다(2c 감사 모듈의 ADMIN_AUTH_EVENTS 와 같다).
 // 🔴 이 파일은 admin-server.module.ts 를 import 하지 않는다 — 코어 모듈이 이 모듈을 ADMIN_ROUTE_MODULES 로 import 한다.
@@ -32,10 +34,11 @@ import { resolveIpAccessConfig } from './options.js'
       inject: [ADMIN_SERVER_OPTIONS],
     },
     AdminIpAccessService,
+    AdminIpExtraScopeService,
     { provide: ADMIN_ACCESS_POLICY, useClass: IpAccessPolicy },
     { provide: IP_ACCESS_ENABLED, useValue: true },
   ],
-  exports: [ADMIN_ACCESS_POLICY, IP_ACCESS_ENABLED],
+  exports: [ADMIN_ACCESS_POLICY, IP_ACCESS_ENABLED, AdminIpExtraScopeService],
 })
 export class AdminIpAccessModule implements OnModuleInit {
   constructor(
