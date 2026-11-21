@@ -15,7 +15,7 @@ import type { AdminServerOptions } from '../options.js'
 export interface AdminIpScopeTarget<DB extends AdminDatabase = AdminDatabase> {
   /** 🔴 쓰기 트랜잭션 안 — 대상 행을 FOR UPDATE 로 잠그고, 있으면 true. 없으면 400 issues[scopeRefNo] */
   lock(trx: Transaction<DB>, refNo: bigint): Promise<boolean>
-  /** 목록 · 응답의 대상 이름. 없는 번호는 빼고 돌려준다(→ scopeName null). 빈 배열로는 부르지 않는다 */
+  /** 목록 · 응답의 대상 이름. 없는 번호는 빼고 돌려준다(→ scopeName null). 빈 배열로는 부르지 않는다. 🔴 돌려주는 Map 의 키는 받은 refNos 와 같은 bigint 여야 한다(number · string 키는 조용히 빗나가 scopeName 이 null 이 된다) */
   names(db: Kysely<DB>, refNos: readonly bigint[]): Promise<ReadonlyMap<bigint, string>>
 }
 

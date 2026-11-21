@@ -1,7 +1,7 @@
 import { isCoreIpScopeType } from '@ssworks/admin-shared'
 import type { Kysely } from 'kysely'
 import type { AdminDatabase } from '../database/types.js'
-import type { ResolvedIpAccessConfig } from './options.js'
+import type { ResolvedIpAccessConfig, ResolvedIpExtraScope } from './options.js'
 
 // 정본: hangang-home apps/api/src/modules/ip-access/ip-access.service.ts findAll(행 모양)
 // 바꾼 점: 2f-1 P13(팀 · 사용자 LEFT JOIN 이름)을 서비스에서 옮겼고, 확장 범위 대상 이름을 범위마다 쓰는 쪽 훅(target.names)
@@ -43,18 +43,18 @@ export async function toRuleViews(
   config: Pick<ResolvedIpAccessConfig, 'extraScopes'>,
   rows: readonly RuleViewRow[],
 ): Promise<AdminIpRuleView[]> {
-  const wanted = new Map<string, Set<bigint>>()
+  const wanted = new Map<string, { scope: ResolvedIpExtraScope; refNos: Set<bigint> }>()
   for (const row of rows) {
     if (isCoreIpScopeType(row.scopeType) || row.scopeRefNo === null) continue
-    if (!config.extraScopes.has(row.scopeType)) continue
-    const refNos = wanted.get(row.scopeType) ?? new Set<bigint>()
-    refNos.add(row.scopeRefNo)
-    wanted.set(row.scopeType, refNos)
+    const scope = config.extraScopes.get(row.scopeType)
+    if (scope === undefined) continue
+    const entry = wanted.get(row.scopeType) ?? { scope, refNos: new Set<bigint>() }
+    entry.refNos.add(row.scopeRefNo)
+    wanted.set(row.scopeType, entry)
   }
   const names = new Map<string, ReadonlyMap<bigint, string>>()
-  for (const [scopeType, refNos] of wanted) {
-    const scope = config.extraScopes.get(scopeType)
-    if (scope !== undefined) names.set(scopeType, await scope.target.names(db, [...refNos]))
+  for (const [scopeType, { scope, refNos }] of wanted) {
+    names.set(scopeType, await scope.target.names(db, [...refNos]))
   }
   return rows.map((row) => toRuleView(row, names.get(row.scopeType)))
 }

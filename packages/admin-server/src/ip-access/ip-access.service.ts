@@ -130,7 +130,8 @@ export class AdminIpAccessService {
   private async readRuleView(db: Kysely<AdminDatabase>, ruleNo: bigint): Promise<AdminIpRuleView> {
     const row = await ruleViewQuery(db).where('r.ruleNo', '=', ruleNo).executeTakeFirstOrThrow()
     const [view] = await toRuleViews(db, this.config, [row])
-    return view as AdminIpRuleView
+    if (view === undefined) throw new Error('readRuleView — 행을 읽지 못했다')
+    return view
   }
 
   /** 🔴 잠금 · 트랜잭션 · 감사 · 재인증이 없다 — 읽은 순간의 스냅숏이라 저장이 409 일 수 있다 */
