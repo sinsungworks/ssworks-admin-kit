@@ -418,7 +418,11 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     if (editing.value === null || busy.value) return
     // 🔴 목록 밖 층으로 바꾸는 갱신은 통째로 버린다(3i S4) — 선택지에 없는 층이 들어와도 상태가 갈리지 않게. 지금 층(목록 밖
     //    기존 규칙)에 머무는 갱신은 된다.
-    if (next.scopeType !== form.value.scopeType && !scopes.includes(next.scopeType)) return
+    if (
+      next.scopeType !== form.value.scopeType &&
+      !(scopes as readonly string[]).includes(next.scopeType)
+    )
+      return
     // 🔴 범위를 바꾸면 대상을 비운다(I19) — 팀 번호가 사용자 번호로, 본 적 없는 번호가 남지 않게
     form.value = withScopeType({ ...next, scopeType: form.value.scopeType }, next.scopeType)
     clientErrors.value = {}

@@ -6,7 +6,6 @@
     IP_RULE_DESCRIPTION_MAX_LENGTH,
     IP_SCOPE_TYPES,
     type AdminIpRule,
-    type IpScopeType,
   } from '@ssworks/admin-shared'
   import IpTargetField from './IpTargetField.vue'
   import {
@@ -64,7 +63,9 @@
   )
   const scopeItemList = computed(() => [...props.scopeItems])
   const targetScope = computed(() =>
-    props.form.scopeType === 'global' ? null : props.form.scopeType,
+    props.form.scopeType === 'team' || props.form.scopeType === 'user'
+      ? props.form.scopeType
+      : null,
   )
   const scopeTypes: readonly string[] = IP_SCOPE_TYPES
 
@@ -79,7 +80,7 @@
   /** 범위를 바꾸면 대상 비우기는 흐름(useIpAccessRules)이 한다 — 여기는 값만 올린다 */
   function patchScope(value: unknown): void {
     if (typeof value === 'string' && scopeTypes.includes(value)) {
-      emit('update:form', { ...props.form, scopeType: value as IpScopeType })
+      emit('update:form', { ...props.form, scopeType: value })
     }
   }
 </script>

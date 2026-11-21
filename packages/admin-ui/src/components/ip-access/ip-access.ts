@@ -3,6 +3,7 @@ import {
   IP_CIDR_MAX_LENGTH,
   IP_RULE_DESCRIPTION_MAX_LENGTH,
   ipCidrSchema,
+  isCoreIpScopeType,
   parseCidr,
   type AdminIpPreview,
   type AdminIpPreviewItem,
@@ -42,7 +43,7 @@ export interface IpWriteContext {
 
 /** 칸 값은 문자열 — scopeRefNo '' = 없음 */
 export interface IpRuleForm {
-  scopeType: IpScopeType
+  scopeType: string
   scopeRefNo: string
   cidr: string
   description: string
@@ -358,7 +359,7 @@ export function defaultIpScope(scopes: readonly IpScopeType[]): IpScopeType {
   return scopes.includes('global') ? 'global' : (scopes[0] ?? 'global')
 }
 
-export function scopeTypeLabel(scopeType: IpScopeType, messages: IpAccessMessages): string {
+export function scopeTypeLabel(scopeType: string, messages: IpAccessMessages): string {
   if (scopeType === 'user') return messages.scopeUser
   if (scopeType === 'team') return messages.scopeTeam
   return messages.scopeGlobal
@@ -371,14 +372,14 @@ export function scopeTypeLabel(scopeType: IpScopeType, messages: IpAccessMessage
 export function scopeTypeItems(
   messages: IpAccessMessages,
   scopes: readonly IpScopeType[] = IP_SCOPE_ORDER,
-  current?: IpScopeType,
+  current?: string,
 ): IpSelectItem[] {
   return IP_SCOPE_ORDER.filter((value) => scopes.includes(value) || value === current).map(
     (value) => ({ value, title: scopeTypeLabel(value, messages) }),
   )
 }
 
-export function emptyIpRuleForm(scopeType: IpScopeType = 'global'): IpRuleForm {
+export function emptyIpRuleForm(scopeType: string = 'global'): IpRuleForm {
   return { scopeType, scopeRefNo: '', cidr: '', description: '' }
 }
 
@@ -398,7 +399,7 @@ export function sameIpRuleForm(a: IpRuleForm, b: IpRuleForm): boolean {
 }
 
 /** 🔴 범위를 바꾸면 대상을 비운다 — 팀 번호가 사용자 번호로, 본 적 없는 번호가 다시 나타나지 않게(I19) */
-export function withScopeType(form: IpRuleForm, scopeType: IpScopeType): IpRuleForm {
+export function withScopeType(form: IpRuleForm, scopeType: string): IpRuleForm {
   return form.scopeType === scopeType ? { ...form } : { ...form, scopeType, scopeRefNo: '' }
 }
 
@@ -440,6 +441,7 @@ export function previewQueryOf(target: IpPreviewTarget): AdminIpPreviewQuery | n
   if (target.op === null) return {}
   if (target.op === 'delete') return { op: 'delete', ruleNo: target.ruleNo }
   const { form } = target
+  if (!isCoreIpScopeType(form.scopeType)) return null
   if (!isIpRuleFormPreviewable(form)) return null
   const query: AdminIpPreviewQuery = {
     op: target.op,

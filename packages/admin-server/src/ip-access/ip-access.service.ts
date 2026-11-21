@@ -48,8 +48,14 @@ import { ipRuleSetQuery } from './rule-set.js'
 //  - 감사 diff 는 컨트롤러가 커밋 뒤에 붙인다 — 409 로 롤백된 변경을 after 로 남기지 않는다(hangang I3).
 // 🔴 재인증은 트랜잭션 밖이다 — argon2 가 가드 행을 쥔 채 돌면 모든 잔존 쓰기가 그 뒤에 줄을 선다(hangang Task 12).
 
-export type AdminIpRuleCreateBody = AdminIpRuleCreate & { currentPassword?: string }
-export type AdminIpRuleUpdateBody = AdminIpRuleUpdate & { currentPassword?: string }
+export type AdminIpRuleCreateBody = Omit<AdminIpRuleCreate, 'scopeType'> & {
+  scopeType: IpScopeType
+  currentPassword?: string
+}
+export type AdminIpRuleUpdateBody = Omit<AdminIpRuleUpdate, 'scopeType'> & {
+  scopeType?: IpScopeType
+  currentPassword?: string
+}
 export type AdminIpRuleRemoveBody = AdminIpRuleRemove & { currentPassword?: string }
 
 /** 목록 · 응답의 행 — admin-shared adminIpRuleSchema 와 같은 모양(시각은 ISO 문자열) */

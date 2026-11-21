@@ -4,6 +4,7 @@ import {
   adminIpRuleRemoveSchema,
   adminIpRuleUpdateSchema,
   ipScopeProblem,
+  ipScopeTypeSchema,
 } from '@ssworks/admin-shared'
 import { currentPasswordField } from '../accounts/reauth-body.js'
 import { ZodValidationPipe } from '../http/pipes.js'
@@ -27,7 +28,11 @@ export class IpRuleCreateBodyPipe implements PipeTransform<unknown, AdminIpRuleC
   constructor(@Inject(ADMIN_IP_ACCESS_CONFIG) config: ResolvedIpAccessConfig) {
     this.pipe = new ZodValidationPipe(
       adminIpRuleCreateSchema
-        .extend({ currentPassword: currentPasswordField(config.reauth) })
+        // Task 1 — 공유 스키마가 넓어졌다. 확장 범위를 받는 것은 Task 4 의 파이프다 — 그때까지 코어 셋만(지금 동작)
+        .extend({
+          scopeType: ipScopeTypeSchema,
+          currentPassword: currentPasswordField(config.reauth),
+        })
         .superRefine((body, ctx) => {
           const problem = ipScopeProblem(body)
           if (problem !== null) {
@@ -48,7 +53,10 @@ export class IpRuleUpdateBodyPipe implements PipeTransform<unknown, AdminIpRuleU
 
   constructor(@Inject(ADMIN_IP_ACCESS_CONFIG) config: ResolvedIpAccessConfig) {
     this.pipe = new ZodValidationPipe(
-      adminIpRuleUpdateSchema.extend({ currentPassword: currentPasswordField(config.reauth) }),
+      adminIpRuleUpdateSchema.extend({
+        scopeType: ipScopeTypeSchema.optional(),
+        currentPassword: currentPasswordField(config.reauth),
+      }),
     )
   }
 
