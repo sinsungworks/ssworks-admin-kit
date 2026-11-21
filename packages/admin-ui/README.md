@@ -1222,7 +1222,7 @@ const ip = useIpAccessRules({
   const ip = useIpAccessRules({ ...ipAccessApi, canManage, extraScopes: [shippingScope] })
   ```
 
-- **한 범위 모드**(`focus`): 토큰 상세처럼 한 대상의 규칙만 보일 때 `focus: { scopeType: SHIPPING_TOKEN_SCOPE, scopeRefNo: token.tokenNo }` — 그 대상 + 범위 전체 규칙만, 선택지는 그 범위 둘, 대상 칸은 고정(아는 이름이 없으면 `#<번호>` — 새 토큰이면 `openCreate` 에 `scopeName` 을 넘긴다), 접속 상태 카드는 없다. 서버 미리보기도 부르지 않는다(마운트 · 편집 · 저장 · 삭제 — 단 편집 패널(만들기 · 수정) · 삭제를 한 번도 열지 않은 채 `reload()` · 다시 시도를 부르면 현행 미리보기가 한 번 나간다. 그리지는 않는다). `openEdit(rule)` 은 범위 밖 규칙(목록에서 걸러진 규칙)에 `false` 다. 값이라 대상이 바뀌면 `:key` 로 다시 만든다(`scopeRefNo` 를 빼면 그 범위 전부).
+- **한 범위 모드**(`focus`): 토큰 상세처럼 한 대상의 규칙만 보일 때 `focus: { scopeType: SHIPPING_TOKEN_SCOPE, scopeRefNo: token.tokenNo }` — 그 대상 + 범위 전체 규칙만, 선택지는 그 범위 둘, 대상 칸은 고정(아는 이름이 없으면 `#<번호>` — 새 토큰이면 `openCreate` 에 `scopeName` 을 넘긴다), 접속 상태 카드는 없다. 서버 미리보기도 부르지 않는다(마운트 · `reload()` · 다시 시도 · 편집 · 저장 · 삭제 모두). `openEdit(rule)` 은 범위 밖 규칙(목록에서 걸러진 규칙)에 `false` 다. 값이라 대상이 바뀌면 `:key` 로 다시 만든다(`scopeRefNo` 를 빼면 그 범위 전부).
 - **다른 화면에서 만들기**(`openCreate(prefill)`): 「출고 시도」 의 [이 IP 허용]처럼 미리 채운 편집 패널을 연다 — 같은 화면에 그 composable 의 `<IpAccessManager v-bind="…" />` 가 있어야 한다(대화상자 · 옆 패널 배치는 쓰는 쪽). 미리 채운 값은 고친 값이다(고치던 값이 있으면 버리기 확인을 먼저 묻고, 그 뒤 권한 · 진행 중을 다시 본다 — `openEdit` 도 같다). 고를 수 없는 선택지 · 권한 없음 · 진행 중 · 버리기 확인 취소면 `false`.
 
   ```ts
