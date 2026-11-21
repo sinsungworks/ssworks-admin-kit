@@ -7,6 +7,7 @@ import type { AdminPermissionMap } from './auth/permission-slots.js'
 import type { AdminClientIpSource } from './auth/request-meta.js'
 import type { AdminDbConnection } from './database/connection.js'
 import type { AdminServerMessages } from './http/messages.js'
+import type { AdminIpAccessOptions } from './ip-access/options.js'
 import type { AdminLegalOptions } from './legal/options.js'
 import type { AdminUploadsOptions } from './uploads/options.js'
 
@@ -54,6 +55,13 @@ export interface AdminServerOptions {
    * IP 접근 제어를 우회한다. 세션 행 · 감사 · IP 정책이 같은 값을 본다. 두 값 밖이면 기동에서 멈춘다.
    */
   clientIp?: AdminClientIpSource
+  /**
+   * IP 접근 제어의 확장 범위(확장 범위 스펙 §4-1) — 관리자 밖 주체(장치 토큰 · 외부 API 키 …)에 거는 IP 규칙. 예:
+   * `{ extraScopes: [{ type: 'shippingToken', target: { lock, names } }] }`. 🔴 이름 규칙 밖 · 코어 이름과 겹침 · 훅 없음 ·
+   * 모르는 키(권한 키 포함)는 `AdminIpAccessModule` 이 기동에서 멈춘다. 없으면 지금과 같다. 쓰는 쪽 판정은
+   * `AdminIpExtraScopeService`. 확장 범위 규칙도 슬롯 `ipAccess.read` · `ipAccess.manage` 가 다룬다.
+   */
+  ipAccess?: AdminIpAccessOptions
   /**
    * 편집기 이미지 업로드(2h 스펙 §4-2) — 저장소 · 공개 경로 · 용도 → 권한 · 정책 · 정리. 🔴 `AdminUploadsModule` 을 쓰면 필수 — 없거나
    * 저장소 모양이 아니거나 `mediaPath` 가 '/media' 로 끝나지 않거나 용도 · 정책이 형식 밖이면 기동에서 멈춘다. `legal` 용도는

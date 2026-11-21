@@ -5,11 +5,17 @@ import { FakeReauth, testPrincipal } from '../test-support/accounts.js'
 import { addToTeam, seedRole, seedTeam, seedUser, type SeededUser } from '../test-support/auth.js'
 import { createTestDatabase, type TestDatabase } from '../test-support/db.js'
 import {
+  PROBE_SCOPE,
+  createProbeTokens,
   ipAccessConfig,
   ipRulesOf,
+  probeScope,
+  probeTokenTarget,
   resetIpRules,
   seedIpRule,
+  seedProbeToken,
   seedSessionFrom,
+  type ProbeTargetCalls,
 } from '../test-support/ip-access.js'
 import { failure } from '../test-support/errors.js'
 import { IP_ACCESS_MESSAGES } from './errors.js'
@@ -349,5 +355,44 @@ describe('정책(ADMIN_ACCESS_POLICY 구현)', () => {
     await seedIpRule(t.db, { scopeType: 'user', scopeRefNo: actor.userNo, cidr: '10.0.0.0/8' })
     expect(await policy.allows({ ...context, clientIp: '198.51.100.1' })).toBe(false)
     expect(await policy.allows({ ...context, clientIp: '10.9.9.9' })).toBe(true)
+  })
+})
+
+describe('목록 — 확장 범위 대상 이름(확장 범위 스펙 §4-4)', () => {
+  it('범위마다 names 를 한 번 · 번호는 겹치지 않게 · 없는 번호 · 범위 전체 · 등록 빠진 범위는 null', async () => {
+    await createProbeTokens(t.db)
+    const token = await seedProbeToken(t.db, '작업대 1')
+    const calls: ProbeTargetCalls = { lock: [], names: [] }
+    const extra = new AdminIpAccessService(
+      t.db,
+      ipAccessConfig(false, 'req.ip', {
+        extraScopes: [probeScope({ target: probeTokenTarget(calls) })],
+      }),
+      undefined,
+    )
+    await seedIpRule(t.db, { scopeType: PROBE_SCOPE, scopeRefNo: token, cidr: '203.0.113.0/24' })
+    await seedIpRule(t.db, { scopeType: PROBE_SCOPE, scopeRefNo: token, cidr: '198.51.100.0/24' })
+    await seedIpRule(t.db, { scopeType: PROBE_SCOPE, scopeRefNo: 999_999n, cidr: '10.0.0.0/8' })
+    await seedIpRule(t.db, { scopeType: PROBE_SCOPE, scopeRefNo: null, cidr: '0.0.0.0/0' })
+    await seedIpRule(t.db, { scopeType: 'goneScope', scopeRefNo: token, cidr: '10.0.0.0/8' })
+    const { items } = await extra.list()
+    expect(
+      items.map((item) => [item.scopeType, item.cidr, item.scopeName, item.scopeUserId]),
+    ).toEqual([
+      ['global', '0.0.0.0/0', null, null],
+      ['global', '::/0', null, null],
+      ['goneScope', '10.0.0.0/8', null, null],
+      [PROBE_SCOPE, '203.0.113.0/24', '작업대 1', null],
+      [PROBE_SCOPE, '198.51.100.0/24', '작업대 1', null],
+      [PROBE_SCOPE, '10.0.0.0/8', null, null],
+      [PROBE_SCOPE, '0.0.0.0/0', null, null],
+    ])
+    expect(calls.names).toEqual([[token, 999_999n]])
+  })
+
+  it('확장 범위가 없는 앱은 지금과 같다 — 훅이 없으니 확장 행 이름은 null', async () => {
+    await seedIpRule(t.db, { scopeType: PROBE_SCOPE, scopeRefNo: 1n, cidr: '10.0.0.0/8' })
+    const { items } = await service.list()
+    expect(items.find((item) => item.scopeType === PROBE_SCOPE)?.scopeName).toBeNull()
   })
 })

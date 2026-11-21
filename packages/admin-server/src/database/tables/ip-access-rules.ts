@@ -1,4 +1,3 @@
-import type { IpScopeType } from '@ssworks/admin-shared'
 import type { ColumnType, Generated } from 'kysely'
 
 // 정본: hangang-home apps/api/src/core/database/tables/ip-access-rules.table.ts
@@ -6,8 +5,8 @@ import type { ColumnType, Generated } from 'kysely'
 
 export interface AdminIpAccessRulesTable {
   ruleNo: Generated<bigint>
-  /** 🔴 `'global' | 'team' | 'user'` — ENUM 이 아니다(장 주석). 모르는 값은 어느 층에도 걸리지 않는다 */
-  scopeType: IpScopeType
+  /** 🔴 코어(`'global' | 'team' | 'user'`) 또는 확장 범위 이름 — ENUM 이 아니다(장 주석). 관리자 판정은 코어 셋만 읽는다 */
+  scopeType: string
   /** 🔴 다형 참조라 FK 가 없다 — global 이면 null */
   scopeRefNo: bigint | null
   /** IPv4 · IPv6 CIDR(최대 43자) — admin-shared `parseCidr` 가 읽는다 */

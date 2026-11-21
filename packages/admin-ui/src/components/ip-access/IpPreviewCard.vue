@@ -16,6 +16,7 @@
   //
   // 정본: hangang-home apps/admin/src/pages/settings/ip-access.vue "접속 상태와 변경 영향" 카드
   // 바꾼 점: 문장은 `ip-access.ts` 순수 함수 하나에서 — 이 부품은 그리기만 한다. 세션 끊기 문단이 없다(⑥ S2).
+  //   확장 범위(스펙 §5-4): 'unrelated' 면 기준 줄 없음 · 확장 범위 힌트.
   //
   // 🔴 ① 현재 IP · ② 통과 여부 · ③ 잠기는 사람은 화면 몫이다 — 서버는 요청자 본인만 막는다(hangang §7-1).
   // 🔴 색이 아니라 글자로 — happy-dom 은 색을 못 재고, 색각 이상에도 안 보인다(C3).
@@ -26,6 +27,7 @@
     changedItems: readonly AdminIpPreviewItem[]
     isSelf: (item: AdminIpPreviewItem) => boolean
     globalAllowRemoval: boolean
+    hasExtraScopes?: boolean
     messages: IpAccessMessages
   }>()
 
@@ -38,7 +40,9 @@
     <div class="ip-preview-card__title">{{ messages.cardTitle }}</div>
     <p class="ip-preview-card__ip">{{ currentIpLine(preview.clientIp, messages) }}</p>
     <p v-if="pass" :class="{ 'ip-preview-card__danger': blocked }">{{ pass }}</p>
-    <p class="text-medium-emphasis">{{ basisLine(preview.op, messages) }}</p>
+    <p v-if="preview.state !== 'unrelated'" class="text-medium-emphasis">
+      {{ basisLine(preview.op, messages) }}
+    </p>
     <p role="status">{{ impactLine(preview, messages) }}</p>
     <ul v-if="lockedItems.length > 0" class="ip-preview-card__people">
       <li v-for="item in lockedItems" :key="String(item.userNo)">
@@ -58,6 +62,7 @@
       <p>{{ messages.hintServerDefence }}</p>
       <p>{{ messages.hintSessionsStay }}</p>
       <p>{{ messages.hintRecovery }}</p>
+      <p v-if="hasExtraScopes">{{ messages.hintExtraScopes }}</p>
     </div>
   </section>
 </template>

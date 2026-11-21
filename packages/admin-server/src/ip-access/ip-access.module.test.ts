@@ -78,4 +78,20 @@ describe('AdminIpAccessModule 배선', () => {
       }),
     ).rejects.toThrow("clientIp 는 'req.ip' 또는 'x-real-ip' 여야 한다.")
   })
+
+  it('🔴 ipAccess 옵션 오류는 기동에서 멈춘다 — 권한 키는 받지 않는다(R7 없음)', async () => {
+    await expect(
+      boot([AdminAuthModule, AdminIpAccessModule], {
+        ipAccess: {
+          extraScopes: [
+            {
+              type: 'shippingToken',
+              permissions: { read: 'a', manage: 'b' },
+              target: { lock: async () => true, names: async () => new Map() },
+            } as never,
+          ],
+        },
+      }),
+    ).rejects.toThrow('ipAccess.extraScopes[0].permissions — 확장 범위에는 권한 키를 두지 않는다')
+  })
 })

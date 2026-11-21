@@ -48,6 +48,7 @@ import {
   type IpPreviewView,
   type IpRuleForm,
 } from './ip-access.js'
+import { resolveIpScopeCatalog } from './ip-scope-choices.js'
 
 // 정본: hangang-home apps/admin/src/pages/settings/ip-access-messages.ts 의 판정 사례를 킷 계약(사용자 · 팀 · 전체,
 //       admin-shared 의 같은 CIDR 파서)으로 옮겼다.
@@ -593,5 +594,103 @@ describe('전체 허용 · 관문 · 409', () => {
     expect(conflictAlertText({ message: ' ', details: { clientIp: null } }, M)).toBe(
       M.conflictWithoutMessage,
     )
+  })
+})
+
+describe('확장 범위 — 폼 · 본문 · 표기(확장 범위 스펙 §5)', () => {
+  const catalog = resolveIpScopeCatalog(
+    ['user', 'team', 'global'],
+    [{ type: 'shippingToken', label: '출고 토큰', wholeLabel: '모든 출고 USB' }],
+  )
+  const extraRule = (over: Partial<AdminIpRule> = {}): AdminIpRule => ({
+    ruleNo: 30n,
+    scopeType: 'shippingToken',
+    scopeRefNo: 7n,
+    scopeName: '작업대 1',
+    scopeUserId: null,
+    cidr: '203.0.113.7/32',
+    description: null,
+    revision: 0,
+    createAt: '2026-11-21T00:00:00.000Z',
+    updateAt: '2026-11-21T00:00:00.000Z',
+    ...over,
+  })
+
+  it('규칙 ↔ 폼 ↔ 본문 — 범위 전체는 :* 키 · 본문에서 null', () => {
+    expect(ruleToForm(extraRule()).scopeType).toBe('shippingToken')
+    expect(ruleToForm(extraRule({ scopeRefNo: null })).scopeType).toBe('shippingToken:*')
+    expect(
+      toCreateBody({
+        scopeType: 'shippingToken:*',
+        scopeRefNo: '',
+        cidr: ' 10.0.0.0/8 ',
+        description: '',
+      }),
+    ).toEqual({
+      scopeType: 'shippingToken',
+      scopeRefNo: null,
+      cidr: '10.0.0.0/8',
+      description: null,
+    })
+    expect(
+      toCreateBody({
+        scopeType: 'shippingToken',
+        scopeRefNo: '7',
+        cidr: '10.0.0.0/8',
+        description: '',
+      }).scopeRefNo,
+    ).toBe(7n)
+  })
+
+  it('칸 검증 — 대상 하나는 번호가 있어야 하고 범위 전체는 없어도 된다', () => {
+    const form = { scopeType: 'shippingToken', scopeRefNo: '', cidr: '10.0.0.0/8', description: '' }
+    expect(ipRuleFormProblems(form, M).scopeRefNo).toEqual([M.scopeRefRequired])
+    expect(ipRuleFormProblems({ ...form, scopeType: 'shippingToken:*' }, M)).toEqual({})
+  })
+
+  it('🔴 확장 폼은 미리보기 질의가 없다', () => {
+    expect(
+      previewQueryOf({
+        op: 'create',
+        form: { scopeType: 'shippingToken', scopeRefNo: '7', cidr: '10.0.0.0/8', description: '' },
+      }),
+    ).toBeNull()
+    expect(previewQueryOf({ op: 'unrelated' })).toBeNull()
+  })
+
+  it('표기 — 대상 이름 · 범위 전체 · 대상 없음 · 모르는 범위', () => {
+    expect(ruleScopeTitle(extraRule(), M, catalog)).toBe('출고 토큰 · 작업대 1')
+    expect(ruleScopeSub(extraRule(), M)).toBe('#7')
+    expect(ruleScopeTitle(extraRule({ scopeRefNo: null, scopeName: null }), M, catalog)).toBe(
+      '모든 출고 USB',
+    )
+    expect(ruleScopeSub(extraRule({ scopeRefNo: null, scopeName: null }), M)).toBeNull()
+    expect(ruleScopeTitle(extraRule({ scopeName: null }), M, catalog)).toBe('출고 토큰 #7')
+    expect(ruleScopeSub(extraRule({ scopeName: null }), M)).toBe(M.deadTarget)
+    expect(ruleScopeTitle(extraRule({ scopeType: 'goneScope', scopeName: null }), M, catalog)).toBe(
+      'goneScope #7',
+    )
+    expect(
+      formScopeTitle(
+        { scopeType: 'shippingToken:*', scopeRefNo: '', cidr: '', description: '' },
+        null,
+        M,
+        catalog,
+      ),
+    ).toBe('모든 출고 USB')
+    expect(
+      formScopeTitle(
+        { scopeType: 'shippingToken', scopeRefNo: '7', cidr: '', description: '' },
+        '작업대 1',
+        M,
+        catalog,
+      ),
+    ).toBe('출고 토큰 · 작업대 1')
+  })
+
+  it("'unrelated' — 영향 줄 · 관문 줄", () => {
+    const view = { state: 'unrelated' as const, op: null, result: null, clientIp: '203.0.113.7' }
+    expect(impactLine(view, M)).toBe(M.previewUnrelated)
+    expect(gateImpact(view, M)).toBe(M.gateImpactUnrelated)
   })
 })

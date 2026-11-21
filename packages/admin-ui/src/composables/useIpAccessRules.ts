@@ -8,7 +8,7 @@ import {
   type ComputedRef,
   type Ref,
 } from 'vue'
-import { CommonErrorCodes } from '@ssworks/admin-shared'
+import { CommonErrorCodes, isCoreIpScopeType } from '@ssworks/admin-shared'
 import type {
   AdminIpPreview,
   AdminIpPreviewItem,
@@ -38,22 +38,35 @@ import {
   ruleScopeTitle,
   ruleToForm,
   sameIpRuleForm,
-  scopeTypeItems,
   toCreateBody,
   toUpdateBody,
   userOptionTitle,
   withScopeType,
   type IpAccessAlert,
   type IpAccessMessages,
+  type IpExtraTargetView,
   type IpPreviewView,
   type IpRuleForm,
   type IpSelectItem,
   type IpUserOption,
   type IpWriteContext,
 } from '../components/ip-access/ip-access.js'
+import {
+  isExtraChoice,
+  parseScopeChoice,
+  prefillScopeChoice,
+  resolveIpScopeCatalog,
+  scopeChoiceItems,
+  type IpExtraScopeOption,
+  type IpRuleFocus,
+  type IpRulePrefill,
+  type IpScopeCatalog,
+  type IpScopeFamily,
+  type IpTargetOption,
+} from '../components/ip-access/ip-scope-choices.js'
 import { useOptionalAdminUi } from '../context/admin-ui.js'
 import { useIpPreview } from './useIpPreview.js'
-import { useRemoteSearch } from './useRemoteSearch.js'
+import { useRemoteSearch, type RemoteSearch } from './useRemoteSearch.js'
 import {
   useWriteFlow,
   type ConfirmDialogBindings,
@@ -70,6 +83,9 @@ import {
 //  ③ 세션 끊기 제안이 없다(⑥ S2). revision 충돌 · 409 자기 잠금 처리가 새로 생겼다(hangang 에 없음).
 //  ④ 고친 값 버리기 창을 바인딩으로 낸다 — 킷 `useConfirm` 은 플러그인이 없으면 던진다(I21).
 //  - 층 목록 scopes(3i — ringside 보고 §1). 목록 밖 층의 기존 규칙은 고치는 동안만 선택지에 남는다(S2 · S4).
+//  - 확장 범위(확장 범위 스펙 §5): extraScopes — 선택지 키(범위 전체 `<이름>:*`) · 쓰는 쪽 대상 검색 · 확장 규칙은 미리보기 대신
+//    'unrelated' · 수정은 갈래를 넘지 않는다 · 화면이 모르는 범위의 행은 삭제만.
+//  - 한 범위 모드 focus(값 — X12) · 미리 채운 openCreate(prefill)(확장 범위 스펙 §5-3 · §5-5).
 //
 // 🔴 편집 · 삭제 · 열기는 `busy`(쓰기 진행 중) 동안 막힌다 — 그래서 재조회 중에 다른 규칙을 여는 경합이 생기지 않는다(I24).
 
@@ -105,6 +121,17 @@ export interface UseIpAccessRulesOptions<R extends AdminIpRule = AdminIpRule> {
    * ['user', 'global'] — 안 주면 "팀" 층이 남고 저장은 늘 400 이다. 🔴 빈 목록 · 모르는 값은 setup 에서 던진다.
    */
   scopes?: readonly IpScopeType[]
+  /**
+   * 확장 범위(관리자 밖 주체 — 출고 토큰 등). 서버 옵션 ipAccess.extraScopes 와 같은 이름 — 쓰는 쪽이 한 상수에서 만든다.
+   * 🔴 이름 규칙 밖 · 코어 이름 · 겹침은 setup 에서 던진다. 확장 규칙도 canManage(= ipAccess.manage)가 쓴다(R7 없음).
+   */
+  extraScopes?: readonly IpExtraScopeOption[]
+  /**
+   * 한 범위 모드(R6-1) — 목록을 그 범위(대상을 주면 그 대상 + 범위 전체)로 거르고, 선택지를 그 범위로 좁히고, 대상을 주면
+   * 대상 칸을 고정하고, 관리자 접속 카드를 그리지 않는다. 🔴 값이다 — 다른 대상은 쓰는 쪽이 :key 로 다시 만든다(X12).
+   * extraScopes 에 있는 범위여야 한다(아니면 setup 에서 던진다).
+   */
+  focus?: IpRuleFocus
   messages?: Partial<IpAccessMessages>
   /** 기본 true */
   immediate?: boolean
@@ -123,6 +150,15 @@ export interface IpAccessManagerBindings<R> {
   fieldErrors: Readonly<Record<string, readonly string[]>>
   onCidrBlur: () => void
   scopeItems: readonly IpSelectItem[]
+  /** 범위 이름을 그리는 카탈로그 — 표 · 편집 패널 */
+  scopeCatalog: IpScopeCatalog
+  /** 확장 범위 「대상 하나」 선택지일 때만 */
+  extraTarget: IpExtraTargetView | null
+  onSearchTargets: (keyword: string) => void
+  /** 🔴 화면이 모르는 범위의 행은 수정하지 않는다(X8) — 삭제만 */
+  canEditRule: (rule: R) => boolean
+  /** 한 범위 모드면 거짓 — 관리자 접속 카드를 그리지 않는다 */
+  showPreviewCard: boolean
   teamMode: 'select' | 'number'
   teamItems: readonly IpSelectItem[]
   teamsLoading: boolean
@@ -164,8 +200,11 @@ export interface IpAccessRules<R> {
   editing: Readonly<Ref<R | 'new' | null>>
   form: Readonly<Ref<IpRuleForm>>
   preview: Readonly<Ref<IpPreviewView>>
-  /** 고친 값이 있으면 버릴지 묻는다(I21). 취소 · 막힘이면 false */
-  openCreate: () => Promise<boolean>
+  /**
+   * 고친 값이 있으면 버릴지 묻는다(I21). 취소 · 막힘이면 false. prefill 을 주면 그 값으로 연다(R6c — 다른 화면의 [이 IP 허용]) —
+   * 🔴 미리 채운 값은 고친 값이다. 이 화면이 고를 수 없는 선택지면 false.
+   */
+  openCreate: (prefill?: IpRulePrefill) => Promise<boolean>
   openEdit: (rule: R) => Promise<boolean>
   closeEditor: () => Promise<boolean>
   save: () => Promise<boolean>
@@ -182,6 +221,8 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   const messages: IpAccessMessages = { ...DEFAULT_IP_ACCESS_MESSAGES, ...options.messages }
   // 🔴 setup 첫머리에서 던진다 — 층을 고를 수 없는 화면은 설정 실수다(3i S1)
   const scopes = resolveIpScopes(options.scopes)
+  // 🔴 setup 첫머리에서 던진다 — 고를 수 없는 범위는 설정 실수다(확장 범위 스펙 §5-1)
+  const catalog = resolveIpScopeCatalog(scopes, options.extraScopes ?? [], options.focus ?? null)
   const newScope = defaultIpScope(scopes)
   const flow = useWriteFlow()
   // 기본값을 쓸 때만 컨텍스트를 찾는다 — 플러그인이 없으면 본인 표시만 빠진다(I6)
@@ -196,7 +237,21 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
 
   // ── 목록 ──────────────────────────────────────────────────────────
 
-  const rules = shallowRef<readonly R[]>([])
+  const allRules = shallowRef<readonly R[]>([])
+  /** 한 범위 모드면 그 범위만(화면에서 거른다 — 서버 목록 그대로) */
+  const inFocus = (rule: AdminIpRule): boolean => {
+    const focus = catalog.focus
+    if (focus === null) return true
+    return (
+      rule.scopeType === focus.scopeType &&
+      (focus.scopeRefNo === undefined ||
+        rule.scopeRefNo === null ||
+        rule.scopeRefNo === focus.scopeRefNo)
+    )
+  }
+  const rules = computed<readonly R[]>(() =>
+    catalog.focus === null ? allRules.value : allRules.value.filter(inFocus),
+  )
   const loading = ref(false)
   const loadError = shallowRef<ApiError | null>(null)
   let listSeq = 0
@@ -209,7 +264,8 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     try {
       const items = await options.list()
       if (mine !== listSeq || disposed) return false
-      rules.value = items
+      allRules.value = items
+      for (const item of items) rememberTarget(item)
       return true
     } catch (error) {
       if (mine !== listSeq || disposed) return false
@@ -222,7 +278,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   }
 
   function findRule(ruleNo: bigint): R | undefined {
-    return rules.value.find((item) => item.ruleNo === ruleNo)
+    return allRules.value.find((item) => item.ruleNo === ruleNo)
   }
 
   // ── 알림 ──────────────────────────────────────────────────────────
@@ -237,9 +293,26 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   // ── 편집 상태 · 미리보기 ───────────────────────────────────────────
 
   const editing: ShallowRef<R | 'new' | null> = shallowRef<R | 'new' | null>(null)
-  const form = ref<IpRuleForm>(emptyIpRuleForm(newScope))
+  /** 새 규칙 폼 — 한 범위 모드면 그 범위(대상이 있으면 그 대상) */
+  function emptyForm(): IpRuleForm {
+    const focus = catalog.focus
+    if (focus === null) return emptyIpRuleForm(newScope)
+    return {
+      ...emptyIpRuleForm(focus.scopeType),
+      scopeRefNo: focus.scopeRefNo === undefined ? '' : String(focus.scopeRefNo),
+    }
+  }
+
+  /** 🔴 한 범위 모드의 대상은 바꿀 수 없다 — 대상 하나 선택지면 늘 그 대상 */
+  function pinFocus(next: IpRuleForm): IpRuleForm {
+    const focus = catalog.focus
+    if (focus?.scopeRefNo === undefined || next.scopeType !== focus.scopeType) return next
+    return { ...next, scopeRefNo: String(focus.scopeRefNo) }
+  }
+
+  const form = ref<IpRuleForm>(emptyForm())
   /** 연 순간의 폼 — 고친 값 판정의 기준(I21) */
-  let baseline: IpRuleForm = emptyIpRuleForm(newScope)
+  let baseline: IpRuleForm = emptyForm()
   const clientErrors = shallowRef<Record<string, string[]>>({})
   const removing = shallowRef<R | null>(null)
   const working = ref(false)
@@ -252,14 +325,27 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     onStale: () => {
       void onStale()
     },
-    immediate: options.immediate,
+    // 🔴 한 범위 모드는 카드를 그리지 않고 확장 범위만 다룬다 — 현행 미리보기(활성 사용자 · 세션 전수 스캔)를 부르지 않는다
+    immediate: catalog.focus === null ? options.immediate : false,
   })
+  // 🔴 처음 대상도 syncTarget 하나로 — 한 범위 모드는 setup 부터 'unrelated' 라 마운트 직후 reload · 다시 시도도 부르지 않는다.
+  //    한 범위 모드가 아니면 처음 값({ op: null })과 같아 아무것도 바뀌지 않는다
+  syncTarget()
 
   function syncTarget(): void {
     const deleting = removing.value
     const current = editing.value
-    if (deleting != null) preview.setTarget({ op: 'delete', ruleNo: deleting.ruleNo })
-    else if (current === null) preview.setTarget({ op: null })
+    if (deleting != null) {
+      // 🔴 확장 규칙(모르는 범위 포함)은 관리자 접속과 무관하다 — 미리보기를 부르지 않는다(§5-4)
+      preview.setTarget(
+        isCoreIpScopeType(deleting.scopeType)
+          ? { op: 'delete', ruleNo: deleting.ruleNo }
+          : { op: 'unrelated' },
+      )
+    } else if (current === null) {
+      // 한 범위 모드의 범위는 늘 확장이다 — 닫혀 있어도 현행 미리보기가 아니라 'unrelated'
+      preview.setTarget(catalog.focus === null ? { op: null } : { op: 'unrelated' })
+    } else if (isExtraChoice(form.value.scopeType)) preview.setTarget({ op: 'unrelated' })
     else if (current === 'new') preview.setTarget({ op: 'create', form: { ...form.value } })
     else preview.setTarget({ op: 'update', ruleNo: current.ruleNo, form: { ...form.value } })
   }
@@ -270,7 +356,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   const knownTargets = new Map<string, string>()
 
   function rememberTarget(rule: AdminIpRule): void {
-    if (rule.scopeType === 'global' || rule.scopeRefNo == null || rule.scopeName == null) return
+    if (rule.scopeRefNo == null || rule.scopeName == null) return
     const title =
       rule.scopeType === 'user' && rule.scopeUserId != null
         ? userOptionTitle({ userName: rule.scopeName, userId: rule.scopeUserId })
@@ -315,18 +401,18 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   const userSearch = options.searchUsers != null ? useRemoteSearch(options.searchUsers) : null
   const canUsers = (): boolean => userSearch != null && (options.canSearchUsers?.() ?? true)
 
-  /** 지금 대상이 후보에 없어도 칸이 이름을 보이게 맨 앞에 둔다 */
-  function withCurrent(items: IpSelectItem[], scopeType: 'team' | 'user'): IpSelectItem[] {
+  /** 지금 대상이 후보에 없어도 칸이 이름을 보이게 맨 앞에 둔다. choiceKey 는 대상이 있는 선택지(team · user · 확장 이름) */
+  function withCurrent(items: IpSelectItem[], choiceKey: string): IpSelectItem[] {
     const refNo = form.value.scopeRefNo.trim()
     if (
-      form.value.scopeType !== scopeType ||
+      form.value.scopeType !== choiceKey ||
       refNo === '' ||
       items.some((item) => item.value === refNo)
     ) {
       return items
     }
     return [
-      { value: refNo, title: knownTargets.get(`${scopeType}:${refNo}`) ?? `#${refNo}` },
+      { value: refNo, title: knownTargets.get(`${choiceKey}:${refNo}`) ?? `#${refNo}` },
       ...items,
     ]
   }
@@ -339,6 +425,41 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
       return item
     })
     return withCurrent(items, 'user')
+  })
+
+  // ── 확장 범위 대상 후보 ─────────────────────────────────────────────
+
+  const extraSearches = new Map<string, RemoteSearch<IpTargetOption>>()
+  for (const [type, scope] of catalog.extra) {
+    if (scope.search != null) extraSearches.set(type, useRemoteSearch(scope.search))
+  }
+  const canSearchExtra = (type: string): boolean =>
+    extraSearches.has(type) && (catalog.extra.get(type)?.canSearch?.() ?? true)
+
+  const extraTarget = computed<IpExtraTargetView | null>(() => {
+    const choice = parseScopeChoice(form.value.scopeType)
+    const scope = catalog.extra.get(choice.scopeType)
+    if (scope === undefined || choice.whole) return null
+    const search = extraSearches.get(choice.scopeType)
+    const found = (search?.items.value ?? []).map((option) => {
+      const item = { value: String(option.refNo), title: option.name }
+      knownTargets.set(`${choice.scopeType}:${item.value}`, item.title)
+      return item
+    })
+    const fixed =
+      catalog.focus?.scopeRefNo !== undefined && catalog.focus.scopeType === choice.scopeType
+    const refNo = form.value.scopeRefNo.trim()
+    const searchable = canSearchExtra(choice.scopeType)
+    return {
+      label: messages.targetLabel(scope.label),
+      numberLabel: messages.targetNumberLabel(scope.label),
+      mode: fixed ? 'fixed' : searchable ? 'search' : 'number',
+      items: withCurrent(found, choice.scopeType),
+      searching: search?.searching.value ?? false,
+      failed: search?.failed.value ?? false,
+      hint: !fixed && search != null && !searchable ? messages.targetNoPermissionHint : null,
+      fixedTitle: fixed ? (knownTargets.get(`${choice.scopeType}:${refNo}`) ?? `#${refNo}`) : null,
+    }
   })
 
   // ── 고친 값 버리기 ─────────────────────────────────────────────────
@@ -378,10 +499,28 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
 
   // ── 편집 열고 닫기 · 폼 ────────────────────────────────────────────
 
-  function setEditor(next: R | 'new' | null): void {
+  /** 만들기 = 전부(한 범위 모드면 그 범위) · 수정 = 그 규칙의 갈래(X2) */
+  function familyOf(target: R | 'new' | null): IpScopeFamily {
+    if (target === null || target === 'new') {
+      return catalog.focus === null ? 'all' : { extra: catalog.focus.scopeType }
+    }
+    return isCoreIpScopeType(target.scopeType) ? 'core' : { extra: target.scopeType }
+  }
+
+  /** 🔴 화면이 모르는 범위의 행(옵션에서 지운 범위)은 수정하지 않는다 — 서버도 400 이다(X8) */
+  const canEditRule = (rule: AdminIpRule): boolean =>
+    isCoreIpScopeType(rule.scopeType) || catalog.extra.has(rule.scopeType)
+
+  function choiceItems() {
+    return scopeChoiceItems(messages, catalog, familyOf(editing.value), form.value.scopeType)
+  }
+
+  function setEditor(next: R | 'new' | null, seed?: IpRuleForm): void {
     editing.value = next
-    form.value = next === null || next === 'new' ? emptyIpRuleForm(newScope) : ruleToForm(next)
-    baseline = { ...form.value }
+    form.value =
+      next === null ? emptyForm() : next === 'new' ? (seed ?? emptyForm()) : ruleToForm(next)
+    // 🔴 만들기의 기준선은 빈 폼 — 미리 채운 값은 고친 값이다(닫을 때 묻는다)
+    baseline = next === 'new' ? emptyForm() : { ...form.value }
     clientErrors.value = {}
     flow.clearFieldErrors()
     if (next !== null && next !== 'new') rememberTarget(next)
@@ -389,18 +528,36 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     if (next !== null) loadTeams()
   }
 
-  async function openCreate(): Promise<boolean> {
+  async function openCreate(prefill?: IpRulePrefill): Promise<boolean> {
     // 🔴 첫 줄 가드 — :disabled 는 마우스만 막는다
     if (!options.canManage() || busy.value) return false
+    let seed: IpRuleForm | undefined
+    if (prefill !== undefined) {
+      const key = prefillScopeChoice(prefill, catalog)
+      if (key === null) return false
+      seed = {
+        scopeType: key,
+        scopeRefNo: prefill.scopeRefNo === null ? '' : String(prefill.scopeRefNo),
+        cidr: prefill.cidr ?? '',
+        description: prefill.description ?? '',
+      }
+    }
     if (!(await askDiscard())) return false
+    // 🔴 확인 순간에 다시 본다 — 묻는 사이 권한이 회수되거나 쓰기가 시작됐을 수 있다
+    if (!options.canManage() || busy.value) return false
     alerts.value = []
-    setEditor('new')
+    if (prefill?.scopeName != null && prefill.scopeRefNo !== null) {
+      knownTargets.set(`${prefill.scopeType}:${prefill.scopeRefNo}`, prefill.scopeName)
+    }
+    setEditor('new', seed)
     return true
   }
 
   async function openEdit(rule: R): Promise<boolean> {
-    if (!options.canManage() || busy.value) return false
+    // 🔴 한 범위 모드의 목록 밖 규칙은 열지 않는다 — pinFocus 가 대상을 조용히 고정 대상으로 바꿔 쓰게 된다
+    if (!options.canManage() || busy.value || !canEditRule(rule) || !inFocus(rule)) return false
     if (!(await askDiscard())) return false
+    if (!options.canManage() || busy.value || !canEditRule(rule)) return false
     alerts.value = []
     setEditor(rule)
     return true
@@ -416,11 +573,16 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
 
   function updateForm(next: IpRuleForm): void {
     if (editing.value === null || busy.value) return
-    // 🔴 목록 밖 층으로 바꾸는 갱신은 통째로 버린다(3i S4) — 선택지에 없는 층이 들어와도 상태가 갈리지 않게. 지금 층(목록 밖
-    //    기존 규칙)에 머무는 갱신은 된다.
-    if (next.scopeType !== form.value.scopeType && !scopes.includes(next.scopeType)) return
+    // 🔴 선택지 밖으로 바꾸는 갱신은 통째로 버린다(3i S4 · X2) — 갈래를 넘거나 목록 밖 층으로 가지 않는다
+    if (
+      next.scopeType !== form.value.scopeType &&
+      !choiceItems().some((item) => item.value === next.scopeType)
+    )
+      return
     // 🔴 범위를 바꾸면 대상을 비운다(I19) — 팀 번호가 사용자 번호로, 본 적 없는 번호가 남지 않게
-    form.value = withScopeType({ ...next, scopeType: form.value.scopeType }, next.scopeType)
+    form.value = pinFocus(
+      withScopeType({ ...next, scopeType: form.value.scopeType }, next.scopeType),
+    )
     clientErrors.value = {}
     flow.clearFieldErrors()
     syncTarget()
@@ -460,8 +622,9 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
   }
 
   function targetTitleOf(value: IpRuleForm): string | null {
-    if (value.scopeType === 'global') return null
-    return knownTargets.get(`${value.scopeType}:${value.scopeRefNo.trim()}`) ?? null
+    const choice = parseScopeChoice(value.scopeType)
+    if (choice.whole) return null
+    return knownTargets.get(`${choice.scopeType}:${value.scopeRefNo.trim()}`) ?? null
   }
 
   async function save(): Promise<boolean> {
@@ -487,10 +650,13 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
       const message = gateMessage(
         {
           kind,
-          scope: formScopeTitle(submitted, targetTitleOf(submitted), messages),
+          scope: formScopeTitle(submitted, targetTitleOf(submitted), messages, catalog),
           cidr,
           irreversible: false,
-          globalRemoval: target !== 'new' && removesGlobalAllow(target.cidr, cidr),
+          globalRemoval:
+            target !== 'new' &&
+            isCoreIpScopeType(target.scopeType) &&
+            removesGlobalAllow(target.cidr, cidr),
           view: snapshot,
         },
         messages,
@@ -532,7 +698,9 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
       if (ok && lastSent) {
         // ⑦ 🔴 만들기는 재조회가 반영되지 않아도 닫는다 — 채운 폼을 남기면 같은 규칙을 또 만든다(useRoleEditor R8)
         setEditor(null)
-        if (snapshot.state !== 'ready') pushAlert('warning', messages.savedWithoutPreview)
+        if (snapshot.state !== 'ready' && snapshot.state !== 'unrelated') {
+          pushAlert('warning', messages.savedWithoutPreview)
+        }
         await options.onDone?.({
           action: kind,
           rule: target === 'new' ? null : (findRule(target.ruleNo) ?? target),
@@ -550,7 +718,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
           rememberTarget(fresh)
           pushAlert(
             'warning',
-            messages.revisionConflict(ruleScopeTitle(fresh, messages), fresh.cidr),
+            messages.revisionConflict(ruleScopeTitle(fresh, messages, catalog), fresh.cidr),
           )
           syncTarget()
         }
@@ -583,10 +751,10 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
       const message = gateMessage(
         {
           kind: 'remove',
-          scope: ruleScopeTitle(rule, messages),
+          scope: ruleScopeTitle(rule, messages, catalog),
           cidr: rule.cidr,
           irreversible: reauth,
-          globalRemoval: removesGlobalAllow(rule.cidr, null),
+          globalRemoval: isCoreIpScopeType(rule.scopeType) && removesGlobalAllow(rule.cidr, null),
           view: snapshot,
         },
         messages,
@@ -626,7 +794,7 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
           'warning',
           fresh == null
             ? messages.ruleGone
-            : messages.revisionConflict(ruleScopeTitle(fresh, messages), fresh.cidr),
+            : messages.revisionConflict(ruleScopeTitle(fresh, messages, catalog), fresh.cidr),
         )
       }
       return false
@@ -642,11 +810,14 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
 
   const globalAllowRemoval = computed(() => {
     const deleting = removing.value
-    if (deleting != null) return removesGlobalAllow(deleting.cidr, null)
+    if (deleting != null) {
+      return isCoreIpScopeType(deleting.scopeType) && removesGlobalAllow(deleting.cidr, null)
+    }
     const current = editing.value
     return (
       current !== null &&
       current !== 'new' &&
+      isCoreIpScopeType(current.scopeType) &&
       removesGlobalAllow(current.cidr, form.value.cidr.trim())
     )
   })
@@ -665,7 +836,16 @@ export function useIpAccessRules<R extends AdminIpRule = AdminIpRule>(
     'onUpdate:form': updateForm,
     fieldErrors: { ...flow.fieldErrors.value, ...clientErrors.value },
     onCidrBlur: cidrBlur,
-    scopeItems: scopeTypeItems(messages, scopes, form.value.scopeType),
+    scopeItems: choiceItems(),
+    scopeCatalog: catalog,
+    extraTarget: extraTarget.value,
+    onSearchTargets: (keyword) => {
+      const choice = parseScopeChoice(form.value.scopeType)
+      if (choice.whole) return
+      if (canSearchExtra(choice.scopeType)) extraSearches.get(choice.scopeType)?.search(keyword)
+    },
+    canEditRule,
+    showPreviewCard: catalog.focus === null,
     teamMode: canTeams() ? 'select' : 'number',
     teamItems: teamItemList.value,
     teamsLoading: teamsLoading.value,

@@ -7,6 +7,7 @@ import { buttonByText, installVisualViewport, vuetify } from '../../test/setup.j
 import IpPreviewCard from './IpPreviewCard.vue'
 import IpRuleTable from './IpRuleTable.vue'
 import { DEFAULT_IP_ACCESS_MESSAGES as M, type IpPreviewView } from './ip-access.js'
+import { CORE_SCOPE_CATALOG, resolveIpScopeCatalog } from './ip-scope-choices.js'
 
 // 정본: hangang-home ip-access.render.test.ts §7-1 ①②③(현재 IP 상시 · 통과 여부 · 잠기는 사람) · 목록 셀 · 대상 없음.
 
@@ -155,6 +156,21 @@ describe('IpPreviewCard', () => {
     mountCard({ globalAllowRemoval: true })
     expect(document.querySelector('[role="alert"]')?.textContent).toContain(M.globalAllowRemoval)
   })
+
+  it("'unrelated' — 기준 줄 없이 무관 문구 · 확장 범위 힌트", () => {
+    mountCard({
+      preview: { state: 'unrelated', op: null, result: null, clientIp: '203.0.113.7' },
+      hasExtraScopes: true,
+    })
+    expect(text()).toContain(M.previewUnrelated)
+    expect(text()).not.toContain(M.basisCurrent)
+    expect(text()).toContain(M.hintExtraScopes)
+  })
+
+  it('확장 범위가 없으면 그 힌트가 없다', () => {
+    mountCard({})
+    expect(text()).not.toContain(M.hintExtraScopes)
+  })
 })
 
 function mountTable(over: Record<string, unknown> = {}) {
@@ -168,6 +184,8 @@ function mountTable(over: Record<string, unknown> = {}) {
       editing: null,
       busy: false,
       messages: M,
+      scopeCatalog: CORE_SCOPE_CATALOG,
+      canEditRule: () => true,
       ...listeners,
       ...over,
     },
@@ -246,5 +264,51 @@ describe('IpRuleTable', () => {
     expect(text()).not.toContain(M.emptyTitle)
     buttonByText(M.retry)!.click()
     expect(listeners.onRetry).toHaveBeenCalled()
+  })
+
+  it('확장 범위 — 이름 · 범위 전체 · 🔴 모르는 범위는 수정이 꺼진다', () => {
+    const catalog = resolveIpScopeCatalog(
+      ['user', 'team', 'global'],
+      [{ type: 'shippingToken', label: '출고 토큰', wholeLabel: '모든 출고 USB' }],
+    )
+    const extraRules = [
+      rule({
+        ruleNo: 30n,
+        scopeType: 'shippingToken',
+        scopeRefNo: 7n,
+        scopeName: '작업대 1',
+        cidr: '203.0.113.7/32',
+      }),
+      rule({
+        ruleNo: 31n,
+        scopeType: 'shippingToken',
+        scopeRefNo: null,
+        scopeName: null,
+        cidr: '10.0.0.0/8',
+      }),
+      rule({
+        ruleNo: 40n,
+        scopeType: 'goneScope',
+        scopeRefNo: 2n,
+        scopeName: null,
+        cidr: '192.0.2.0/24',
+      }),
+    ]
+    mountTable({
+      rules: extraRules,
+      scopeCatalog: catalog,
+      canEditRule: (r: AdminIpRule) => r.scopeType !== 'goneScope',
+    })
+    expect(rows()[0]!.textContent).toContain('출고 토큰 · 작업대 1')
+    expect(rows()[1]!.textContent).toContain('모든 출고 USB')
+    expect(rows()[2]!.textContent).toContain('goneScope #2')
+    const edit = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="goneScope #2 192.0.2.0/24 규칙 수정"]',
+    )
+    expect(edit!.disabled).toBe(true)
+    const remove = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="goneScope #2 192.0.2.0/24 규칙 삭제"]',
+    )
+    expect(remove!.disabled).toBe(false)
   })
 })

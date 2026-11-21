@@ -2,16 +2,17 @@
   import { computed } from 'vue'
   import { VSelect, VTextField } from 'vuetify/components'
   import RemoteSearchField from '../common/RemoteSearchField.vue'
-  import type { IpAccessMessages, IpSelectItem } from './ip-access.js'
+  import type { IpAccessMessages, IpExtraTargetView, IpSelectItem } from './ip-access.js'
 
   // IP 규칙의 대상 칸(내부 부품) — 팀은 경로 select, 사용자는 서버 검색, 권한 · 어댑터가 없으면 번호 칸(④ T1 · I20).
   //
   // 정본: kim5257-crm-v5 apps/base/frontend/src/pages/settings/ip_access_control.vue 의 대상 고르기(팀 경로 · 사용자 목록)
   // 바꾼 점: 사용자 500명 목록 대신 서버 검색(공용 RemoteSearchField — C8), 후보 실패는 칸 아래 문구(번호 칸으로 바꾸지 않는다),
   //   권한 게터가 거짓이면 번호 칸 + 이유(C9). hangang 은 번호를 직접 쳤다.
+  //   확장 범위(스펙 §5-2): 쓰는 쪽 검색 칸 · 번호 칸 · 한 범위 모드의 고정 칸.
 
   const props = defineProps<{
-    scopeType: 'team' | 'user'
+    kind: 'team' | 'user' | 'extra'
     value: string
     errorMessages: readonly string[]
     disabled: boolean
@@ -25,20 +26,36 @@
     usersSearching: boolean
     usersFailed: boolean
     userHint: string | null
+    extraTarget: IpExtraTargetView | null
     messages: IpAccessMessages
   }>()
 
   const emit = defineEmits<{
     'update:value': [value: string]
     searchUsers: [keyword: string]
+    searchTargets: [keyword: string]
   }>()
 
   const teamItemList = computed(() => [...props.teamItems])
   const errors = computed(() => [...props.errorMessages])
-  const numberMode = computed(() =>
-    props.scopeType === 'team' ? props.teamMode === 'number' : props.userMode === 'number',
+  const extraMode = computed(() =>
+    props.kind === 'extra' ? (props.extraTarget?.mode ?? 'number') : null,
   )
-  const hint = computed(() => (props.scopeType === 'team' ? props.teamHint : props.userHint))
+  const numberMode = computed(() => {
+    if (props.kind === 'team') return props.teamMode === 'number'
+    if (props.kind === 'user') return props.userMode === 'number'
+    return extraMode.value === 'number'
+  })
+  const numberLabel = computed(() => {
+    if (props.kind === 'team') return props.messages.teamNumberLabel
+    if (props.kind === 'user') return props.messages.userNumberLabel
+    return props.extraTarget?.numberLabel ?? ''
+  })
+  const hint = computed(() => {
+    if (props.kind === 'team') return props.teamHint
+    if (props.kind === 'user') return props.userHint
+    return props.extraTarget?.hint ?? null
+  })
 
   function update(value: unknown): void {
     emit('update:value', typeof value === 'string' ? value : '')
@@ -48,12 +65,23 @@
 <template>
   <div class="ip-target-field">
     <VTextField
-      v-if="numberMode"
+      v-if="extraMode === 'fixed'"
+      autocomplete="off"
+      density="compact"
+      disabled
+      :error-messages="errors"
+      :label="extraTarget?.label"
+      :model-value="extraTarget?.fixedTitle ?? ''"
+      name="scopeRefNo"
+      variant="outlined"
+    />
+    <VTextField
+      v-else-if="numberMode"
       autocomplete="off"
       density="compact"
       :disabled="disabled"
       :error-messages="errors"
-      :label="scopeType === 'team' ? messages.teamNumberLabel : messages.userNumberLabel"
+      :label="numberLabel"
       :model-value="value"
       name="scopeRefNo"
       :placeholder="messages.numberPlaceholder"
@@ -61,7 +89,7 @@
       @update:model-value="update"
     />
     <VSelect
-      v-else-if="scopeType === 'team'"
+      v-else-if="kind === 'team'"
       density="compact"
       :disabled="disabled"
       :error-messages="errors"
@@ -76,7 +104,7 @@
       @update:model-value="update"
     />
     <RemoteSearchField
-      v-else
+      v-else-if="kind === 'user'"
       :disabled="disabled"
       :empty-text="messages.userSearchEmpty"
       :error-messages="errorMessages"
@@ -91,8 +119,24 @@
       @search="emit('searchUsers', $event)"
       @update:model-value="update"
     />
+    <RemoteSearchField
+      v-else
+      :disabled="disabled"
+      :empty-text="messages.targetSearchEmpty"
+      :error-messages="errorMessages"
+      :failed="extraTarget?.failed ?? false"
+      :failed-text="messages.targetSearchFailed"
+      :hint-text="messages.targetSearchHint"
+      :items="extraTarget?.items ?? []"
+      :label="extraTarget?.label ?? ''"
+      :model-value="value"
+      name="scopeRefNo"
+      :searching="extraTarget?.searching ?? false"
+      @search="emit('searchTargets', $event)"
+      @update:model-value="update"
+    />
     <p
-      v-if="scopeType === 'team' && !numberMode && teamsFailed"
+      v-if="kind === 'team' && !numberMode && teamsFailed"
       class="ip-target-field__note"
       role="alert"
     >

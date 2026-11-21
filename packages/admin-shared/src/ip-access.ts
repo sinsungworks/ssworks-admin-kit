@@ -12,6 +12,8 @@ import { queryBigIntSchema } from './audit.js'
 //  - 범위 불변식은 함수(ipScopeProblem)로 낸다 — 객체 스키마에 refine 을 걸면 서버가 재인증 칸을 extend 할 수 없다(zod 4).
 //  - 미리보기 쿼리는 판별 합집합 대신 평평한 객체 + superRefine — 빠진 칸이 그 칸의 오류로 나온다.
 //  - 정규식에 백슬래시 문자 클래스를 쓰지 않는다(저장소 규칙) — [0-9] 로 적는다.
+//  - 확장 범위(확장 범위 스펙 2026-11-21): 관리자 밖 주체(출고 토큰 등)에 거는 규칙. 이름 규칙 · 갈래 · 두 층 판정(evaluateScopedIpAccess)
+//    을 여기 둔다. 🔴 관리자 판정(evaluateIpAccess)과 확장 판정은 서로의 행을 보지 않는다(R3 양방향).
 //  - 파서 조이기(2f-2b 스펙 §5-5): ::ffff: 는 점 표기 앞에서만 떼고, 내장 IPv4 는 마지막 그룹에만, 루프백 CIDR 접기는 /128 에만,
 //    v4-mapped 영역은 ::ffff:a.b.c.d 꼴만 받는다.
 // 🔴 CIDR 을 읽는 곳은 parseCidr 하나다(hangang R30). 검증과 평가가 다른 파서를 쓰면 "저장은 됐는데 아무도 안 통과하는" 규칙이
@@ -23,9 +25,28 @@ export type IpScopeType = 'global' | 'team' | 'user'
 
 export const IP_SCOPE_TYPES = ['global', 'team', 'user'] as const satisfies readonly IpScopeType[]
 
+/**
+ * 확장 범위 이름(관리자 밖 주체 — 출고 토큰 등) — 영소문자로 시작하는 영숫자 1~16자(장 0012 `scope_type varchar(16)` · `ascii_bin`).
+ * 🔴 밑줄 · 쌍점을 받지 않는다 — 화면이 범위 전체 선택지 키에 `:*` 를 붙인다(확장 범위 스펙 X11).
+ */
+export const IP_EXTRA_SCOPE_TYPE_PATTERN = /^[a-z][A-Za-z0-9]{0,15}$/
+
+/** 코어 셋(global · team · user)인가 */
+export function isCoreIpScopeType(type: string): type is IpScopeType {
+  return (IP_SCOPE_TYPES as readonly string[]).includes(type)
+}
+
+/** 확장 범위 이름으로 쓸 수 있는가 — 🔴 코어 이름과 대소문자 무시로 겹치면 거짓(`Global` 금지 — X1) */
+export function isIpExtraScopeTypeName(name: string): boolean {
+  if (!IP_EXTRA_SCOPE_TYPE_PATTERN.test(name)) return false
+  const lower = name.toLowerCase()
+  return !IP_SCOPE_TYPES.some((core) => core === lower)
+}
+
 export interface IpRule {
-  scopeType: IpScopeType
-  /** global 이면 null. team · user 의 번호(다형 참조) */
+  /** 코어 셋(global · team · user) 또는 확장 범위 이름. 🔴 관리자 평가는 코어 밖 값을 무시한다 */
+  scopeType: string
+  /** global · 범위 전체면 null. team · user · 확장 대상의 번호(다형 참조) */
   scopeRefNo: bigint | null
   cidr: string
 }
@@ -231,11 +252,42 @@ export function evaluateIpAccess(
   return ipLayerRules(layer, rules, subject).some((rule) => ipInCidr(ip, rule.cidr))
 }
 
+export interface IpScopedSubject {
+  /** 확장 범위 이름 — 🔴 코어 이름이면 던진다 */
+  scopeType: string
+  /** 그 주체의 번호(예: 출고 토큰 번호) */
+  scopeRefNo: bigint
+}
+
+/**
+ * 이 주소로 이 확장 범위 주체가 들어올 수 있는가(확장 범위 스펙 §3-3 · R2).
+ * 그 범위 행만 본다 → 대상 층(scopeRefNo 같음)이 하나라도 있으면 그것만 → 없으면 범위 전체 층(scopeRefNo null) → 둘 다 없으면 거부.
+ * 🔴 코어 이름이면 던진다 — 코어 규칙(global 시드 포함)이 확장 판정에 들어올 길을 막는다(R3b). 주소보다 먼저 본다.
+ * 🔴 범위 전체 층을 끈 범위(서버 wholeScope: false)는 서버 읽기가 NULL 행을 빼고 넘긴다 — 이 함수는 그 설정을 모른다.
+ */
+export function evaluateScopedIpAccess(
+  ip: string | null,
+  rules: readonly IpRule[],
+  subject: IpScopedSubject,
+): boolean {
+  if (isCoreIpScopeType(subject.scopeType)) {
+    throw new Error(
+      `evaluateScopedIpAccess 는 확장 범위만 판정한다 — 코어 범위(${subject.scopeType})는 evaluateIpAccess 다`,
+    )
+  }
+  if (ip === null) return false
+  const own = rules.filter((rule) => rule.scopeType === subject.scopeType)
+  const target = own.filter((rule) => rule.scopeRefNo === subject.scopeRefNo)
+  const layer = target.length > 0 ? target : own.filter((rule) => rule.scopeRefNo === null)
+  return layer.some((rule) => ipInCidr(ip, rule.cidr))
+}
+
 export const IP_ACCESS_SCHEMA_MESSAGES = Object.freeze({
   cidr: 'IPv4 · IPv6 CIDR 형식이 아닙니다. 예: 203.0.113.0/24, 2001:db8::/32',
   scopeRefRequired: '팀 · 사용자 규칙은 대상을 골라야 합니다.',
   scopeRefForbidden: '전체 규칙에는 대상을 두지 않습니다.',
   previewField: '이 미리보기에는 이 칸이 필요합니다.',
+  scopeTypeInvalid: '범위 이름이 형식에 맞지 않습니다.',
 })
 
 /**
@@ -259,6 +311,16 @@ export const IP_RULE_DESCRIPTION_MAX_LENGTH = 200
 
 export const ipScopeTypeSchema = z.enum(IP_SCOPE_TYPES)
 
+/**
+ * 규칙의 범위 — 코어 셋 또는 확장 범위 이름(X1). 🔴 응답 · 본문 스키마용이다 — 서버 파이프가 "코어 ∪ 등록된 이름" 으로 다시
+ * 좁힌다. 미리보기 쿼리 · 층 칸은 코어 셋(ipScopeTypeSchema) 그대로다(X9).
+ */
+export const ipRuleScopeTypeSchema = z
+  .string()
+  .refine((type) => isCoreIpScopeType(type) || isIpExtraScopeTypeName(type), {
+    message: IP_ACCESS_SCHEMA_MESSAGES.scopeTypeInvalid,
+  })
+
 /** 🔴 앞뒤 공백을 뗀 뒤 같은 파서로 본다(Review Focus 3) — 형식 오류는 한 문구 */
 export const ipCidrSchema = z
   .string()
@@ -279,9 +341,9 @@ const revisionSchema = z.number().int().min(0)
 
 export const adminIpRuleSchema = z.object({
   ruleNo: z.bigint(),
-  scopeType: ipScopeTypeSchema,
+  scopeType: ipRuleScopeTypeSchema,
   scopeRefNo: z.bigint().nullable(),
-  /** 팀 이름 · 사용자 이름. global 이거나 대상이 지워졌으면 null */
+  /** 팀 이름 · 사용자 이름 · 확장 대상 이름(서버 훅). global · 범위 전체거나 대상이 지워졌으면 null */
   scopeName: z.string().nullable(),
   /** 사용자 규칙의 로그인 아이디. 그 밖은 null */
   scopeUserId: z.string().nullable(),
@@ -299,7 +361,7 @@ export const adminIpRuleItemSchema = z.object({ item: adminIpRuleSchema })
 
 /** 🔴 refine 을 걸지 않는다 — 범위 불변식은 ipScopeProblem 이 본다(서버 파이프가 재인증 칸을 extend 한 뒤 건다) */
 export const adminIpRuleCreateSchema = z.object({
-  scopeType: ipScopeTypeSchema,
+  scopeType: ipRuleScopeTypeSchema,
   scopeRefNo: z.bigint().nullable(),
   cidr: ipCidrSchema,
   description: descriptionSchema.optional(),
@@ -307,7 +369,7 @@ export const adminIpRuleCreateSchema = z.object({
 
 /** 부분 갱신. 🔴 revision 만 필수다. scopeRefNo: null 은 "대상 없음", 생략은 "그대로" — 병합 결과는 서버가 본다 */
 export const adminIpRuleUpdateSchema = z.object({
-  scopeType: ipScopeTypeSchema.optional(),
+  scopeType: ipRuleScopeTypeSchema.optional(),
   scopeRefNo: z.bigint().nullable().optional(),
   cidr: ipCidrSchema.optional(),
   description: descriptionSchema.optional(),

@@ -4,18 +4,18 @@
   import {
     IP_CIDR_MAX_LENGTH,
     IP_RULE_DESCRIPTION_MAX_LENGTH,
-    IP_SCOPE_TYPES,
     type AdminIpRule,
-    type IpScopeType,
   } from '@ssworks/admin-shared'
   import IpTargetField from './IpTargetField.vue'
   import {
     ruleScopeTitle,
     type IpAccessMessages,
+    type IpExtraTargetView,
     type IpRuleForm,
     type IpRuleFormField,
     type IpSelectItem,
   } from './ip-access.js'
+  import { parseScopeChoice, type IpScopeCatalog } from './ip-scope-choices.js'
 
   // IP 규칙 편집 패널(내부 부품) — 표 위 인라인 패널이다(⑦ E1).
   //
@@ -23,7 +23,7 @@
   // 바꾼 점: 대상 칸을 후보 고르기로(IpTargetField), CIDR 오류는 blur · 저장 때(서버와 같은 파서 — I19), 제출은 form submit.
   //
   // 🔴 대화상자가 아니다 — 재인증 창과 겹치고, 재인증 창이 닫히면 입력이 사라지던 사고가 있었다(hangang).
-  // 🔴 전체 범위면 대상 칸을 그리지 않는다 — 전체 ⟺ 대상 없음이 서버 불변식이다.
+  // 🔴 전체 · 범위 전체면 대상 칸을 그리지 않는다 — 대상 없음 ⟺ 그 선택지가 서버 불변식이다.
   // 🔴 저장 버튼은 :disabled 와 :loading 한 벌 — :loading 은 클릭을 안 막는다.
 
   const props = defineProps<{
@@ -41,6 +41,8 @@
     usersSearching: boolean
     usersFailed: boolean
     userHint: string | null
+    scopeCatalog: IpScopeCatalog
+    extraTarget: IpExtraTargetView | null
     submitting: boolean
     busy: boolean
     messages: IpAccessMessages
@@ -52,6 +54,7 @@
     save: []
     cancel: []
     searchUsers: [keyword: string]
+    searchTargets: [keyword: string]
   }>()
 
   const title = computed(() =>
@@ -60,13 +63,16 @@
   const current = computed(() =>
     props.editing === 'new'
       ? null
-      : `${ruleScopeTitle(props.editing, props.messages)} · ${props.editing.cidr}`,
+      : `${ruleScopeTitle(props.editing, props.messages, props.scopeCatalog)} · ${props.editing.cidr}`,
   )
   const scopeItemList = computed(() => [...props.scopeItems])
-  const targetScope = computed(() =>
-    props.form.scopeType === 'global' ? null : props.form.scopeType,
-  )
-  const scopeTypes: readonly string[] = IP_SCOPE_TYPES
+  /** 대상 칸의 종류 — 전체 · 범위 전체면 없음 */
+  const targetKind = computed<'team' | 'user' | 'extra' | null>(() => {
+    const choice = parseScopeChoice(props.form.scopeType)
+    if (choice.whole) return null
+    if (choice.scopeType === 'team' || choice.scopeType === 'user') return choice.scopeType
+    return props.extraTarget === null ? null : 'extra'
+  })
 
   function errors(key: IpRuleFormField): string[] {
     return [...(props.fieldErrors[key] ?? [])]
@@ -76,10 +82,10 @@
     emit('update:form', { ...props.form, [key]: typeof value === 'string' ? value : '' })
   }
 
-  /** 범위를 바꾸면 대상 비우기는 흐름(useIpAccessRules)이 한다 — 여기는 값만 올린다 */
+  /** 범위를 바꾸면 대상 비우기는 흐름(useIpAccessRules)이 한다 — 여기는 선택지 안의 값만 올린다 */
   function patchScope(value: unknown): void {
-    if (typeof value === 'string' && scopeTypes.includes(value)) {
-      emit('update:form', { ...props.form, scopeType: value as IpScopeType })
+    if (typeof value === 'string' && props.scopeItems.some((item) => item.value === value)) {
+      emit('update:form', { ...props.form, scopeType: value })
     }
   }
 </script>
@@ -107,12 +113,13 @@
           @update:model-value="patchScope"
         />
         <IpTargetField
-          v-if="targetScope"
+          v-if="targetKind"
           class="ip-rule-editor__target"
           :disabled="busy"
           :error-messages="errors('scopeRefNo')"
+          :extra-target="extraTarget"
+          :kind="targetKind"
           :messages="messages"
-          :scope-type="targetScope"
           :team-hint="teamHint"
           :team-items="teamItems"
           :team-mode="teamMode"
@@ -124,6 +131,7 @@
           :users-failed="usersFailed"
           :users-searching="usersSearching"
           :value="form.scopeRefNo"
+          @search-targets="emit('searchTargets', $event)"
           @search-users="emit('searchUsers', $event)"
           @update:value="patch('scopeRefNo', $event)"
         />

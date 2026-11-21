@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
   IP_ACCESS_SCHEMA_MESSAGES,
+  IP_EXTRA_SCOPE_TYPE_PATTERN,
   adminIpPreviewQuerySchema,
   adminIpRuleCreateSchema,
+  adminIpRuleSchema,
   adminIpRuleUpdateSchema,
   applicableIpLayer,
   evaluateIpAccess,
+  evaluateScopedIpAccess,
   ipCidrSchema,
   ipInCidr,
+  ipRuleScopeTypeSchema,
   ipScopeProblem,
+  isCoreIpScopeType,
+  isIpExtraScopeTypeName,
   isValidCidr,
   isValidIp,
   isValidIpScope,
@@ -350,5 +356,139 @@ describe('스키마', () => {
       ['scopeRefNo', IP_ACCESS_SCHEMA_MESSAGES.scopeRefForbidden],
     ])
     expect(adminIpPreviewQuerySchema.safeParse({ ruleNo: '-1' }).success).toBe(false)
+  })
+})
+
+describe('확장 범위 — 이름 · 갈래(확장 범위 스펙 X1)', () => {
+  it('이름 규칙 — 영소문자로 시작하는 영숫자 1~16자', () => {
+    expect(IP_EXTRA_SCOPE_TYPE_PATTERN.test('shippingToken')).toBe(true)
+    expect(isIpExtraScopeTypeName('shippingToken')).toBe(true)
+    expect(isIpExtraScopeTypeName('a')).toBe(true)
+    expect(isIpExtraScopeTypeName('a'.repeat(16))).toBe(true)
+    expect(isIpExtraScopeTypeName('a'.repeat(17))).toBe(false)
+    expect(isIpExtraScopeTypeName('')).toBe(false)
+    expect(isIpExtraScopeTypeName('ShippingToken')).toBe(false)
+    expect(isIpExtraScopeTypeName('1token')).toBe(false)
+    expect(isIpExtraScopeTypeName('shipping_token')).toBe(false)
+    expect(isIpExtraScopeTypeName('shippingToken:*')).toBe(false)
+  })
+
+  it('🔴 코어 이름과 대소문자 무시로 겹치면 거짓', () => {
+    for (const name of ['global', 'team', 'user', 'gLOBAL', 'tEAM', 'uSER']) {
+      expect(isIpExtraScopeTypeName(name), name).toBe(false)
+    }
+  })
+
+  it('isCoreIpScopeType — 코어 셋만', () => {
+    expect(['global', 'team', 'user'].every(isCoreIpScopeType)).toBe(true)
+    expect(isCoreIpScopeType('shippingToken')).toBe(false)
+    expect(isCoreIpScopeType('Global')).toBe(false)
+  })
+})
+
+describe('확장 범위 — 두 층 판정(evaluateScopedIpAccess · 스펙 §3-3)', () => {
+  const token = (
+    cidr: string,
+    scopeRefNo: bigint | null = 7n,
+    scopeType = 'shippingToken',
+  ): IpRule => ({ scopeType, scopeRefNo, cidr })
+  const of = (scopeRefNo = 7n) => ({ scopeType: 'shippingToken', scopeRefNo })
+
+  it('🔴 규칙이 없으면 거부 · 주소가 null 이면 거부', () => {
+    expect(evaluateScopedIpAccess('203.0.113.9', [], of())).toBe(false)
+    expect(evaluateScopedIpAccess(null, [token('0.0.0.0/0', null)], of())).toBe(false)
+  })
+
+  it('대상 층 — 그 대상의 규칙 하나라도 맞으면 통과', () => {
+    const rules = [token('198.51.100.0/24'), token('203.0.113.0/24')]
+    expect(evaluateScopedIpAccess('203.0.113.9', rules, of())).toBe(true)
+    expect(evaluateScopedIpAccess('192.0.2.1', rules, of())).toBe(false)
+  })
+
+  it('🔴 가장 가까운 층 하나 — 대상 규칙이 있으면 범위 전체 규칙을 보지 않는다', () => {
+    const rules = [token('0.0.0.0/0', null), token('203.0.113.0/24')]
+    expect(evaluateScopedIpAccess('192.0.2.1', rules, of())).toBe(false)
+    expect(evaluateScopedIpAccess('192.0.2.1', rules, of(8n))).toBe(true)
+  })
+
+  it('대상 규칙이 없으면 범위 전체 규칙 · 둘 다 없으면 거부', () => {
+    expect(evaluateScopedIpAccess('203.0.113.9', [token('203.0.113.0/24', null)], of())).toBe(true)
+    expect(evaluateScopedIpAccess('192.0.2.1', [token('203.0.113.0/24', null)], of())).toBe(false)
+  })
+
+  it('🔴 R3b — 코어 규칙(global 시드 0.0.0.0/0 · ::/0)은 확장 판정에 쓰이지 않는다', () => {
+    const rules = [
+      rule('global', '0.0.0.0/0'),
+      rule('global', '::/0'),
+      rule('user', '0.0.0.0/0', 7n),
+    ]
+    expect(evaluateScopedIpAccess('203.0.113.9', rules, of())).toBe(false)
+  })
+
+  it('다른 확장 범위 · 다른 대상의 규칙은 보지 않는다', () => {
+    const rules = [token('0.0.0.0/0', 7n, 'apiKey'), token('0.0.0.0/0', 8n)]
+    expect(evaluateScopedIpAccess('203.0.113.9', rules, of())).toBe(false)
+  })
+
+  it('🔴 코어 이름으로 부르면 던진다 — 주소가 null 이어도', () => {
+    expect(() =>
+      evaluateScopedIpAccess('203.0.113.9', [], { scopeType: 'global', scopeRefNo: 1n }),
+    ).toThrow('evaluateScopedIpAccess')
+    expect(() => evaluateScopedIpAccess(null, [], { scopeType: 'user', scopeRefNo: 1n })).toThrow(
+      'evaluateScopedIpAccess',
+    )
+  })
+
+  it('🔴 R3a — 관리자 판정은 확장 범위 행을 보지 않는다(번호가 userNo 와 같아도)', () => {
+    const rules = [token('0.0.0.0/0', null), token('203.0.113.0/24', 1n)]
+    const admin = { userNo: 1n, teamNos: [] }
+    expect(applicableIpLayer(rules, admin)).toBeNull()
+    expect(evaluateIpAccess('203.0.113.9', rules, admin)).toBe(false)
+    expect(applicableIpLayer([...rules, rule('global', '0.0.0.0/0')], admin)).toBe('global')
+  })
+})
+
+describe('규칙 스키마의 범위 이름(스펙 §3-2)', () => {
+  it('ipRuleScopeTypeSchema — 코어 셋 · 확장 이름을 받고 형식 밖은 한 문구', () => {
+    for (const value of ['global', 'team', 'user', 'shippingToken']) {
+      expect(ipRuleScopeTypeSchema.parse(value)).toBe(value)
+    }
+    for (const value of ['', 'Shipping', 'shipping_token', 'a'.repeat(17), 'GLOBAL']) {
+      const failed = ipRuleScopeTypeSchema.safeParse(value)
+      expect(failed.success, value).toBe(false)
+      expect(failed.error?.issues.map((issue) => issue.message)).toEqual([
+        IP_ACCESS_SCHEMA_MESSAGES.scopeTypeInvalid,
+      ])
+    }
+  })
+
+  it('응답 · 만들기 · 수정 스키마가 확장 이름을 받는다', () => {
+    const row = {
+      ruleNo: 3n,
+      scopeType: 'shippingToken',
+      scopeRefNo: 7n,
+      scopeName: '작업대 1',
+      scopeUserId: null,
+      cidr: '203.0.113.7/32',
+      description: null,
+      revision: 0,
+      createAt: '2026-11-21T00:00:00.000Z',
+      updateAt: '2026-11-21T00:00:00.000Z',
+    }
+    expect(adminIpRuleSchema.parse(row).scopeType).toBe('shippingToken')
+    expect(
+      adminIpRuleCreateSchema.parse({
+        scopeType: 'shippingToken',
+        scopeRefNo: null,
+        cidr: '10.0.0.0/8',
+      }).scopeType,
+    ).toBe('shippingToken')
+    expect(
+      adminIpRuleUpdateSchema.parse({ scopeType: 'shippingToken', revision: 0 }).scopeType,
+    ).toBe('shippingToken')
+    expect(
+      adminIpRuleCreateSchema.safeParse({ scopeType: 'Bad!', scopeRefNo: null, cidr: '10.0.0.0/8' })
+        .success,
+    ).toBe(false)
   })
 })

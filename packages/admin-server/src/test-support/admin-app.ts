@@ -5,6 +5,7 @@ import { AdminAuditModule } from '../audit/audit.module.js'
 import { AdminAuthModule } from '../auth/admin-auth.module.js'
 import type { AdminClientIpSource } from '../auth/request-meta.js'
 import type { AdminDbConnection } from '../database/connection.js'
+import type { AdminIpAccessOptions } from '../ip-access/options.js'
 import { AdminIpAccessModule } from '../ip-access/ip-access.module.js'
 import { AdminLegalModule } from '../legal/legal.module.js'
 import { AdminRolesModule } from '../roles/roles.module.js'
@@ -20,7 +21,7 @@ import { TEST_JWT_SECRET } from './auth.js'
 import { createHttpApp } from './http.js'
 import { MemoryObjectStorage } from './memory-storage.js'
 
-// 테스트 전용 — 인증 · 감사 · 세션까지 붙인 앱(2c · 2d 역할 · 사용자 · 2e-1 팀 · 2e-2 약관 · 2f-1 IP · 2h 업로드). 운영 main.ts 와 같은 배선(configureAdminApp). 🔴 빌드에서 빠진다.
+// 테스트 전용 — 인증 · 감사 · 세션까지 붙인 앱(2c · 2d 역할 · 사용자 · 2e-1 팀 · 2e-2 약관 · 2f-1 IP · 2h 업로드 · 확장 범위). 운영 main.ts 와 같은 배선(configureAdminApp). 🔴 빌드에서 빠진다.
 
 export const TEST_PERMISSIONS = Object.freeze({
   'sessions.read': 'org.users:read',
@@ -58,6 +59,8 @@ export interface AdminAppOptions {
   jsonLimit?: string
   /** 클라이언트 IP 출처(2f-1 ④ C1). 기본 req.ip — supertest 는 ::ffff:127.0.0.1(정규화 뒤 127.0.0.1) */
   clientIp?: AdminClientIpSource
+  /** IP 확장 범위(확장 범위 스펙 §4-1). 기본 없음 */
+  ipAccess?: AdminIpAccessOptions
   /** 업로드(2h). 기본 메모리 저장소 · mediaPath '/media'(테스트 서버는 전역 접두사가 없다) · 정리 끔 · 앱 용도 notice(board.posts:write) */
   uploads?: Partial<AdminUploadsOptions>
 }
@@ -79,6 +82,7 @@ export function bootAdminApp(
           audit: { catalog: TEST_AUDIT_CATALOG, secretKeys: ['apiKey'] },
           legal: { kinds: TEST_LEGAL_KINDS },
           ...(options.clientIp === undefined ? {} : { clientIp: options.clientIp }),
+          ...(options.ipAccess === undefined ? {} : { ipAccess: options.ipAccess }),
           uploads: {
             storage: new MemoryObjectStorage(),
             mediaPath: '/media',
