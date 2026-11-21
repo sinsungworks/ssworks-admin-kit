@@ -7,6 +7,7 @@ import type { AdminIpPreview, AdminIpPreviewQuery, AdminIpRule } from '@ssworks/
 import {
   useIpAccessRules,
   type IpAccessManagerBindings,
+  type IpAccessRules,
   type UseIpAccessRulesOptions,
 } from '../../composables/useIpAccessRules.js'
 import { buttonByText, installVisualViewport, vuetify } from '../../test/setup.js'
@@ -296,6 +297,29 @@ describe('흐름 + 화면 — useIpAccessRules 와 함께', () => {
     return adapters
   }
 
+  async function mountExtraFlow(extra: Partial<UseIpAccessRulesOptions>) {
+    let ip!: IpAccessRules<AdminIpRule>
+    wrapper = mount(
+      defineComponent({
+        setup() {
+          ip = useIpAccessRules({
+            list: vi.fn(async (): Promise<readonly AdminIpRule[]> => RULES),
+            preview: vi.fn(async (_query: AdminIpPreviewQuery) => result()),
+            create: vi.fn(async (): Promise<unknown> => ({})),
+            update: vi.fn(async (): Promise<unknown> => ({})),
+            remove: vi.fn(async (): Promise<unknown> => ({})),
+            canManage: () => true,
+            ...extra,
+          })
+          return () => h(IpAccessManager as Component, { ...ip.manager.value })
+        },
+      }),
+      { attachTo: document.body, global: { plugins: [vuetify] } },
+    )
+    await flushPromises()
+    return { ip }
+  }
+
   it('새 규칙 → CIDR → 저장 → 재인증 창 → 만들기', async () => {
     const adapters = await mountFlow(true)
     buttonByText(M.createButton)!.click()
@@ -381,5 +405,40 @@ describe('흐름 + 화면 — useIpAccessRules 와 함께', () => {
       'user',
       'global',
     ])
+  })
+
+  it('확장 범위 — 출고 토큰을 고르면 대상 검색 칸 · 카드 영향 줄은 무관', async () => {
+    const { ip } = await mountExtraFlow({
+      extraScopes: [
+        {
+          type: 'shippingToken',
+          label: '출고 토큰',
+          wholeLabel: '모든 출고 USB',
+          search: async () => [{ refNo: 8n, name: '작업대 2' }],
+        },
+      ],
+    })
+    await ip.openCreate()
+    ip.manager.value['onUpdate:form']({ ...ip.form.value, scopeType: 'shippingToken' })
+    await flushPromises()
+    expect(text()).toContain(M.previewUnrelated)
+    // 검색 칸은 VAutocomplete — name 은 입력이 아니라 뿌리에 붙는다. 라벨로 찾는다
+    const search = wrapper!
+      .findAllComponents(VAutocomplete)
+      .find((c) => c.props('label') === M.targetLabel('출고 토큰'))
+    expect(search).toBeDefined()
+    expect(text()).toContain(M.targetLabel('출고 토큰'))
+  })
+
+  it('🔴 한 범위 모드 — 카드가 없고 대상 칸은 고정(꺼짐)', async () => {
+    const { ip } = await mountExtraFlow({
+      extraScopes: [{ type: 'shippingToken', label: '출고 토큰' }],
+      focus: { scopeType: 'shippingToken', scopeRefNo: 7n },
+    })
+    expect(text()).not.toContain(M.cardTitle)
+    await ip.openCreate()
+    await flushPromises()
+    const target = document.querySelector<HTMLInputElement>('input[name="scopeRefNo"]')
+    expect(target?.disabled).toBe(true)
   })
 })

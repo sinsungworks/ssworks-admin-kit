@@ -297,11 +297,18 @@ export {
   type IpPreviewState,
   type IpPreviewView,
   type IpUserOption,
+  type IpExtraTargetView,
   type IpWriteContext,
   type IpSelectItem,
   type IpAccessAlert,
   type IpAccessMessages,
 } from './components/ip-access/ip-access.js'
+export type {
+  IpExtraScopeOption,
+  IpTargetOption,
+  IpRuleFocus,
+  IpRulePrefill,
+} from './components/ip-access/ip-scope-choices.js'
 export {
   useIpAccessRules,
   type UseIpAccessRulesOptions,
